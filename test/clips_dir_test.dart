@@ -8,8 +8,12 @@ void main() {
         p.join('/Users/zee', 'Movies', 'Rewind'));
   });
   test('Windows → %USERPROFILE%\\Videos\\Rewind', () {
-    expect(clipsDirPath(os: 'windows', env: {'USERPROFILE': r'C:\Users\zee'}),
-        p.joinAll([r'C:\Users\zee', 'Videos', 'Rewind']));
+    // p.split normalizes separators on both hosts, so this pins the base,
+    // segments, and order without reusing the implementation's join call.
+    expect(
+        p.split(
+            clipsDirPath(os: 'windows', env: {'USERPROFILE': r'C:\Users\zee'})),
+        [r'C:\Users\zee', 'Videos', 'Rewind']);
   });
   test('other OS falls back to ~/Rewind', () {
     expect(clipsDirPath(os: 'linux', env: {'HOME': '/home/zee'}),
