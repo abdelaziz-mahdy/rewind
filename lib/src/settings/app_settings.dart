@@ -23,6 +23,15 @@ class AppSettings {
         () => GameConfig(gameId: gameId, bufferSeconds: defaultBufferSeconds),
       );
 
+  /// Read-only lookup: the per-game buffer length if a config already
+  /// exists for [gameId], else [defaultBufferSeconds]. Unlike [configFor],
+  /// this never creates/persists a row — safe to call from UI that must not
+  /// pre-seed [allConfigs] (e.g. rendering the status strip before any game
+  /// has been detected).
+  int bufferSecondsFor(String? gameId) =>
+      (gameId != null ? _perGame[gameId]?.bufferSeconds : null) ??
+      defaultBufferSeconds;
+
   void setConfig(GameConfig config) => _perGame[config.gameId] = config;
 
   Iterable<GameConfig> get allConfigs => _perGame.values;

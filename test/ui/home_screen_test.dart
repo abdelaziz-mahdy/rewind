@@ -61,6 +61,11 @@ void main() {
     await t.pumpWidget(_app(home()));
     expect(find.text('PENTA KILL'), findsOneWidget);
     expect(find.text('MANUAL'), findsOneWidget);
+    // "newest-first" means clip b (created 2026-07-02) renders above
+    // clip a (2026-07-01), not just that both are present somewhere.
+    final pentaTop = t.getTopLeft(find.text('PENTA KILL')).dy;
+    final manualTop = t.getTopLeft(find.text('MANUAL')).dy;
+    expect(pentaTop, lessThan(manualTop));
   });
 
   testWidgets('library updates reactively when a clip is added', (t) async {
@@ -89,5 +94,14 @@ void main() {
     coordinator.activeGame.value = 'league_of_legends';
     await t.pump();
     expect(find.text('league_of_legends'), findsOneWidget);
+  });
+
+  testWidgets('rendering the status strip does not pre-seed a game config',
+      (t) async {
+    // Merely showing "Buffering · N s" must not insert a 'desktop' (or any
+    // other) row into settings — that would leak into SettingsScreen's
+    // per-game section before a game has ever actually been configured.
+    await t.pumpWidget(_app(home()));
+    expect(coordinator.settings.allConfigs, isEmpty);
   });
 }

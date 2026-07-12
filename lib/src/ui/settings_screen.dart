@@ -75,10 +75,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _handleCustomBufferChanged(String value) {
     final clamped =
         (int.tryParse(value) ?? _bufferSeconds).clamp(5, 300).toInt();
-    setState(() {
-      _bufferSeconds = clamped;
+    setState(() => _bufferSeconds = clamped);
+    // Only rewrite the field when the clamp actually changed the value —
+    // otherwise re-setting matching text mid-typing jumps the caret to the
+    // end on every keystroke.
+    if (_customBufferController.text != '$clamped') {
       _customBufferController.text = '$clamped';
-    });
+    }
     widget.settings.defaultBufferSeconds = clamped;
     widget.onChanged(widget.settings);
   }

@@ -30,9 +30,7 @@ class StatusStrip extends StatelessWidget {
               ValueListenableBuilder<String?>(
                 valueListenable: coordinator.activeGame,
                 builder: (context, gameId, _) {
-                  final seconds = coordinator.settings
-                      .configFor(gameId ?? 'desktop')
-                      .bufferSeconds;
+                  final seconds = coordinator.settings.bufferSecondsFor(gameId);
                   return Text('Buffering · $seconds s');
                 },
               ),

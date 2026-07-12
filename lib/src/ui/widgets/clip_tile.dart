@@ -120,7 +120,9 @@ class ClipTile extends StatelessWidget {
       if (Platform.isMacOS) {
         await Process.run('open', [path]);
       } else if (Platform.isWindows) {
-        await Process.run('start', [path], runInShell: true);
+        // `start` is a cmd.exe built-in, not an executable; a quoted first
+        // arg is taken as the window title, so pass an empty title first.
+        await Process.run('cmd', ['/c', 'start', '', path]);
       }
     } catch (_) {
       // Best-effort: no OS handler available is not fatal.
@@ -132,7 +134,8 @@ class ClipTile extends StatelessWidget {
       if (Platform.isMacOS) {
         await Process.run('open', ['-R', path]);
       } else if (Platform.isWindows) {
-        await Process.run('explorer', ['-R', path]);
+        // Documented form: "/select," joined with the path as ONE argument.
+        await Process.run('explorer', ['/select,$path']);
       }
     } catch (_) {
       // Best-effort: no OS handler available is not fatal.
