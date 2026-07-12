@@ -9,12 +9,12 @@ import 'hotkey_descriptor.dart';
 /// [HotkeyDescriptor]. Not unit-testable without a host window, so this
 /// class is kept deliberately small and compile-checked via `flutter analyze`.
 class HotkeyService {
-  HotKey? _current;
-
   /// Parses [descriptor], registers it as the sole system-wide hotkey
   /// (replacing any previously bound one), and invokes [onPressed] on
-  /// key-down. Returns `false` without side effects if [descriptor] is
-  /// invalid or its key has no known mapping.
+  /// key-down. Returns `false` if [descriptor] is invalid, its key has no
+  /// known mapping, or the OS refuses the registration (e.g. the combo is
+  /// owned by another app) — in the OS-refusal case the previous hotkey is
+  /// already unregistered, so the caller should surface the failure.
   Future<bool> bind(
     String descriptor,
     Future<void> Function() onPressed,
@@ -25,12 +25,16 @@ class HotkeyService {
     if (key == null) return false;
 
     await hotKeyManager.unregisterAll();
-    _current = HotKey(
+    final hotKey = HotKey(
       key: key,
       modifiers: d.modifiers.map((m) => _mods[m]!).toList(),
       scope: HotKeyScope.system,
     );
-    await hotKeyManager.register(_current!, keyDownHandler: (_) => onPressed());
+    try {
+      await hotKeyManager.register(hotKey, keyDownHandler: (_) => onPressed());
+    } catch (_) {
+      return false;
+    }
     return true;
   }
 
