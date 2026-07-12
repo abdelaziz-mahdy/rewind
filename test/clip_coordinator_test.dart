@@ -130,6 +130,22 @@ void main() {
     expect(library.all, isEmpty);
   });
 
+  test('failed save surfaces the engine error via lastSaveError', () async {
+    engine.failSave = true;
+    await coordinator.onHotkey();
+    expect(coordinator.lastSaveError.value, contains('fake save failure'));
+  });
+
+  test('a save after a failure clears lastSaveError', () async {
+    engine.failSave = true;
+    await coordinator.onHotkey();
+    expect(coordinator.lastSaveError.value, isNotNull);
+
+    engine.failSave = false;
+    await coordinator.onHotkey();
+    expect(coordinator.lastSaveError.value, isNull);
+  });
+
   test('successful save persists the library index', () async {
     await coordinator.onHotkey();
     expect(File('${tmp.path}/clips.json').existsSync(), isTrue);

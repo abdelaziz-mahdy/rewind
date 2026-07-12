@@ -115,6 +115,22 @@ void main() {
     expect(find.text('league_of_legends'), findsOneWidget);
   });
 
+  testWidgets('a save error shows a SnackBar with the message', (t) async {
+    await t.pumpWidget(_app(home()));
+    coordinator.lastSaveError.value = 'disk full';
+    await t.pump(); // schedule the SnackBar
+    await t.pump(); // let it animate in
+    expect(
+        find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
+  });
+
+  testWidgets('the Logs button opens the Talker screen', (t) async {
+    await t.pumpWidget(_app(home()));
+    await t.tap(find.widgetWithIcon(IconButton, Icons.receipt_long_outlined));
+    await t.pumpAndSettle();
+    expect(find.text('Talker'), findsOneWidget);
+  });
+
   testWidgets('rendering the status strip does not pre-seed a game config',
       (t) async {
     // Merely showing "Buffering · N s" must not insert a 'desktop' (or any

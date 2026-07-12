@@ -7,6 +7,7 @@ import '../clip/clip_library.dart';
 import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
+import '../log/log.dart';
 import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
 
@@ -25,6 +26,11 @@ class ClipCoordinator {
   /// pick the buffer length, and let the UI show what's being captured. Null
   /// when no game is detected.
   final ValueNotifier<String?> activeGame = ValueNotifier(null);
+
+  /// The error from the most recent failed save, for the UI to surface
+  /// (e.g. a SnackBar). Null when there is no error to show, including
+  /// right after a subsequent successful save.
+  final ValueNotifier<String?> lastSaveError = ValueNotifier(null);
 
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
@@ -69,13 +75,27 @@ class ClipCoordinator {
 
   Future<void> _save(GameEvent e) async {
     try {
-      final path = engine?.saveClip(outDir);
-      if (path == null) return; // dev mode or save failed
+      final capture = engine;
+      if (capture == null) return; // dev mode: no capture backend wired up
+
+      final path = capture.saveClip(outDir);
+      if (path == null) {
+        final msg = capture.lastError.isNotEmpty
+            ? capture.lastError
+            : 'Clip save failed';
+        lastSaveError.value = msg;
+        talker.error('Clip save failed: $msg');
+        return;
+      }
 
       final file = File(path);
       // The stub shim reports a path without writing anything; never index
       // a clip whose file doesn't exist.
-      if (!await file.exists()) return;
+      if (!await file.exists()) {
+        talker.warning('Clip save reported a path with no file on disk: '
+            '$path');
+        return;
+      }
 
       library.add(Clip(
         path: path,
@@ -86,10 +106,13 @@ class ClipCoordinator {
       ));
       await library.save();
       await storage.enforce();
-    } catch (err) {
+      lastSaveError.value = null;
+      talker.info('Clip saved: $path');
+    } catch (err, stack) {
       // Auto-clip saves are fire-and-forget from the event stream; a failed
       // save (disk full, index write error) must never crash the app.
-      debugPrint('Rewind: clip save failed: $err');
+      talker.handle(err, stack);
+      lastSaveError.value = err.toString();
     }
   }
 }

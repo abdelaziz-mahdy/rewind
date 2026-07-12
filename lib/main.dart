@@ -11,6 +11,7 @@ import 'src/clip/storage_manager.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_registry.dart';
 import 'src/hotkey/hotkey_service.dart';
+import 'src/log/log.dart';
 import 'src/obs/capture_engine.dart';
 import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
@@ -41,6 +42,12 @@ Future<void> main() async {
   } else if (!engine.startBuffer()) {
     captureError = engine.lastError;
   }
+  if (captureError != null) {
+    talker.error('Capture engine failed to start: $captureError');
+  } else {
+    talker.info(
+        'Capture engine started (buffering ${settings.defaultBufferSeconds}s)');
+  }
 
   final coordinator = ClipCoordinator(
     registry: GameRegistry(),
@@ -53,7 +60,9 @@ Future<void> main() async {
 
   final hotkeys = HotkeyService();
   if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
-    debugPrint('Rewind: could not register hotkey "${settings.hotkey}"');
+    talker.warning('Could not register hotkey "${settings.hotkey}"');
+  } else {
+    talker.info('Hotkey "${settings.hotkey}" registered');
   }
 
   if (kDebugMode) {
@@ -111,7 +120,9 @@ Future<void> main() async {
       engine
           ?.setBufferSeconds(s.bufferSecondsFor(coordinator.activeGame.value));
       if (!await hotkeys.bind(s.hotkey, coordinator.onHotkey)) {
-        debugPrint('Rewind: could not register hotkey "${s.hotkey}"');
+        talker.warning('Could not register hotkey "${s.hotkey}"');
+      } else {
+        talker.info('Hotkey "${s.hotkey}" registered');
       }
     },
   ));

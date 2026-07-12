@@ -21,6 +21,7 @@ dependencies:
   hooks: ^2.0.2
   code_assets: ^1.2.1
   native_toolchain_c: ^0.19.2
+  talker_flutter: ^5.1.17
 
 dev_dependencies:
   flutter_test:
