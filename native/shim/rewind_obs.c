@@ -79,6 +79,16 @@ int rewind_obs_shutdown(void) {
     return 0;
 }
 
+
+int rewind_set_buffer_seconds(int seconds) {
+    if (!g_initialized) { set_error("not initialized"); return 1; }
+    if (seconds <= 0) { set_error("invalid buffer length"); return 2; }
+    /* TODO(libobs): update the replay-buffer output settings
+     *   (obs_data_set_int(settings, "max_time_sec", seconds); then
+     *    obs_output_update(replay_buffer_output, settings)). */
+    return 0;
+}
+
 const char *rewind_last_error(void) {
     return g_last_error;
 }

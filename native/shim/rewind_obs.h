@@ -35,6 +35,11 @@ int rewind_obs_shutdown(void);
 /* Human-readable description of the last error, or "" if none. */
 const char *rewind_last_error(void);
 
+
+/* Change the replay-buffer length at runtime (used when the active game
+ * changes and a per-game buffer length applies). Returns 0 on success. */
+int rewind_set_buffer_seconds(int seconds);
+
 #ifdef __cplusplus
 }
 #endif

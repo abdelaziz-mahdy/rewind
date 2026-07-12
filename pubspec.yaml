@@ -17,6 +17,12 @@ dependencies:
   hotkey_manager: ^0.2.3 # global hotkey (manual "clip that")
   tray_manager: ^0.2.3   # menu-bar / tray presence
 
+  # Native build hooks — compile & bundle the C shim automatically.
+  # Pin to current versions on first setup: `dart pub add hooks code_assets native_toolchain_c`
+  hooks: any
+  code_assets: any
+  native_toolchain_c: any
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
