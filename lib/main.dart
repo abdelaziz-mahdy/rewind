@@ -54,14 +54,19 @@ Future<void> main() async {
     debugPrint('Rewind: could not register hotkey "${settings.hotkey}"');
   }
 
+  // Live buffer state shared by the status strip and the tray toggle.
+  final bufferActive =
+      ValueNotifier<bool>(engine != null && captureError == null);
+
   final tray = TrayService();
   await tray.init(
     onSaveClip: coordinator.onHotkey,
     onToggleBuffer: (start) async {
       if (start) {
-        engine?.startBuffer();
+        bufferActive.value = engine?.startBuffer() ?? false;
       } else {
         engine?.stopBuffer();
+        bufferActive.value = false;
       }
     },
     // No window_manager dependency in v0.1: clicking the tray only offers
@@ -80,8 +85,14 @@ Future<void> main() async {
     library: library,
     settings: settings,
     captureError: captureError,
+    bufferActive: bufferActive,
     onSettingsChanged: (s) async {
       await store.save(s);
+      // Apply the (possibly per-game) buffer length to the live engine —
+      // without this, a default-length edit only takes effect on the next
+      // game-activity transition or app restart.
+      engine
+          ?.setBufferSeconds(s.bufferSecondsFor(coordinator.activeGame.value));
       if (!await hotkeys.bind(s.hotkey, coordinator.onHotkey)) {
         debugPrint('Rewind: could not register hotkey "${s.hotkey}"');
       }
@@ -94,6 +105,7 @@ class RewindApp extends StatelessWidget {
   final ClipLibrary library;
   final AppSettings settings;
   final String? captureError;
+  final ValueNotifier<bool> bufferActive;
   final Future<void> Function(AppSettings) onSettingsChanged;
 
   const RewindApp({
@@ -101,6 +113,7 @@ class RewindApp extends StatelessWidget {
     required this.library,
     required this.settings,
     required this.captureError,
+    required this.bufferActive,
     required this.onSettingsChanged,
     super.key,
   });
@@ -115,6 +128,7 @@ class RewindApp extends StatelessWidget {
           coordinator: coordinator,
           library: library,
           captureError: captureError,
+          bufferActive: bufferActive,
           hotkeyLabel: settings.hotkey,
           onOpenSettings: () => Navigator.of(context).push(
             MaterialPageRoute<void>(

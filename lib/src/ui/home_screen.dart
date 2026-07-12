@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../clip/clip_library.dart';
@@ -10,6 +11,10 @@ class HomeScreen extends StatelessWidget {
   final ClipCoordinator coordinator;
   final ClipLibrary library;
   final String? captureError;
+
+  /// Live buffer state (toggled by the tray's pause/resume). When null the
+  /// strip assumes the buffer is running iff capture came up without error.
+  final ValueListenable<bool>? bufferActive;
   final String hotkeyLabel;
   final VoidCallback onOpenSettings;
 
@@ -17,6 +22,7 @@ class HomeScreen extends StatelessWidget {
     required this.coordinator,
     required this.library,
     this.captureError,
+    this.bufferActive,
     required this.hotkeyLabel,
     required this.onOpenSettings,
     super.key,
@@ -37,7 +43,11 @@ class HomeScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          StatusStrip(coordinator: coordinator, captureError: captureError),
+          StatusStrip(
+            coordinator: coordinator,
+            captureError: captureError,
+            bufferActive: bufferActive,
+          ),
           const Divider(height: 1),
           Expanded(
             child: ListenableBuilder(

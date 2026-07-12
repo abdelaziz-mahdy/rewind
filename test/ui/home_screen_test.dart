@@ -33,16 +33,35 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  HomeScreen home({String? error}) => HomeScreen(
-      coordinator: coordinator,
-      library: library,
-      captureError: error,
-      hotkeyLabel: 'Alt+F10',
-      onOpenSettings: () {});
+  HomeScreen home({String? error, ValueNotifier<bool>? bufferActive}) =>
+      HomeScreen(
+          coordinator: coordinator,
+          library: library,
+          captureError: error,
+          bufferActive: bufferActive,
+          hotkeyLabel: 'Alt+F10',
+          onOpenSettings: () {});
 
   testWidgets('empty state shows hotkey hint', (t) async {
     await t.pumpWidget(_app(home()));
     expect(find.textContaining('Alt+F10'), findsOneWidget);
+  });
+
+  testWidgets('capture error hides the buffering indicator', (t) async {
+    await t.pumpWidget(_app(home(error: 'libobs init failed')));
+    expect(find.textContaining('Buffering'), findsNothing);
+    expect(find.text('Capture unavailable'), findsOneWidget);
+  });
+
+  testWidgets('paused buffer shows Paused and stops claiming Buffering',
+      (t) async {
+    final active = ValueNotifier<bool>(true);
+    await t.pumpWidget(_app(home(bufferActive: active)));
+    expect(find.textContaining('Buffering'), findsOneWidget);
+    active.value = false;
+    await t.pump();
+    expect(find.textContaining('Buffering'), findsNothing);
+    expect(find.text('Paused'), findsOneWidget);
   });
 
   testWidgets('clips render newest-first with event badge', (t) async {

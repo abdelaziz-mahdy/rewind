@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../coordinator/clip_coordinator.dart';
@@ -10,7 +11,35 @@ class StatusStrip extends StatelessWidget {
   final ClipCoordinator coordinator;
   final String? captureError;
 
-  const StatusStrip({required this.coordinator, this.captureError, super.key});
+  /// Live buffer state; null means "running iff no capture error".
+  final ValueListenable<bool>? bufferActive;
+
+  const StatusStrip({
+    required this.coordinator,
+    this.captureError,
+    this.bufferActive,
+    super.key,
+  });
+
+  /// Pulsing "Buffering · N s" while running; grey dot + reason otherwise.
+  Widget _indicator(bool running) {
+    if (!running) {
+      return Row(children: [
+        const _IdleDot(),
+        const SizedBox(width: 8),
+        Text(captureError != null ? 'Capture unavailable' : 'Paused'),
+      ]);
+    }
+    return Row(children: [
+      const _PulseDot(),
+      const SizedBox(width: 8),
+      ValueListenableBuilder<String?>(
+        valueListenable: coordinator.activeGame,
+        builder: (context, gameId, _) => Text(
+            'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s'),
+      ),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,15 +54,13 @@ class StatusStrip extends StatelessWidget {
           ],
           Row(
             children: [
-              const _PulseDot(),
-              const SizedBox(width: 8),
-              ValueListenableBuilder<String?>(
-                valueListenable: coordinator.activeGame,
-                builder: (context, gameId, _) {
-                  final seconds = coordinator.settings.bufferSecondsFor(gameId);
-                  return Text('Buffering · $seconds s');
-                },
-              ),
+              if (bufferActive case final active?)
+                ValueListenableBuilder<bool>(
+                  valueListenable: active,
+                  builder: (context, running, _) => _indicator(running),
+                )
+              else
+                _indicator(captureError == null),
               const SizedBox(width: 16),
               ValueListenableBuilder<String?>(
                 valueListenable: coordinator.activeGame,
@@ -82,6 +109,22 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(child: Text(text)),
         ],
       ),
+    );
+  }
+}
+
+/// A static grey dot for the paused / capture-unavailable states.
+class _IdleDot extends StatelessWidget {
+  const _IdleDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.outline,
+        shape: BoxShape.circle,
+      ),
+      child: const SizedBox(width: 10, height: 10),
     );
   }
 }
