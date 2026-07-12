@@ -17,7 +17,11 @@ Owns everything the user sees and most of the logic:
 - **UI** (`lib/src/ui/`) — menu-bar/tray presence, settings, clip library.
 - **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. First implementation: `LeagueEventWatcher`, which polls the League **Live Client Data API** at `https://127.0.0.1:2999/liveclientdata/eventdata`.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
-- **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim.
+- **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,
+  behind a small **`CaptureEngine`** interface. The coordinator and UI depend
+  only on `CaptureEngine`; `RewindObsEngine` implements it over the `@Native`
+  bindings, and tests use a fake — so `flutter test` never needs the native
+  library, and an alternate capture backend stays possible.
 
 ### 2. Rewind C shim (`native/shim/`)
 
@@ -70,7 +74,20 @@ Manual hotkey path is identical minus the watcher: hotkey → coordinator → `r
 
 libobs is not a single static blob — it needs runtime data and plugin modules present at known paths relative to the executable.
 
-- **macOS:** bundle libobs `.dylib`s and the `obs-plugins` / `data` directories inside the `.app`; set `@rpath` correctly. Distribute as a signed, notarized `.app` in a DMG.
+- **The SDK itself** is built once by `tools/fetch_libobs.sh` (pinned
+  obs-studio tag + matching obs-deps; only libobs and the four plugin modules
+  Rewind needs) into git-ignored `native/third_party/obs/`. When that
+  directory exists, `hook/build.dart` compiles the shim with
+  `REWIND_USE_LIBOBS` and links `libobs.framework`; when absent, the
+  self-contained stub compiles instead, so contributors and CI need zero
+  native setup for tests and UI work.
+- **macOS:** libobs ships as a real `.framework` (its plugins hard-link
+  `@rpath/libobs.framework/...`). `tools/bundle_obs_macos.sh` copies the
+  framework + dylib closure into `Rewind.app/Contents/Frameworks/` and the
+  `obs-plugins/` + `data/` trees into `Contents/Resources/obs/`, then ad-hoc
+  re-signs the app. The shim discovers those paths at runtime relative to its
+  own location (`dladdr`), falling back to `native/third_party/obs/` for
+  dev-tree runs. Distribute as a signed, notarized `.app` in a DMG (v1.0).
 - **Windows:** ship `obs.dll` + `obs-plugins/` + `data/` next to the `.exe`; package with an installer (MSIX or Inno Setup).
 
 CI release jobs assemble these bundles per platform. See `.github/workflows/release.yml`.

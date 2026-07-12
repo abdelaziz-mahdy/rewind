@@ -62,14 +62,26 @@ source. See [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
 Requires the Flutter SDK (desktop enabled). The native C shim is compiled and
 bundled automatically by a Dart **build hook** (`hook/build.dart`) — no per-OS
-build files to manage. Linking real libobs is described in
-[native/shim/README.md](native/shim/README.md). Full setup in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+build files to manage. Full setup in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 flutter pub get
 flutter run -d macos      # or: flutter run -d windows
 ```
+
+That runs in **stub capture mode** (UI works, no video written). For **real
+recording on macOS**, build the pinned libobs SDK once, then run again:
+
+```bash
+bash tools/fetch_libobs.sh   # one-time, cached under native/third_party/
+flutter run -d macos
+```
+
+macOS will ask for **Screen Recording** permission on first capture (System
+Settings → Privacy & Security → Screen Recording); grant it and relaunch.
+Details, including packaging a distributable .app, in
+[native/shim/README.md](native/shim/README.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Legal & safety
 

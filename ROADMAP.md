@@ -14,14 +14,18 @@ These shape every milestone:
 
 ## v0.1 — "It records" (foundation)
 
-- [ ] Flutter desktop shell (macOS + Windows), tray/menu-bar presence
-- [ ] C shim over libobs: init, start buffer, save clip, set-buffer-length, stop, shutdown
-- [ ] **Native build hook (`hook/build.dart`)** compiles + bundles the shim automatically
-- [ ] Dart `@Native` FFI bindings to the shim
-- [ ] Manual global **hotkey → save last N seconds** (30s / 60s / custom)
-- [ ] **Per-game buffer length** setting (30s vs 60s etc. per game)
-- [ ] Basic clip library view
-- [ ] CI builds on both platforms
+- [x] Flutter desktop shell (macOS + Windows), tray/menu-bar presence
+- [x] C shim over libobs: init, start buffer, save clip, set-buffer-length, stop, shutdown (real libobs on macOS via `tools/fetch_libobs.sh`; stub elsewhere)
+- [x] **Native build hook (`hook/build.dart`)** compiles + bundles the shim automatically
+- [x] Dart `@Native` FFI bindings to the shim
+- [x] Manual global **hotkey → save last N seconds** (30s / 60s / custom)
+- [x] **Per-game buffer length** setting (30s vs 60s etc. per game)
+- [x] Basic clip library view
+- [x] CI builds on both platforms
+
+> Windows real capture (Windows Graphics Capture source + encoder wiring in
+> the shim) is deferred to a follow-up: the app builds and tests on Windows in
+> stub mode, and needs a Windows machine/tester for the native bring-up.
 
 ## v0.2 — "It clips League automatically" (first integration)
 
