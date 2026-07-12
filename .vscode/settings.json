@@ -1,0 +1,5 @@
+{
+  "dart.lineLength": 100,
+  "editor.formatOnSave": true,
+  "files.exclude": { "**/.dart_tool": true, "**/build": true }
+}

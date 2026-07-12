@@ -1,0 +1,26 @@
+name: rewind
+description: Cross-platform instant-replay and automatic game-clip capture (Windows + macOS).
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.0            # dart:ffi helpers for the libobs C shim
+  http: ^1.2.0          # League Live Client Data API polling
+  path: ^1.9.0
+  path_provider: ^2.1.0 # locate the clips directory per-OS
+  hotkey_manager: ^0.2.3 # global hotkey (manual "clip that")
+  tray_manager: ^0.2.3   # menu-bar / tray presence
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: macos
+            artifact: rewind-macos
+          - os: windows-latest
+            target: windows
+            artifact: rewind-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter config --enable-${{ matrix.target }}-desktop
+      - run: flutter pub get
+      - run: flutter build ${{ matrix.target }} --release
+
+      # TODO: bundle libobs runtime (data/ + obs-plugins/) into the app,
+      # then sign/notarize (macOS) or build an installer (Windows).
+      - name: Package (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../../${{ matrix.artifact }}.zip *.app
+      - name: Package (Windows)
+        if: matrix.target == 'windows'
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ${{ matrix.artifact }}.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+
+  release:
+    name: Draft GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/**/*.zip
