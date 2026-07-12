@@ -124,6 +124,28 @@ void main() {
         find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
   });
 
+  testWidgets('a second identical failure shows the SnackBar again', (t) async {
+    await t.pumpWidget(_app(home()));
+
+    coordinator.lastSaveError.value = 'disk full';
+    await t.pump();
+    await t.pump();
+    expect(
+        find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
+
+    // Let the first SnackBar fully dismiss, then repeat the exact failure
+    // the way ClipCoordinator._reportSaveError does — null, then the same
+    // message — since a plain re-set of an equal value is a no-op on
+    // ValueNotifier and would never reach the listener.
+    await t.pump(const Duration(seconds: 5));
+    coordinator.lastSaveError.value = null;
+    coordinator.lastSaveError.value = 'disk full';
+    await t.pump();
+    await t.pump();
+    expect(
+        find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
+  });
+
   testWidgets('the Logs button opens the Talker screen', (t) async {
     await t.pumpWidget(_app(home()));
     await t.tap(find.widgetWithIcon(IconButton, Icons.receipt_long_outlined));

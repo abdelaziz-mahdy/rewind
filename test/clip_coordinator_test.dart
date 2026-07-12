@@ -86,6 +86,19 @@ void main() {
     league.emit(GameEventKind.kill);
     await saved.future;
 
+    // library.addListener fires on add(), which happens *before*
+    // library.save() finishes writing clips.json.tmp. Without waiting for
+    // that write to land, tearDown's directory delete below can race it and
+    // throw a PathNotFoundException from inside _save's try block (harmless
+    // — caught and logged — but noisy and nondeterministic under `flutter
+    // test`'s parallel isolates). Poll with a bound so a genuine regression
+    // still fails fast instead of hanging.
+    final clipsJson = File('${tmp.path}/clips.json');
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (!clipsJson.existsSync() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
     expect(library.all, hasLength(1));
     expect(library.all.single.gameId, 'league_of_legends');
     expect(library.all.single.event, GameEventKind.kill);
@@ -144,6 +157,23 @@ void main() {
     engine.failSave = false;
     await coordinator.onHotkey();
     expect(coordinator.lastSaveError.value, isNull);
+  });
+
+  test('two consecutive identical failures both notify listeners', () async {
+    // ValueNotifier dedups equal values, so without the coordinator's
+    // null-then-set trick, a second failure with the same message would
+    // never notify — no second SnackBar, reproducing "pressed it and
+    // nothing happened" for a user who keeps hitting a still-broken save.
+    engine.failSave = true;
+    var errorNotifications = 0;
+    coordinator.lastSaveError.addListener(() {
+      if (coordinator.lastSaveError.value != null) errorNotifications++;
+    });
+
+    await coordinator.onHotkey();
+    await coordinator.onHotkey();
+
+    expect(errorNotifications, 2);
   });
 
   test('successful save persists the library index', () async {

@@ -83,7 +83,7 @@ class ClipCoordinator {
         final msg = capture.lastError.isNotEmpty
             ? capture.lastError
             : 'Clip save failed';
-        lastSaveError.value = msg;
+        _reportSaveError(msg);
         talker.error('Clip save failed: $msg');
         return;
       }
@@ -112,7 +112,18 @@ class ClipCoordinator {
       // Auto-clip saves are fire-and-forget from the event stream; a failed
       // save (disk full, index write error) must never crash the app.
       talker.handle(err, stack);
-      lastSaveError.value = err.toString();
+      _reportSaveError(err.toString());
     }
+  }
+
+  /// Sets [lastSaveError], forcing a notification even when the message is
+  /// identical to the previous failure. `ValueNotifier` dedups equal values,
+  /// so without the null round-trip a second consecutive identical failure
+  /// would never notify listeners — no second SnackBar, reproducing the
+  /// "pressed it and nothing happened" complaint. The null pass is harmless:
+  /// the UI listener ([HomeScreen]) early-returns on null.
+  void _reportSaveError(String msg) {
+    lastSaveError.value = null;
+    lastSaveError.value = msg;
   }
 }

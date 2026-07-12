@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showSaveErrorIfAny() {
+    if (!mounted) return;
     final message = widget.coordinator.lastSaveError.value;
     if (message == null) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
