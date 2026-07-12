@@ -8,7 +8,6 @@
 // NOTE: once libobs is integrated, add its include/lib flags here (flags:,
 // libraries:, libraryPaths:) and define REWIND_USE_LIBOBS. Bundling libobs'
 // own runtime data (data/, obs-plugins/) is separate — see ARCHITECTURE.md.
-import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
 

@@ -19,6 +19,8 @@ class RewindApp extends StatefulWidget {
 }
 
 class _RewindAppState extends State<RewindApp> {
+  // Read by nothing yet — the UI screens land in v0.1 integration.
+  // ignore: unused_field
   late final ClipCoordinator _coordinator;
 
   @override

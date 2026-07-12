@@ -29,3 +29,7 @@ native/third_party/obs/
 # Clips / user data
 *.mp4
 clips/
+.superpowers/
+
+# script-built libobs artifacts (tools/fetch_libobs.sh)
+native/third_party/
