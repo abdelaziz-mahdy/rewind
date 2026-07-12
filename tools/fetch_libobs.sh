@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 # Build a minimal libobs + capture/encode plugins for Rewind, pinned + cached.
 # Result lands in native/third_party/obs/ (git-ignored). Idempotent: skips
-# work when the stamp file matches OBS_TAG.
+# work when the stamp file matches OBS_TAG + build arch + deps version.
 #
 # macOS only for now (Windows lands in a later task). Requires full Xcode.app
 # (not just Command Line Tools) — the pinned obs-studio tree hard-requires
 # the Xcode CMake generator on macOS (cmake/macos/compilerconfig.cmake) — plus
-# cmake and git. Everything else (FFmpeg, SIMDe, ...) is fetched automatically
-# by obs-studio's own CMake build-dependency system.
+# cmake, git, and python3 (used to patch the vendored obs-studio CMake files).
+# Everything else (FFmpeg, SIMDe, ...) is fetched automatically by
+# obs-studio's own CMake build-dependency system.
 set -euo pipefail
 
 OBS_TAG="${OBS_TAG:-32.1.2}"
-# Deps version is read from the pinned tag's CMakePresets.json by obs-studio's
-# own build system; not passed as a flag. Recorded here for reference only:
-DEPS_VERSION="${DEPS_VERSION:-2025-08-23}"
+# Deps version obs-studio's own CMake fetches for this tag, per its
+# CMakePresets.json (`dependencies.prebuilt.version`). This is *not*
+# independently tunable: it's a fact about OBS_TAG, not a separate knob, and
+# the CMake patches below already assert (loudly) that this tag's source
+# tree matches what they expect. If you bump OBS_TAG, re-derive this from
+# that tag's CMakePresets.json and update it here.
+DEPS_VERSION="2025-08-23"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/native/third_party/obs"
 WORK="$ROOT/native/third_party/work"
 SRC="$WORK/obs-studio"
+SRC_TMP="$WORK/.obs-studio.tmp"
+CLONE_TAG_MARKER="$WORK/.obs_tag"
 BUILD="$WORK/build"
 INSTALL="$WORK/install"
 STAMP="$OUT/.stamp"
@@ -26,8 +33,13 @@ STAMP="$OUT/.stamp"
 BUILD_ARCH="${CMAKE_OSX_ARCHITECTURES:-$(uname -m)}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
-[[ -f "$STAMP" && "$(cat "$STAMP")" == "$OBS_TAG" ]] && {
-  echo "libobs $OBS_TAG already present in $OUT"
+# Stamp encodes everything that changes what ends up in $OUT: the pinned tag,
+# the build architecture, and the deps version. Any of those changing must
+# invalidate the cache rather than short-circuit onto stale/wrong-arch bits.
+STAMP_VALUE="${OBS_TAG} arch=${BUILD_ARCH} deps=${DEPS_VERSION}"
+
+[[ -f "$STAMP" && "$(cat "$STAMP")" == "$STAMP_VALUE" ]] && {
+  echo "libobs $OBS_TAG ($BUILD_ARCH) already present in $OUT"
   exit 0
 }
 
@@ -38,6 +50,12 @@ command -v cmake >/dev/null 2>&1 || {
 }
 command -v git >/dev/null 2>&1 || {
   echo "ERROR: git not found." >&2
+  exit 1
+}
+command -v python3 >/dev/null 2>&1 || {
+  echo "ERROR: python3 not found (used to patch the vendored obs-studio CMake" >&2
+  echo "  files). Install with: brew install python3, or install the Xcode" >&2
+  echo "  Command Line Tools, which bundle one." >&2
   exit 1
 }
 if ! xcode-select -p >/dev/null 2>&1 || ! xcodebuild -version >/dev/null 2>&1; then
@@ -51,9 +69,27 @@ fi
 mkdir -p "$WORK"
 
 # --- 1) Clone obs-studio at the pinned tag, then patch it for a minimal build.
-if [[ ! -d "$SRC" ]]; then
+#
+# Clone+patch is atomic: it happens entirely in a scratch dir ($SRC_TMP) that
+# only gets moved into place ($SRC) once every patch has succeeded. A run
+# that dies mid-clone or mid-patch leaves $SRC_TMP behind but never touches
+# $SRC, so the next run's guard below sees $SRC missing/stale and redoes the
+# whole thing cleanly — no manual `rm -rf` required.
+#
+# $CLONE_TAG_MARKER records which OBS_TAG $SRC was actually cloned+patched
+# at. A warm work dir with a *different* OBS_TAG (or no marker at all, e.g.
+# a checkout left by an older version of this script) must not be reused —
+# it would silently rebuild the old tag's source and then stamp it as the
+# new one.
+NEED_CLONE=1
+if [[ -d "$SRC" && -f "$CLONE_TAG_MARKER" && "$(cat "$CLONE_TAG_MARKER")" == "$OBS_TAG" ]]; then
+  NEED_CLONE=0
+fi
+
+if [[ "$NEED_CLONE" == "1" ]]; then
   echo "Cloning obs-studio @ $OBS_TAG ..."
-  git clone --depth 1 --branch "$OBS_TAG" https://github.com/obsproject/obs-studio.git "$SRC"
+  rm -rf "$SRC" "$SRC_TMP" "$BUILD" "$INSTALL" "$CLONE_TAG_MARKER"
+  git clone --depth 1 --branch "$OBS_TAG" https://github.com/obsproject/obs-studio.git "$SRC_TMP"
 
   # Patch 1/3: replace plugins/CMakeLists.txt with an allow-list.
   #
@@ -62,7 +98,7 @@ if [[ ! -d "$SRC" ]]; then
   # checked out, and it builds every other plugin too — several need SDKs we
   # don't have (AJA, DeckLink, libvlc, fdk-aac). Rewind only ships capture +
   # encode, so replace the file with just the three modules Rewind uses.
-  cat > "$SRC/plugins/CMakeLists.txt" << 'EOF'
+  cat > "$SRC_TMP/plugins/CMakeLists.txt" << 'EOF'
 cmake_minimum_required(VERSION 3.28...3.30)
 
 # --- Rewind: patched by tools/fetch_libobs.sh ---
@@ -90,7 +126,7 @@ EOF
   # obs-studio's dependency fetcher (cmake/macos/buildspec.cmake) always
   # fetches prebuilt+qt6+cef regardless of ENABLE_FRONTEND — Qt6 is several
   # hundred MB we never link against since Rewind has no Qt UI.
-  python3 - "$SRC/cmake/macos/buildspec.cmake" << 'PY'
+  python3 - "$SRC_TMP/cmake/macos/buildspec.cmake" << 'PY'
 import sys
 path = sys.argv[1]
 text = open(path).read()
@@ -114,7 +150,7 @@ PY
   # Xcode generator, so it fails with "CMake can not determine linker
   # language". Rewind is a headless replay-buffer capturer (no on-screen
   # render path), so the OpenGL renderer already enabled is sufficient.
-  python3 - "$SRC/CMakeLists.txt" << 'PY'
+  python3 - "$SRC_TMP/CMakeLists.txt" << 'PY'
 import sys
 path = sys.argv[1]
 text = open(path).read()
@@ -131,6 +167,9 @@ new = (
 assert old in text, "root CMakeLists.txt shape changed upstream; update tools/fetch_libobs.sh"
 open(path, "w").write(text.replace(old, new, 1))
 PY
+
+  mv "$SRC_TMP" "$SRC"
+  echo "$OBS_TAG" > "$CLONE_TAG_MARKER"
 fi
 
 # --- 2) Configure: libobs + only the modules Rewind needs. No UI, no browser,
@@ -191,5 +230,5 @@ rsync -a "$SRC/plugins/mac-capture/data/" "$OUT/data/obs-plugins/mac-capture/"
 rsync -a "$SRC/plugins/obs-ffmpeg/data/" "$OUT/data/obs-plugins/obs-ffmpeg/"
 rsync -a "$SRC/plugins/coreaudio-encoder/data/" "$OUT/data/obs-plugins/coreaudio-encoder/"
 
-echo "$OBS_TAG" > "$STAMP"
-echo "libobs $OBS_TAG ready in $OUT"
+echo "$STAMP_VALUE" > "$STAMP"
+echo "libobs $OBS_TAG ($BUILD_ARCH) ready in $OUT"
