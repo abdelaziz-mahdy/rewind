@@ -244,6 +244,14 @@ cp -R "$BUILD/plugins/mac-videotoolbox/RelWithDebInfo/mac-videotoolbox.plugin" "
 cp -R "$BUILD/plugins/obs-ffmpeg/RelWithDebInfo/obs-ffmpeg.plugin" "$OUT/obs-plugins/"
 cp -R "$BUILD/plugins/coreaudio-encoder/RelWithDebInfo/coreaudio-encoder.plugin" "$OUT/obs-plugins/"
 
+# bin/: the obs-ffmpeg-mux helper. obs-ffmpeg's muxer/replay-buffer SPAWNS
+# this standalone executable to write files, resolving it next to the main
+# app executable (os_get_executable_path_ptr). Without it, every replay
+# save fails with "Failed to create process pipe" and writes nothing.
+# tools/bundle_obs_macos.sh copies it into Rewind.app/Contents/MacOS/.
+mkdir -p "$OUT/bin"
+cp "$BUILD/plugins/obs-ffmpeg/ffmpeg-mux/RelWithDebInfo/obs-ffmpeg-mux" "$OUT/bin/"
+
 # data/: libobs core (effects, locale) + per-plugin data (locale)
 rsync -a "$SRC/libobs/data/" "$OUT/data/libobs/"
 rsync -a "$SRC/plugins/mac-capture/data/" "$OUT/data/obs-plugins/mac-capture/"

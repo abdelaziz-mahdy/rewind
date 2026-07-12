@@ -14,29 +14,11 @@
 #   2. Copies native/third_party/obs/{obs-plugins,data}/ into
 #      Contents/Resources/obs/{obs-plugins,data}/ — the layout
 #      native/shim/rewind_obs.c's setup_module_paths() expects.
-#   3. KNOWN GAP (documented, not fixed here — see below): the shim's
-#      packaged-app SDK lookup (find_obs_sdk_dir() in rewind_obs.c,
-#      dladdr-based) assumed the compiled shim would be a flat dylib
-#      directly in Contents/Frameworks/, so "<shim dir>/../Resources/obs"
-#      would resolve to Contents/Resources/obs. In practice the
-#      Dart/Flutter macOS build toolchain wraps the shim code asset in its
-#      own nested framework bundle instead
-#      (Contents/Frameworks/rewind_obs.framework/Versions/A/rewind_obs), so
-#      that same relative expression actually resolves to
-#      Contents/Frameworks/rewind_obs.framework/Versions/Resources/obs — two
-#      directory levels off from where this script puts the SDK below.
-#      A symlink bridging the two was tried and rejected: injecting extra
-#      content inside a framework bundle breaks `codesign --deep` ("unsealed
-#      contents present in the root directory of an embedded framework").
-#      Fixing this for real needs a small rewind_obs.c change (try an extra
-#      "../../../Resources/obs" candidate, or better, resolve the main
-#      bundle's Resources dir via NSBundle instead of relative dladdr math)
-#      — out of this script's file scope; flagged for a follow-up task.
-#      Practical effect: a truly relocated app (moved outside the source
-#      tree) will fail SDK lookup via this branch. The dev-tree walk-up
-#      fallback in find_obs_sdk_dir() still works for builds run from
-#      inside the repo (build/macos/Build/Products/**), which is what this
-#      script's own verification exercises.
+#   3. Copies bin/obs-ffmpeg-mux next to the main executable — obs-ffmpeg
+#      spawns it to write replay files (see comment at the copy below).
+#      (The shim's packaged-app SDK lookup handles the nested-framework
+#      layout since the find_graphics_module_path/candidate fixes in
+#      rewind_obs.c; the historical gap notes live in git history.)
 #   4. Adds a defense-in-depth rpath to the app's main executable and
 #      ad-hoc re-signs the app (codesign --force --deep -s -) since adding
 #      files invalidates any existing signature. Ad-hoc only; real
@@ -76,6 +58,18 @@ mkdir -p "$RESOURCES_OBS"
 rm -rf "$RESOURCES_OBS/obs-plugins" "$RESOURCES_OBS/data"
 cp -R "$SDK_DIR/obs-plugins" "$RESOURCES_OBS/obs-plugins"
 cp -R "$SDK_DIR/data" "$RESOURCES_OBS/data"
+
+# The replay buffer writes files by spawning the obs-ffmpeg-mux helper,
+# which obs-ffmpeg resolves NEXT TO THE MAIN EXECUTABLE
+# (os_get_executable_path_ptr). Without it every save fails with
+# "Failed to create process pipe" and no file is ever written.
+if [[ -x "$SDK_DIR/bin/obs-ffmpeg-mux" ]]; then
+  echo "==> Copying obs-ffmpeg-mux helper into $CONTENTS/MacOS/"
+  cp "$SDK_DIR/bin/obs-ffmpeg-mux" "$CONTENTS/MacOS/"
+else
+  echo "error: $SDK_DIR/bin/obs-ffmpeg-mux missing — re-run tools/fetch_libobs.sh" >&2
+  exit 1
+fi
 
 # --- Known gap check (see header comment #3): warn if the shim was built
 # as a nested framework, since its packaged-app SDK lookup won't resolve
