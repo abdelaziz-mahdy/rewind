@@ -1,13 +1,21 @@
 /*
  * rewind_obs.c — Rewind's C shim over libobs.
  *
- * SCAFFOLD: this file currently implements a self-contained STUB so the app
- * links and runs before libobs is wired in. Each function documents the real
- * libobs calls to make. Replace the stub bodies with the calls marked TODO.
+ * Two implementations live in this file, selected at compile time:
  *
- * Build (once libobs is available), e.g. macOS:
+ *   - REWIND_USE_LIBOBS defined: the real libobs-backed implementation
+ *     (macOS only for now). See native/shim/README.md for how the SDK is
+ *     located and the pinned tag it targets.
+ *   - REWIND_USE_LIBOBS undefined: a self-contained STUB so the Flutter app
+ *     links and runs before libobs is wired in / on platforms without a
+ *     built SDK yet. `rewind_save_clip` returns a synthesized path so the
+ *     Dart pipeline can be exercised end-to-end in "dev mode".
+ *
+ * Build, e.g. macOS real mode:
  *   clang -shared -fPIC rewind_obs.c -o librewind_obs.dylib \
- *       -I<obs-studio>/libobs -L<obs-build>/libobs -lobs
+ *       -DREWIND_USE_LIBOBS -Inative/third_party/obs/include \
+ *       -Fnative/third_party/obs/lib -framework libobs \
+ *       -framework ApplicationServices
  *
  * License: GPLv3.
  */
@@ -15,11 +23,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-
-/* When REWIND_USE_LIBOBS is defined at build time, include the real headers.
- *   #include <obs.h>
- *   #include <obs-frontend-api.h>   // or drive the replay output directly
- */
 
 static char g_last_error[256] = "";
 static char g_last_clip[1024] = "";
@@ -29,6 +32,335 @@ static void set_error(const char *msg) {
     strncpy(g_last_error, msg ? msg : "", sizeof(g_last_error) - 1);
     g_last_error[sizeof(g_last_error) - 1] = '\0';
 }
+
+const char *rewind_last_error(void) {
+    return g_last_error;
+}
+
+#ifdef REWIND_USE_LIBOBS
+
+#include <obs.h>
+#include <util/platform.h>
+
+#include <dlfcn.h>
+#include <unistd.h>
+#include <limits.h>
+#include <stdint.h>
+
+#ifdef __APPLE__
+#include <ApplicationServices/ApplicationServices.h>
+#endif
+
+static obs_source_t  *g_capture = NULL;
+static obs_encoder_t *g_venc    = NULL;
+static obs_encoder_t *g_aenc    = NULL;
+static obs_output_t  *g_replay  = NULL;
+static int             g_seconds = 30;
+
+static int fail(const char *msg) { set_error(msg); return 1; }
+
+/* ---- SDK / module path discovery -----------------------------------
+ *
+ * The fetched SDK (tools/fetch_libobs.sh, see native/third_party/obs/)
+ * lays out:
+ *   <sdk>/include, <sdk>/lib (libobs.framework + libobs-opengl.dylib +
+ *   FFmpeg/x264/mbedTLS runtime dylibs), <sdk>/obs-plugins (*.plugin
+ *   bundles), <sdk>/data (libobs/ effects + obs-plugins/<name>/ locale).
+ *
+ * At runtime we need to find that <sdk> directory so we can point
+ * obs_add_module_path() at obs-plugins/ + data/obs-plugins/, and load
+ * libobs-opengl.dylib by absolute path (see graphics_module note below).
+ * We never know <sdk> at compile time unless the build defines
+ * REWIND_OBS_SDK_DIR (Task 10's job once app bundling exists), so we also
+ * fall back to locating it relative to wherever this shared library
+ * itself was loaded from.
+ */
+
+static int path_exists(const char *path) {
+    return access(path, F_OK) == 0;
+}
+
+static int has_sdk_layout(const char *dir) {
+    char probe[PATH_MAX];
+    snprintf(probe, sizeof(probe), "%s/obs-plugins", dir);
+    return path_exists(probe);
+}
+
+/* Resolves the absolute directory containing this shared library, via
+ * dladdr on one of its own exported symbols. */
+static int shim_own_dir(char *out, size_t out_size) {
+    Dl_info info;
+    if (!dladdr((void *)&rewind_obs_init, &info) || !info.dli_fname) return 0;
+    char resolved[PATH_MAX];
+    if (!realpath(info.dli_fname, resolved)) return 0;
+    char *slash = strrchr(resolved, '/');
+    if (!slash) return 0;
+    size_t len = (size_t)(slash - resolved);
+    if (len >= out_size) return 0;
+    memcpy(out, resolved, len);
+    out[len] = '\0';
+    return 1;
+}
+
+/* Locates the libobs SDK directory. Tries, in order:
+ *   1. REWIND_OBS_SDK_DIR, if the build defined it.
+ *   2. "<shim dir>/../Resources/obs" — packaged .app layout (shim dylib in
+ *      Contents/Frameworks, SDK bundled alongside under
+ *      Contents/Resources/obs). Not yet wired up by any build step as of
+ *      this task; reserved for Task 10.
+ *   3. Walking up from the shim's own directory looking for
+ *      "native/third_party/obs" — covers `flutter run`/`flutter build
+ *      macos` dev builds, whose build products stay nested under the repo
+ *      root.
+ * Returns 1 on success (out holds the SDK dir, no trailing slash). */
+static int find_obs_sdk_dir(char *out, size_t out_size) {
+#ifdef REWIND_OBS_SDK_DIR
+    if (has_sdk_layout(REWIND_OBS_SDK_DIR)) {
+        snprintf(out, out_size, "%s", REWIND_OBS_SDK_DIR);
+        return 1;
+    }
+#endif
+    char dir[PATH_MAX];
+    if (!shim_own_dir(dir, sizeof(dir))) return 0;
+
+    char candidate[PATH_MAX];
+    snprintf(candidate, sizeof(candidate), "%s/../Resources/obs", dir);
+    if (has_sdk_layout(candidate)) {
+        if (!realpath(candidate, out)) snprintf(out, out_size, "%s", candidate);
+        return 1;
+    }
+
+    char ancestor[PATH_MAX];
+    snprintf(ancestor, sizeof(ancestor), "%s", dir);
+    for (int i = 0; i < 12; i++) {
+        snprintf(candidate, sizeof(candidate), "%s/native/third_party/obs", ancestor);
+        if (has_sdk_layout(candidate)) {
+            snprintf(out, out_size, "%s", candidate);
+            return 1;
+        }
+        char *slash = strrchr(ancestor, '/');
+        if (!slash || slash == ancestor) break;
+        *slash = '\0';
+    }
+    return 0;
+}
+
+/* ---- display helpers (macOS) ----------------------------------------- */
+
+#ifdef __APPLE__
+static void query_main_display_size(uint32_t *width, uint32_t *height) {
+    CGDirectDisplayID display = CGMainDisplayID();
+    size_t w = CGDisplayPixelsWide(display);
+    size_t h = CGDisplayPixelsHigh(display);
+    *width = w > 0 ? (uint32_t)w : 1920;
+    *height = h > 0 ? (uint32_t)h : 1080;
+}
+
+/* mac-capture's "screen_capture" (ScreenCaptureKit) source resolves which
+ * physical display to capture from a "display_uuid" string setting; if
+ * left unset it resolves to display id 0 (no display). Compute the main
+ * display's UUID the same way OBS's own display-picker property does. */
+static void main_display_uuid(char *out, size_t out_size) {
+    out[0] = '\0';
+    CGDirectDisplayID display = CGMainDisplayID();
+    CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(display);
+    if (!uuid) return;
+    CFStringRef str = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+    if (str) {
+        CFStringGetCString(str, out, (CFIndex)out_size, kCFStringEncodingUTF8);
+        CFRelease(str);
+    }
+    CFRelease(uuid);
+}
+#else
+static void query_main_display_size(uint32_t *width, uint32_t *height) {
+    *width = 1920;
+    *height = 1080;
+}
+static void main_display_uuid(char *out, size_t out_size) {
+    (void)out_size;
+    out[0] = '\0';
+}
+#endif
+
+static void setup_module_paths(const char *sdk_dir) {
+    char plugins_bin[PATH_MAX];
+    char plugins_data[PATH_MAX];
+    /* %module% is substituted by libobs per discovered module; bin must
+     * mirror the real .plugin bundle layout (Contents/MacOS/<name>), data
+     * uses the flat "data/obs-plugins/<name>/" layout fetch_libobs.sh
+     * actually produces (independent template, not nested in the bundle). */
+    snprintf(plugins_bin, sizeof(plugins_bin), "%s/obs-plugins/%%module%%.plugin/Contents/MacOS", sdk_dir);
+    snprintf(plugins_data, sizeof(plugins_data), "%s/data/obs-plugins/%%module%%", sdk_dir);
+    obs_add_module_path(plugins_bin, plugins_data);
+}
+
+int rewind_obs_init(const char *out_dir, int seconds) {
+    if (g_initialized) return 0;
+    g_seconds = seconds > 0 ? seconds : 30;
+
+    char sdk_dir[PATH_MAX];
+    if (!find_obs_sdk_dir(sdk_dir, sizeof(sdk_dir)))
+        return fail("could not locate the libobs SDK (obs-plugins/data) relative to the shim; "
+                     "see native/shim/README.md");
+
+    if (!obs_startup("en-US", NULL, NULL)) return fail("obs_startup failed");
+
+    uint32_t width = 1920, height = 1080;
+    query_main_display_size(&width, &height);
+
+    /* graphics_module is passed straight to os_dlopen(), which for a bare
+     * name (no path separators) relies on dyld's default/fallback search
+     * paths — our lib/ dir isn't on those. Pass an absolute path instead
+     * so it resolves unambiguously regardless of environment. Must
+     * outlive this function (obs_reset_video may not copy it), hence
+     * static. Extension must be present (".dylib") or os_dlopen appends
+     * ".so", which doesn't exist here. */
+    static char graphics_module[PATH_MAX];
+    snprintf(graphics_module, sizeof(graphics_module), "%s/lib/libobs-opengl.dylib", sdk_dir);
+
+    struct obs_video_info ovi = {
+        .graphics_module = graphics_module,
+        .fps_num = 60, .fps_den = 1,
+        .base_width = width, .base_height = height,
+        .output_width = width, .output_height = height,
+        .output_format = VIDEO_FORMAT_NV12,
+        .colorspace = VIDEO_CS_709, .range = VIDEO_RANGE_PARTIAL,
+        .adapter = 0, .gpu_conversion = true, .scale_type = OBS_SCALE_BICUBIC,
+    };
+    if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) return fail("obs_reset_video failed");
+
+    struct obs_audio_info oai = { .samples_per_sec = 48000, .speakers = SPEAKERS_STEREO };
+    if (!obs_reset_audio(&oai)) return fail("obs_reset_audio failed");
+
+    setup_module_paths(sdk_dir);
+    obs_load_all_modules();
+    obs_post_load_modules();
+
+    /* ScreenCaptureKit display capture (mac-capture module, "screen_capture"
+     * source id — registered when ScreenCaptureKit is available, which it
+     * is on the macOS versions Rewind targets). */
+    obs_data_t *cs = obs_data_create();
+    obs_data_set_int(cs, "type", 0); /* ScreenCaptureDisplayStream */
+    obs_data_set_bool(cs, "show_cursor", true);
+    char uuid[128];
+    main_display_uuid(uuid, sizeof(uuid));
+    if (uuid[0]) obs_data_set_string(cs, "display_uuid", uuid);
+    g_capture = obs_source_create("screen_capture", "rewind-display", cs, NULL);
+    obs_data_release(cs);
+    if (!g_capture)
+        return fail("screen_capture source failed (Screen Recording permission not granted?)");
+    obs_set_output_source(0, g_capture);
+
+    /* Encoders: VideoToolbox H.264 + CoreAudio AAC. NOTE: the VideoToolbox
+     * encoder id is registered by the mac-videotoolbox plugin, which is a
+     * SEPARATE module from mac-capture/obs-ffmpeg/coreaudio-encoder — see
+     * native/shim/README.md and the task-9 report for why this currently
+     * fails until that module is added to the fetched SDK. */
+    obs_data_t *ve = obs_data_create();
+    obs_data_set_int(ve, "bitrate", 12000);
+    g_venc = obs_video_encoder_create(
+        "com.apple.videotoolbox.videoencoder.ave.avc", "rewind-venc", ve, NULL);
+    obs_data_release(ve);
+    if (!g_venc) return fail("VideoToolbox H.264 encoder unavailable (mac-videotoolbox module not loaded)");
+    obs_encoder_set_video(g_venc, obs_get_video());
+
+    g_aenc = obs_audio_encoder_create("CoreAudio_AAC", "rewind-aenc", NULL, 0, NULL);
+    if (!g_aenc) return fail("CoreAudio AAC encoder unavailable");
+    obs_encoder_set_audio(g_aenc, obs_get_audio());
+
+    /* Replay buffer output (obs-ffmpeg module). */
+    obs_data_t *ro = obs_data_create();
+    obs_data_set_string(ro, "directory", out_dir);
+    obs_data_set_string(ro, "format", "rewind-%CCYY-%MM-%DD-%hh-%mm-%ss");
+    obs_data_set_string(ro, "extension", "mp4");
+    obs_data_set_int(ro, "max_time_sec", g_seconds);
+    obs_data_set_int(ro, "max_size_mb", 0);
+    g_replay = obs_output_create("replay_buffer", "rewind-replay", ro, NULL);
+    obs_data_release(ro);
+    if (!g_replay) return fail("replay_buffer output unavailable");
+    obs_output_set_video_encoder(g_replay, g_venc);
+    obs_output_set_audio_encoder(g_replay, g_aenc, 0);
+
+    g_initialized = 1;
+    set_error("");
+    return 0;
+}
+
+int rewind_start_buffer(void) {
+    if (!g_initialized) return fail("not initialized");
+    if (!obs_output_start(g_replay)) {
+        const char *err = obs_output_get_last_error(g_replay);
+        return fail(err ? err : "replay buffer failed to start");
+    }
+    return 0;
+}
+
+const char *rewind_save_clip(const char *out_dir) {
+    (void)out_dir; /* directory fixed at init for the replay output */
+    if (!g_initialized || !obs_output_active(g_replay)) {
+        set_error("buffer not running");
+        return NULL;
+    }
+    proc_handler_t *ph = obs_output_get_proc_handler(g_replay);
+    calldata_t cd = {0};
+    if (!proc_handler_call(ph, "save", &cd)) {
+        set_error("save call failed");
+        calldata_free(&cd);
+        return NULL;
+    }
+    calldata_free(&cd);
+
+    /* The save is async: poll get_last_replay until it changes (<=5 s). */
+    for (int i = 0; i < 100; i++) {
+        os_sleep_ms(50);
+        calldata_t out = {0};
+        proc_handler_call(ph, "get_last_replay", &out);
+        const char *path = calldata_string(&out, "path");
+        if (path && *path && strcmp(path, g_last_clip) != 0) {
+            strncpy(g_last_clip, path, sizeof(g_last_clip) - 1);
+            g_last_clip[sizeof(g_last_clip) - 1] = '\0';
+            calldata_free(&out);
+            set_error("");
+            return g_last_clip;
+        }
+        calldata_free(&out);
+    }
+    set_error("timed out waiting for replay save");
+    return NULL;
+}
+
+int rewind_stop_buffer(void) {
+    if (!g_initialized) return fail("not initialized");
+    obs_output_stop(g_replay);
+    return 0;
+}
+
+int rewind_set_buffer_seconds(int seconds) {
+    if (!g_initialized) return fail("not initialized");
+    if (seconds <= 0) { set_error("invalid buffer length"); return 2; }
+    g_seconds = seconds;
+    obs_data_t *s = obs_data_create();
+    obs_data_set_int(s, "max_time_sec", seconds);
+    obs_output_update(g_replay, s);
+    obs_data_release(s);
+    return 0;
+}
+
+int rewind_obs_shutdown(void) {
+    if (!g_initialized) return 0;
+    if (g_replay && obs_output_active(g_replay)) obs_output_stop(g_replay);
+    obs_output_release(g_replay);   g_replay = NULL;
+    obs_encoder_release(g_venc);    g_venc = NULL;
+    obs_encoder_release(g_aenc);    g_aenc = NULL;
+    obs_set_output_source(0, NULL);
+    obs_source_release(g_capture);  g_capture = NULL;
+    obs_shutdown();
+    g_initialized = 0;
+    return 0;
+}
+
+#else /* !REWIND_USE_LIBOBS: self-contained stub */
 
 int rewind_obs_init(const char *out_dir, int seconds) {
     (void)out_dir; (void)seconds;
@@ -79,7 +411,6 @@ int rewind_obs_shutdown(void) {
     return 0;
 }
 
-
 int rewind_set_buffer_seconds(int seconds) {
     if (!g_initialized) { set_error("not initialized"); return 1; }
     if (seconds <= 0) { set_error("invalid buffer length"); return 2; }
@@ -89,6 +420,4 @@ int rewind_set_buffer_seconds(int seconds) {
     return 0;
 }
 
-const char *rewind_last_error(void) {
-    return g_last_error;
-}
+#endif /* REWIND_USE_LIBOBS */
