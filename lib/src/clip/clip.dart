@@ -32,8 +32,8 @@ class Clip {
   factory Clip.fromJson(Map<String, dynamic> j) => Clip(
         path: j['path'] as String,
         gameId: j['gameId'] as String,
-        event: GameEventKind.values
-            .firstWhere((e) => e.name == j['event'], orElse: () => GameEventKind.other),
+        event: GameEventKind.values.firstWhere((e) => e.name == j['event'],
+            orElse: () => GameEventKind.other),
         createdAt: DateTime.parse(j['createdAt'] as String),
         sizeBytes: j['sizeBytes'] as int,
         protected: j['protected'] as bool? ?? false,

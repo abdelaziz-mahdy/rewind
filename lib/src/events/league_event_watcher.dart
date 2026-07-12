@@ -70,7 +70,8 @@ class LeagueEventWatcher implements GameEventSource {
 
         final kind = _mapEvent(e['EventName'] as String? ?? '');
         if (kind != null) {
-          _controller.add(GameEvent(gameId: gameId, kind: kind, meta: {'raw': e}));
+          _controller
+              .add(GameEvent(gameId: gameId, kind: kind, meta: {'raw': e}));
         }
       }
     } catch (_) {

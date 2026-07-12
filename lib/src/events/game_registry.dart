@@ -38,8 +38,7 @@ class GameRegistry {
   Iterable<GameEventSource> get sources => _sources;
   Set<String> get activeGameIds => Set.unmodifiable(_active);
 
-  void startSupervising(
-      {Duration interval = const Duration(seconds: 3)}) {
+  void startSupervising({Duration interval = const Duration(seconds: 3)}) {
     _supervisor ??= Timer.periodic(interval, (_) => _tick());
   }
 

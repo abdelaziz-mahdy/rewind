@@ -42,8 +42,8 @@ class GameConfig {
         bufferSeconds: j['bufferSeconds'] as int? ?? 30,
         autoClip: j['autoClip'] as bool? ?? true,
         enabledEvents: ((j['enabledEvents'] as List?) ?? const [])
-            .map((n) => GameEventKind.values
-                .firstWhere((e) => e.name == n, orElse: () => GameEventKind.other))
+            .map((n) => GameEventKind.values.firstWhere((e) => e.name == n,
+                orElse: () => GameEventKind.other))
             .toSet(),
       );
 }
