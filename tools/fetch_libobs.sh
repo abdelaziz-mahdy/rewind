@@ -20,6 +20,16 @@ OBS_TAG="${OBS_TAG:-32.1.2}"
 # that tag's CMakePresets.json and update it here.
 DEPS_VERSION="2025-08-23"
 
+# Bumped whenever the source patches or the assembled-output recipe below
+# change (e.g. adding/removing a plugin) — neither OBS_TAG, arch, nor
+# DEPS_VERSION alone captures "what this script does to the source", so
+# without this a warm work dir or a matching stamp from an older recipe
+# would be reused/short-circuited onto stale output.
+#   1: initial cut -- mac-capture, obs-ffmpeg, coreaudio-encoder
+#   2: + mac-videotoolbox (H.264 hardware encoder; without it there is no
+#      macOS-capable video encoder in the SDK and clip saving fails)
+RECIPE_VERSION="2"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/native/third_party/obs"
 WORK="$ROOT/native/third_party/work"
@@ -34,9 +44,10 @@ BUILD_ARCH="${CMAKE_OSX_ARCHITECTURES:-$(uname -m)}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
 # Stamp encodes everything that changes what ends up in $OUT: the pinned tag,
-# the build architecture, and the deps version. Any of those changing must
-# invalidate the cache rather than short-circuit onto stale/wrong-arch bits.
-STAMP_VALUE="${OBS_TAG} arch=${BUILD_ARCH} deps=${DEPS_VERSION}"
+# the build architecture, the deps version, and the recipe version. Any of
+# those changing must invalidate the cache rather than short-circuit onto
+# stale/wrong-arch/wrong-plugin-set bits.
+STAMP_VALUE="${OBS_TAG} arch=${BUILD_ARCH} deps=${DEPS_VERSION} recipe=${RECIPE_VERSION}"
 
 [[ -f "$STAMP" && "$(cat "$STAMP")" == "$STAMP_VALUE" ]] && {
   echo "libobs $OBS_TAG ($BUILD_ARCH) already present in $OUT"
@@ -76,13 +87,15 @@ mkdir -p "$WORK"
 # $SRC, so the next run's guard below sees $SRC missing/stale and redoes the
 # whole thing cleanly — no manual `rm -rf` required.
 #
-# $CLONE_TAG_MARKER records which OBS_TAG $SRC was actually cloned+patched
-# at. A warm work dir with a *different* OBS_TAG (or no marker at all, e.g.
-# a checkout left by an older version of this script) must not be reused —
-# it would silently rebuild the old tag's source and then stamp it as the
-# new one.
+# $CLONE_TAG_MARKER records which OBS_TAG + RECIPE_VERSION $SRC was actually
+# cloned+patched with. A warm work dir with a *different* OBS_TAG, a *different*
+# RECIPE_VERSION (e.g. this script grew another plugin), or no marker at all
+# (e.g. a checkout left by an older version of this script) must not be
+# reused — it would silently rebuild stale/mismatched source and then stamp
+# it as current.
+CLONE_MARKER_VALUE="${OBS_TAG} recipe=${RECIPE_VERSION}"
 NEED_CLONE=1
-if [[ -d "$SRC" && -f "$CLONE_TAG_MARKER" && "$(cat "$CLONE_TAG_MARKER")" == "$OBS_TAG" ]]; then
+if [[ -d "$SRC" && -f "$CLONE_TAG_MARKER" && "$(cat "$CLONE_TAG_MARKER")" == "$CLONE_MARKER_VALUE" ]]; then
   NEED_CLONE=0
 fi
 
@@ -97,7 +110,11 @@ if [[ "$NEED_CLONE" == "1" ]]; then
   # which FATAL_ERROR unless the obs-browser/obs-websocket git submodules are
   # checked out, and it builds every other plugin too — several need SDKs we
   # don't have (AJA, DeckLink, libvlc, fdk-aac). Rewind only ships capture +
-  # encode, so replace the file with just the three modules Rewind uses.
+  # encode, so replace the file with just the modules Rewind uses: capture
+  # (mac-capture), the H.264 hardware encoder (mac-videotoolbox — without it
+  # there is no macOS-capable video encoder anywhere in this SDK and clip
+  # saving fails), CoreAudio encoding (coreaudio-encoder), and muxing/output
+  # (obs-ffmpeg).
   cat > "$SRC_TMP/plugins/CMakeLists.txt" << 'EOF'
 cmake_minimum_required(VERSION 3.28...3.30)
 
@@ -105,7 +122,8 @@ cmake_minimum_required(VERSION 3.28...3.30)
 # Upstream builds every plugin (and unconditionally requires the obs-browser /
 # obs-websocket git submodules to be checked out). Rewind only needs capture +
 # encode, so this file is replaced at fetch time with an allow-list of the
-# three modules we actually ship: mac-capture, obs-ffmpeg, coreaudio-encoder.
+# modules we actually ship: mac-capture, mac-videotoolbox, obs-ffmpeg,
+# coreaudio-encoder.
 
 option(ENABLE_PLUGINS "Enable building OBS plugins" ON)
 
@@ -118,6 +136,7 @@ set_property(GLOBAL APPEND PROPERTY OBS_FEATURES_ENABLED "Plugin Support")
 
 add_obs_plugin(coreaudio-encoder PLATFORMS WINDOWS MACOS)
 add_obs_plugin(mac-capture PLATFORMS MACOS)
+add_obs_plugin(mac-videotoolbox PLATFORMS MACOS)
 add_obs_plugin(obs-ffmpeg)
 EOF
 
@@ -169,7 +188,7 @@ open(path, "w").write(text.replace(old, new, 1))
 PY
 
   mv "$SRC_TMP" "$SRC"
-  echo "$OBS_TAG" > "$CLONE_TAG_MARKER"
+  echo "$CLONE_MARKER_VALUE" > "$CLONE_TAG_MARKER"
 fi
 
 # --- 2) Configure: libobs + only the modules Rewind needs. No UI, no browser,
@@ -219,14 +238,16 @@ rsync -a \
   "$DEPS_DIR"/lib/libmbedx509* \
   "$OUT/lib/"
 
-# obs-plugins/: the three plugin bundles (built as .plugin bundles, not flat .so)
+# obs-plugins/: the plugin bundles (built as .plugin bundles, not flat .so)
 cp -R "$BUILD/plugins/mac-capture/RelWithDebInfo/mac-capture.plugin" "$OUT/obs-plugins/"
+cp -R "$BUILD/plugins/mac-videotoolbox/RelWithDebInfo/mac-videotoolbox.plugin" "$OUT/obs-plugins/"
 cp -R "$BUILD/plugins/obs-ffmpeg/RelWithDebInfo/obs-ffmpeg.plugin" "$OUT/obs-plugins/"
 cp -R "$BUILD/plugins/coreaudio-encoder/RelWithDebInfo/coreaudio-encoder.plugin" "$OUT/obs-plugins/"
 
 # data/: libobs core (effects, locale) + per-plugin data (locale)
 rsync -a "$SRC/libobs/data/" "$OUT/data/libobs/"
 rsync -a "$SRC/plugins/mac-capture/data/" "$OUT/data/obs-plugins/mac-capture/"
+rsync -a "$SRC/plugins/mac-videotoolbox/data/" "$OUT/data/obs-plugins/mac-videotoolbox/"
 rsync -a "$SRC/plugins/obs-ffmpeg/data/" "$OUT/data/obs-plugins/obs-ffmpeg/"
 rsync -a "$SRC/plugins/coreaudio-encoder/data/" "$OUT/data/obs-plugins/coreaudio-encoder/"
 
