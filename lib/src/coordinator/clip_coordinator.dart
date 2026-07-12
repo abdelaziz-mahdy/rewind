@@ -6,46 +6,60 @@ import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
 import '../obs/rewind_obs_ffi.dart';
+import '../settings/app_settings.dart';
 
-/// Central brain: listens to game events + the hotkey, decides whether to save
-/// a clip, records it in the library, and runs storage enforcement.
+/// Central brain: listens to auto-detected game activity + game events + the
+/// global hotkey, applies the active game's per-game config (replay-buffer
+/// length, enabled events), saves clips, records them, and enforces storage.
 class ClipCoordinator {
   final GameRegistry registry;
   final ClipLibrary library;
   final StorageManager storage;
-  final RewindObs? obs; // null in dev mode (shim not loaded)
+  final AppSettings settings;
+  final RewindObs? obs; // null in dev mode (shim not built)
   final String outDir;
 
-  /// Which event kinds the user wants auto-clipped.
-  final Set<GameEventKind> enabledEvents;
+  /// The most-recently-activated game, used to attribute manual hotkey clips
+  /// and to pick the buffer length. Null when no game is detected.
+  String? _activeGameId;
 
   ClipCoordinator({
     required this.registry,
     required this.library,
     required this.storage,
+    required this.settings,
     required this.outDir,
     this.obs,
-    Set<GameEventKind>? enabledEvents,
-  }) : enabledEvents = enabledEvents ??
-            {
-              GameEventKind.manual,
-              GameEventKind.kill,
-              GameEventKind.doubleKill,
-              GameEventKind.tripleKill,
-              GameEventKind.quadraKill,
-              GameEventKind.pentaKill,
-              GameEventKind.ace,
-            };
+  });
 
   void start() {
-    registry.events.listen((e) {
-      if (enabledEvents.contains(e.kind)) _save(e);
+    // Auto-detection: when a game becomes active, apply its buffer length.
+    registry.activity.listen((a) {
+      if (a.active) {
+        _activeGameId = a.gameId;
+        final cfg = settings.configFor(a.gameId);
+        obs?.setBufferSeconds(cfg.bufferSeconds);
+      } else if (_activeGameId == a.gameId) {
+        _activeGameId = null;
+        obs?.setBufferSeconds(settings.defaultBufferSeconds);
+      }
     });
+
+    // Auto-clip: save when an enabled event fires for the active game.
+    registry.events.listen((e) {
+      final cfg = settings.configFor(e.gameId);
+      if (cfg.autoClip && cfg.enabledEvents.contains(e.kind)) _save(e);
+    });
+
     registry.startSupervising();
   }
 
-  /// Manual hotkey entry point.
-  void onHotkey() => _save(GameEvent(gameId: 'manual', kind: GameEventKind.manual));
+  /// Manual hotkey entry point: store the last N seconds (per active game's
+  /// buffer length, or the default) immediately.
+  void onHotkey() {
+    final gameId = _activeGameId ?? 'desktop';
+    _save(GameEvent(gameId: gameId, kind: GameEventKind.manual));
+  }
 
   Future<void> _save(GameEvent e) async {
     final path = obs?.saveClip(outDir);

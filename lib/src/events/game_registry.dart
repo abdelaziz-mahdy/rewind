@@ -4,14 +4,25 @@ import 'game_event.dart';
 import 'game_event_source.dart';
 import 'league_event_watcher.dart';
 
+/// A game becoming active or inactive (auto-detection result).
+class GameActivity {
+  final String gameId;
+  final String displayName;
+  final bool active;
+  GameActivity(this.gameId, this.displayName, this.active);
+}
+
 /// Holds all known game integrations and supervises which are active.
 ///
-/// A supervisor loop polls each source's [GameEventSource.isGameRunning]. When
-/// a game becomes active the source is started and its events are merged into
-/// [events]. Multiple sources may be active simultaneously (cross-game).
+/// A supervisor loop polls each source's [GameEventSource.isGameRunning]
+/// (auto-detection). When a game becomes active the source is started and its
+/// events are merged into [events]; activity transitions are published on
+/// [activity] so the coordinator can apply that game's config. Multiple games
+/// can be active at once (cross-game).
 class GameRegistry {
   final List<GameEventSource> _sources;
   final _merged = StreamController<GameEvent>.broadcast();
+  final _activity = StreamController<GameActivity>.broadcast();
   final Set<String> _active = {};
   Timer? _supervisor;
 
@@ -23,12 +34,13 @@ class GameRegistry {
             ];
 
   Stream<GameEvent> get events => _merged.stream;
-
+  Stream<GameActivity> get activity => _activity.stream;
   Iterable<GameEventSource> get sources => _sources;
+  Set<String> get activeGameIds => Set.unmodifiable(_active);
 
-  void startSupervising() {
-    _supervisor ??=
-        Timer.periodic(const Duration(seconds: 3), (_) => _tick());
+  void startSupervising(
+      {Duration interval = const Duration(seconds: 3)}) {
+    _supervisor ??= Timer.periodic(interval, (_) => _tick());
   }
 
   Future<void> _tick() async {
@@ -38,9 +50,11 @@ class GameRegistry {
         _active.add(s.gameId);
         await s.start();
         s.events().listen(_merged.add);
+        _activity.add(GameActivity(s.gameId, s.displayName, true));
       } else if (!running && _active.contains(s.gameId)) {
         _active.remove(s.gameId);
         await s.stop();
+        _activity.add(GameActivity(s.gameId, s.displayName, false));
       }
     }
   }
@@ -51,5 +65,6 @@ class GameRegistry {
       await s.stop();
     }
     await _merged.close();
+    await _activity.close();
   }
 }

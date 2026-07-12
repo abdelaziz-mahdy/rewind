@@ -5,6 +5,7 @@ import 'src/clip/storage_manager.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_registry.dart';
 import 'src/obs/rewind_obs_ffi.dart';
+import 'src/settings/app_settings.dart';
 
 void main() {
   runApp(const RewindApp());
@@ -24,19 +25,22 @@ class _RewindAppState extends State<RewindApp> {
   void initState() {
     super.initState();
     final library = ClipLibrary();
-    final obs = RewindObs.tryLoad(); // null until the native shim is built
+    final settings = AppSettings(); // TODO: load/persist from disk
+    final obs = RewindObs.tryLoad();
     // TODO: resolve a real per-OS clips directory via path_provider.
     const outDir = 'clips';
-    obs?.init(outDir: outDir, seconds: 30);
+    obs?.init(outDir: outDir, seconds: settings.defaultBufferSeconds);
     obs?.startBuffer();
 
     _coordinator = ClipCoordinator(
       registry: GameRegistry(),
       library: library,
       storage: StorageManager(library),
+      settings: settings,
       outDir: outDir,
       obs: obs,
     )..start();
+    // TODO: register the global hotkey (hotkey_manager) -> _coordinator.onHotkey()
   }
 
   @override
@@ -48,7 +52,7 @@ class _RewindAppState extends State<RewindApp> {
         appBar: AppBar(title: const Text('Rewind')),
         body: const Center(
           child: Text(
-            'Rewind is running.\nReplay buffer + auto-clip scaffold.\n'
+            'Rewind is running.\nAuto-detect games, buffer replay, clip on hotkey or event.\n'
             'See ROADMAP.md for what is being built.',
             textAlign: TextAlign.center,
           ),
