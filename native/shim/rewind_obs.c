@@ -104,11 +104,21 @@ static int shim_own_dir(char *out, size_t out_size) {
 
 /* Locates the libobs SDK directory. Tries, in order:
  *   1. REWIND_OBS_SDK_DIR, if the build defined it.
- *   2. "<shim dir>/../Resources/obs" — packaged .app layout (shim dylib in
- *      Contents/Frameworks, SDK bundled alongside under
- *      Contents/Resources/obs). Not yet wired up by any build step as of
- *      this task; reserved for Task 10.
- *   3. Walking up from the shim's own directory looking for
+ *   2. "<shim dir>/../Resources/obs" — packaged .app layout if the shim
+ *      ships as a flat dylib directly in Contents/Frameworks/, SDK bundled
+ *      alongside under Contents/Resources/obs.
+ *   3. "<shim dir>/../../../../Resources/obs" — same packaged .app layout,
+ *      but for how Flutter's macOS toolchain actually wraps a compiled
+ *      dart:ffi code asset: as a *nested* framework bundle
+ *      (Contents/Frameworks/rewind_obs.framework/Versions/A/rewind_obs),
+ *      not a flat dylib. From Versions/A, Contents is four levels up
+ *      (A -> Versions -> rewind_obs.framework -> Frameworks -> Contents),
+ *      so candidate 2 above resolves two levels short of Resources/obs.
+ *      Discovered during Task 10's real `flutter build macos` bundling —
+ *      see native/shim/README.md and .superpowers/sdd/task-10-report.md.
+ *      Kept candidate 2 as well (costs nothing, covers a flat-layout
+ *      toolchain change).
+ *   4. Walking up from the shim's own directory looking for
  *      "native/third_party/obs" — covers `flutter run`/`flutter build
  *      macos` dev builds, whose build products stay nested under the repo
  *      root.
@@ -125,6 +135,12 @@ static int find_obs_sdk_dir(char *out, size_t out_size) {
 
     char candidate[PATH_MAX];
     snprintf(candidate, sizeof(candidate), "%s/../Resources/obs", dir);
+    if (has_sdk_layout(candidate)) {
+        if (!realpath(candidate, out)) snprintf(out, out_size, "%s", candidate);
+        return 1;
+    }
+
+    snprintf(candidate, sizeof(candidate), "%s/../../../../Resources/obs", dir);
     if (has_sdk_layout(candidate)) {
         if (!realpath(candidate, out)) snprintf(out, out_size, "%s", candidate);
         return 1;
@@ -195,6 +211,49 @@ static void setup_module_paths(const char *sdk_dir) {
     obs_add_module_path(plugins_bin, plugins_data);
 }
 
+/* Resolves an absolute, existing path to libobs-opengl.dylib. Tries, in
+ * order:
+ *   1. "<sdk dir>/lib/libobs-opengl.dylib" — the dev-tree / source-SDK
+ *      layout tools/fetch_libobs.sh assembles (lib/ directly under the
+ *      SDK root returned by find_obs_sdk_dir()).
+ *   2. "<shim dir>/libobs-opengl.dylib" — packaged .app, shim as a flat
+ *      dylib directly in Contents/Frameworks/. tools/bundle_obs_macos.sh
+ *      copies the whole lib/ closure (libobs.framework,
+ *      libobs-opengl.dylib, the FFmpeg/x264/mbedTLS dylibs) straight
+ *      into Contents/Frameworks/, *separate* from the obs-plugins/data
+ *      tree it places under Contents/Resources/obs — so candidate 1
+ *      above doesn't find it in the packaged layout; there is no lib/
+ *      under Resources/obs. See native/shim/README.md.
+ *   3. "<shim dir>/../../../libobs-opengl.dylib" — same packaged layout,
+ *      but for the *nested* framework wrapping Flutter's macOS toolchain
+ *      actually applies to the shim itself (see find_obs_sdk_dir()):
+ *      Contents/Frameworks/ is three levels up from Versions/A, not
+ *      immediately containing the shim. Other vendored dylibs still sit
+ *      directly in Contents/Frameworks/ regardless of the shim's own
+ *      nesting, so only two ".." levels differ from candidate 2, not the
+ *      four find_obs_sdk_dir() needs to additionally reach Resources/.
+ * `shim_dir` is the caller's already-resolved shim_own_dir() result (not
+ * recomputed here). Returns 1 on success. */
+static int find_graphics_module_path(const char *sdk_dir, const char *shim_dir, char *out, size_t out_size) {
+    char candidate[PATH_MAX];
+
+    snprintf(candidate, sizeof(candidate), "%s/lib/libobs-opengl.dylib", sdk_dir);
+    if (path_exists(candidate)) { snprintf(out, out_size, "%s", candidate); return 1; }
+
+    if (shim_dir && shim_dir[0]) {
+        snprintf(candidate, sizeof(candidate), "%s/libobs-opengl.dylib", shim_dir);
+        if (path_exists(candidate)) { snprintf(out, out_size, "%s", candidate); return 1; }
+
+        snprintf(candidate, sizeof(candidate), "%s/../../../libobs-opengl.dylib", shim_dir);
+        if (path_exists(candidate)) {
+            if (!realpath(candidate, out)) snprintf(out, out_size, "%s", candidate);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 int rewind_obs_init(const char *out_dir, int seconds) {
     if (g_initialized) return 0;
     g_seconds = seconds > 0 ? seconds : 30;
@@ -226,9 +285,22 @@ int rewind_obs_init(const char *out_dir, int seconds) {
      * so it resolves unambiguously regardless of environment. Must
      * outlive this function (obs_reset_video may not copy it), hence
      * static. Extension must be present (".dylib") or os_dlopen appends
-     * ".so", which doesn't exist here. */
+     * ".so", which doesn't exist here.
+     *
+     * The packaged .app layout ships libobs-opengl.dylib in
+     * Contents/Frameworks/, not under the Resources/obs SDK tree
+     * find_obs_sdk_dir() resolved above (that tree only has
+     * obs-plugins/data) — so this needs its own discovery, not just
+     * "<sdk_dir>/lib/...". See find_graphics_module_path(). */
+    char shim_dir[PATH_MAX];
+    if (!shim_own_dir(shim_dir, sizeof(shim_dir))) shim_dir[0] = '\0';
+
     static char graphics_module[PATH_MAX];
-    snprintf(graphics_module, sizeof(graphics_module), "%s/lib/libobs-opengl.dylib", sdk_dir);
+    if (!find_graphics_module_path(sdk_dir, shim_dir, graphics_module, sizeof(graphics_module))) {
+        set_error("could not locate libobs-opengl.dylib relative to the SDK dir or the shim; "
+                   "see native/shim/README.md");
+        goto cleanup;
+    }
 
     struct obs_video_info ovi = {
         .graphics_module = graphics_module,

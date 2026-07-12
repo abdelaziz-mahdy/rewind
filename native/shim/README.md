@@ -24,20 +24,42 @@ handful of C functions (see `rewind_obs.h`) that the Dart side calls via
 
 1. **Locate the SDK.** `find_obs_sdk_dir()` tries, in order: a
    `REWIND_OBS_SDK_DIR` compile-time define (not currently set by any
-   build step — reserved for Task 10/packaging to point at a bundled
-   `Contents/Resources/obs`); `<shim dylib dir>/../Resources/obs` (the
-   eventual packaged `.app` layout); walking up from the shim's own
-   directory looking for `native/third_party/obs` (works for
-   `flutter run`/`flutter build macos` dev builds, whose build products
-   stay nested under the repo root). The shim's own directory is resolved
-   via `dladdr` on one of its exported symbols — it does not assume any
-   fixed install location.
+   build step); `<shim dylib dir>/../Resources/obs` (packaged `.app`
+   layout if the shim ever ships as a flat dylib directly in
+   `Contents/Frameworks/`); `<shim dylib dir>/../../../../Resources/obs`
+   (the packaged `.app` layout for how Flutter's macOS toolchain actually
+   wraps the compiled shim today — as a *nested* framework bundle,
+   `Contents/Frameworks/rewind_obs.framework/Versions/A/rewind_obs`, four
+   directory levels below `Contents`, not one — discovered during Task
+   10's real bundling run, see `.superpowers/sdd/task-10-report.md`);
+   walking up from the shim's own directory looking for
+   `native/third_party/obs` (works for `flutter run`/`flutter build
+   macos` dev builds, whose build products stay nested under the repo
+   root). The shim's own directory is resolved via `dladdr` on one of its
+   exported symbols — it does not assume any fixed install location.
 2. **`obs_startup` + `obs_reset_video`/`obs_reset_audio`.** Base/output
    resolution comes from `CGDisplayPixelsWide/High(CGMainDisplayID())`
    (CoreGraphics), not a hardcoded value; 1920x1080 is only a last-resort
    fallback if the query returns 0. `graphics_module` is passed as an
-   **absolute path** to `<sdk>/lib/libobs-opengl.dylib`, not the bare name
+   **absolute path** to `libobs-opengl.dylib`, not the bare name
    `"libobs-opengl"` — see "Deviations from a naive port" below for why.
+   That absolute path is resolved by `find_graphics_module_path()`,
+   *separately* from the SDK dir `find_obs_sdk_dir()` resolved above:
+   in the packaged `.app` layout, `tools/bundle_obs_macos.sh` places the
+   whole `lib/` closure (`libobs.framework`, `libobs-opengl.dylib`, the
+   FFmpeg/x264/mbedTLS dylibs) directly in `Contents/Frameworks/`, and
+   only `obs-plugins/`+`data/` under `Contents/Resources/obs` — so there
+   is **no `lib/` under the resolved SDK dir** in that layout, only in
+   the dev-tree one. `find_graphics_module_path()` tries `<sdk
+   dir>/lib/libobs-opengl.dylib` first (dev-tree layout), then falls back
+   to `<shim dir>/libobs-opengl.dylib` and
+   `<shim dir>/../../../libobs-opengl.dylib` (packaged layout, flat and
+   nested-framework shim placement respectively — mirroring
+   `find_obs_sdk_dir()`'s own two packaged-layout candidates, minus the
+   extra `Resources/obs` hop since vendored dylibs sit directly in
+   `Frameworks/`). Found during a real packaged-app run — see
+   `.superpowers/sdd/task-10-report.md` and `task-9-report.md`'s fix-round
+   notes.
 3. **`obs_add_module_path`** for the `<sdk>/obs-plugins` (`.plugin`
    bundles) and `<sdk>/data/obs-plugins` (locale data) trees, then
    `obs_load_all_modules()` + `obs_post_load_modules()`.
