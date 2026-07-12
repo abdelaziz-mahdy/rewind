@@ -245,6 +245,7 @@
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				25D3EE4538F543478307D53E /* [CP] Embed Pods Frameworks */,
+				7B0B5C0DBEEF4A11AA51C0DE /* Bundle libobs runtime */,
 			);
 			buildRules = (
 			);
@@ -389,6 +390,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
+		};
+		7B0B5C0DBEEF4A11AA51C0DE /* Bundle libobs runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle libobs runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Bundle the libobs runtime (plugins, data, obs-ffmpeg-mux helper) into the\n# built app when the SDK has been fetched (tools/fetch_libobs.sh); skip\n# silently in stub mode so contributors without the SDK still build.\nif [ -d \"$SRCROOT/../native/third_party/obs/obs-plugins\" ]; then\n  bash \"$SRCROOT/../tools/bundle_obs_macos.sh\" \"$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app\"\nelse\n  echo \"libobs SDK not fetched; building in stub capture mode (no bundling).\"\nfi\n";
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

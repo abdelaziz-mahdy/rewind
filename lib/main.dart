@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -52,6 +54,21 @@ Future<void> main() async {
   final hotkeys = HotkeyService();
   if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
     debugPrint('Rewind: could not register hotkey "${settings.hotkey}"');
+  }
+
+  if (kDebugMode) {
+    // Headless save trigger for integration tests (and agent-driven
+    // verification): touching <clipsDir>/.save-now behaves like the hotkey.
+    // Debug builds only; never active in release.
+    final trigger = File('${clipsDir.path}/.save-now');
+    Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (trigger.existsSync()) {
+        try {
+          trigger.deleteSync();
+        } catch (_) {}
+        await coordinator.onHotkey();
+      }
+    });
   }
 
   // Live buffer state shared by the status strip and the tray toggle.
