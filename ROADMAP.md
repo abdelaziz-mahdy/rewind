@@ -10,13 +10,16 @@ These shape every milestone:
 - **Extensible by design:** adding a new game must not require touching the capture engine or core app — only adding a new `GameEventSource` and registering it. See ARCHITECTURE.md → "Game integration plugins".
 - **Cross-game:** multiple game integrations can be active; Rewind detects which game is running and attaches the right watcher. A generic manual-hotkey path works for *any* game (or the desktop) with no integration.
 - **Storage-aware:** a rolling clip library that respects a user disk budget — automatically prunes the oldest clips when over quota, but **never deletes protected/pinned clips**.
+- **Legal / anti-cheat safe:** integrations use only sanctioned sources (official APIs/logs/SDKs) or screen capture — never memory/injection/hooking. See `docs/COMPLIANCE.md`.
 
 ## v0.1 — "It records" (foundation)
 
 - [ ] Flutter desktop shell (macOS + Windows), tray/menu-bar presence
-- [ ] C shim over libobs: init, start buffer, save clip, stop, shutdown
-- [ ] Dart FFI bindings to the shim
-- [ ] Manual global hotkey → save last N seconds to `.mp4`
+- [ ] C shim over libobs: init, start buffer, save clip, set-buffer-length, stop, shutdown
+- [ ] **Native build hook (`hook/build.dart`)** compiles + bundles the shim automatically
+- [ ] Dart `@Native` FFI bindings to the shim
+- [ ] Manual global **hotkey → save last N seconds** (30s / 60s / custom)
+- [ ] **Per-game buffer length** setting (30s vs 60s etc. per game)
 - [ ] Basic clip library view
 - [ ] CI builds on both platforms
 
@@ -26,7 +29,8 @@ These shape every milestone:
 - [ ] `LeagueEventWatcher` (Live Client Data API @ `127.0.0.1:2999`)
 - [ ] `ClipCoordinator`: event → save clip, tagged by event type
 - [ ] Per-event enable/disable settings (kills, multikills, aces, dragon/baron, turrets)
-- [ ] Game auto-detection (start watcher when the game process/API appears)
+- [ ] **Game auto-detection**: supervisor detects the running game and applies its per-game config automatically
+- [ ] Second test target (mech action game) in manual-hotkey mode; validate cross-game switching
 
 ## v0.3 — "It manages storage" (storage-aware)
 

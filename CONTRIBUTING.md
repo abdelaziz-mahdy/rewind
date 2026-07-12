@@ -41,6 +41,12 @@ You should **not** need to touch the capture engine. To add a game:
 
 That's it — the `ClipCoordinator` and capture engine handle the rest.
 
+**Legal / anti-cheat rule (mandatory):** an integration may read events only
+from *sanctioned* sources — official local APIs (e.g. League's `2999` API),
+official logs, or vendor SDKs — or fall back to manual-hotkey capture. Never
+read game memory, inject, hook, or capture packets. See `docs/COMPLIANCE.md` and
+its PR checklist.
+
 ## Conventions
 
 - **Dart:** `dart format .` and `flutter analyze` must pass. Lints in `analysis_options.yaml`.

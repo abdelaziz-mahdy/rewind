@@ -7,6 +7,11 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- Native build hook (`hook/build.dart`) that compiles and bundles the C shim as a code asset; `@Native` FFI bindings.
+- `rewind_set_buffer_seconds` shim call for per-game replay-buffer length.
+- Per-game configuration (`GameConfig`/`AppSettings`): configurable buffer length (30s/60s/custom), enabled events, and hotkey — per game.
+- Game auto-detection: `GameRegistry` publishes active-game transitions; coordinator applies the active game's config automatically.
+- `docs/COMPLIANCE.md`: legal / anti-cheat policy (sanctioned sources only; manual-hotkey fallback).
 - Initial repository scaffold: docs (README, CLAUDE.md, ARCHITECTURE, ROADMAP, CONTRIBUTING), GPLv3 license.
 - Flutter app skeleton with entry point and app shell.
 - `GameEvent` model and `GameEventSource` abstraction for extensible game integrations.

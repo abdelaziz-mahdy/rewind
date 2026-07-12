@@ -37,8 +37,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Features (planned)
 
-- Rolling replay buffer (configurable length, RAM-backed) on Windows and macOS
-- Manual hotkey clip ("clip that")
+- Rolling replay buffer (RAM-backed) on Windows and macOS
+- **Manual hotkey clip** ("clip that") that saves the last **30s / 60s / custom** — configurable **per game**
+- **Automatic game detection** — Rewind notices which game is running and applies that game's settings
 - **Automatic event-based clipping** — starting with League of Legends via the local Live Client Data API (kills, multikills, aces, dragon/baron, turrets)
 - Clip library with tagging by event type
 - Hardware-accelerated encoding (NVENC / AMF / Apple VideoToolbox via libobs)
@@ -48,18 +49,35 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 | Game | Method | Status |
 |------|--------|--------|
-| League of Legends | Live Client Data API (`127.0.0.1:2999`) | Planned (v0.2) |
-| Any game | Manual hotkey | Planned (v0.1) |
-| More titles | Per-game integrations | Future |
+| League of Legends | Live Client Data API (`127.0.0.1:2999`) — official, read-only, anti-cheat safe | Planned (v0.2) |
+| Any game (incl. MECCHA CHAMELEON & other mech/action titles) | Manual hotkey capture — always safe | Planned (v0.1) |
+| More titles | Per-game integrations (sanctioned sources only) | Future |
+
+Initial test targets are **League of Legends** (event auto-clipping via the
+official local API) and a second title, **MECCHA CHAMELEON** (a mech action game), which
+runs in **manual-hotkey mode** unless the vendor exposes a sanctioned event
+source. See [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
 ## Building
 
-Requires the Flutter SDK (desktop enabled) and a local libobs build/SDK. Full instructions live in [CONTRIBUTING.md](CONTRIBUTING.md).
+Requires the Flutter SDK (desktop enabled). The native C shim is compiled and
+bundled automatically by a Dart **build hook** (`hook/build.dart`) — no per-OS
+build files to manage. Linking real libobs is described in
+[native/shim/README.md](native/shim/README.md). Full setup in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
 flutter pub get
 flutter run -d macos      # or: flutter run -d windows
 ```
+
+## Legal & safety
+
+Rewind is designed to be **ToS-friendly and anti-cheat safe**: game integrations
+use only **sanctioned data sources** (official local APIs, logs, or SDKs) or
+plain screen capture — **never** memory reading, injection, or hooking. Games
+without an official API are supported in manual-hotkey mode only. See
+[docs/COMPLIANCE.md](docs/COMPLIANCE.md). (Not legal advice.)
 
 ## License
 

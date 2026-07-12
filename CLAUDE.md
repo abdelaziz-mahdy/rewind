@@ -7,7 +7,7 @@ Guidance for Claude (and other AI assistants) working in the Rewind repository. 
 Rewind is an open-source, cross-platform (Windows + macOS) instant-replay and automatic game-clip capture app. It is the ShadowPlay / Medal.tv experience for macOS as well as Windows, in one codebase.
 
 - **UI + app logic:** Flutter / Dart
-- **Capture engine:** embedded **libobs** (the OBS Studio core), driven through a small **C shim** in `native/shim/`, called from Dart via `dart:ffi`
+- **Capture engine:** embedded **libobs** (the OBS Studio core), driven through a small **C shim** in `native/shim/`, called from Dart via `dart:ffi`. The shim is compiled & bundled automatically by a Dart **build hook** (`hook/build.dart`) as a code asset — no per-OS build files.
 - **Event detection:** per-game watchers in Dart (first target: League of Legends Live Client Data API on `127.0.0.1:2999`)
 - **License:** GPLv3 (mandatory — libobs is GPL)
 
@@ -29,7 +29,10 @@ rewind/
 │       ├── events/      Game event watchers + models
 │       ├── obs/         Dart FFI bindings to the C shim
 │       ├── clip/        Clip model + library
+│       ├── settings/    Per-game config + app settings
 │       └── ui/          Flutter widgets/screens
+├── hook/
+│   └── build.dart       Build hook: compiles + bundles the C shim
 ├── native/
 │   └── shim/            C shim over libobs (rewind_obs.h/.c)
 ├── test/                Dart tests
@@ -43,6 +46,7 @@ rewind/
 2. **Platform-specific code stays native and thin.** Capture source selection (screen capture kit on macOS, Windows Graphics Capture on Windows) is configured inside the shim/libobs, not scattered through Dart.
 3. **Event watchers are pure Dart and testable.** They poll/subscribe to a local source and emit `GameEvent`s. They must not depend on the capture engine — they emit events; a coordinator decides whether to save a clip.
 4. **Everything cross-platform by default.** If something can only work on one OS, isolate it and provide a no-op/fallback on the other.
+5. **Sanctioned sources only (legal/anti-cheat).** Integrations may read only official local APIs, logs, or SDKs — NEVER game memory, injection, hooking, or packet capture. No sanctioned source → manual-hotkey capture only. See `docs/COMPLIANCE.md`. This is non-negotiable; it protects users' accounts.
 
 ## Conventions
 
