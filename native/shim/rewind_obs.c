@@ -212,45 +212,54 @@ static void setup_module_paths(const char *sdk_dir) {
 }
 
 /* Resolves an absolute, existing path to libobs-opengl.dylib. Tries, in
- * order:
- *   1. "<sdk dir>/lib/libobs-opengl.dylib" — the dev-tree / source-SDK
- *      layout tools/fetch_libobs.sh assembles (lib/ directly under the
- *      SDK root returned by find_obs_sdk_dir()).
- *   2. "<shim dir>/libobs-opengl.dylib" — packaged .app, shim as a flat
- *      dylib directly in Contents/Frameworks/. tools/bundle_obs_macos.sh
- *      copies the whole lib/ closure (libobs.framework,
- *      libobs-opengl.dylib, the FFmpeg/x264/mbedTLS dylibs) straight
- *      into Contents/Frameworks/, *separate* from the obs-plugins/data
- *      tree it places under Contents/Resources/obs — so candidate 1
- *      above doesn't find it in the packaged layout; there is no lib/
- *      under Resources/obs. See native/shim/README.md.
- *   3. "<shim dir>/../../../libobs-opengl.dylib" — same packaged layout,
- *      but for the *nested* framework wrapping Flutter's macOS toolchain
- *      actually applies to the shim itself (see find_obs_sdk_dir()):
- *      Contents/Frameworks/ is three levels up from Versions/A, not
- *      immediately containing the shim. Other vendored dylibs still sit
- *      directly in Contents/Frameworks/ regardless of the shim's own
- *      nesting, so only two ".." levels differ from candidate 2, not the
- *      four find_obs_sdk_dir() needs to additionally reach Resources/.
+ * order (matching find_obs_sdk_dir()'s dev-tree-then-packaged shape):
+ *   (a) "<sdk dir>/lib/libobs-opengl.dylib" — the dev-tree / source-SDK
+ *       layout tools/fetch_libobs.sh assembles (lib/ directly under the
+ *       SDK root returned by find_obs_sdk_dir()).
+ *   (b) "<shim dir>/../../../libobs-opengl.dylib" — packaged .app, shim
+ *       nested in its own framework bundle, which is how Flutter's macOS
+ *       toolchain actually wraps the compiled shim (see
+ *       find_obs_sdk_dir()): Versions/A -> Versions -> rewind_obs.framework
+ *       -> Frameworks is three levels, not one. tools/bundle_obs_macos.sh
+ *       copies the whole lib/ closure (libobs.framework,
+ *       libobs-opengl.dylib, the FFmpeg/x264/mbedTLS dylibs) straight
+ *       into Contents/Frameworks/, *separate* from the obs-plugins/data
+ *       tree it places under Contents/Resources/obs — so candidate (a)
+ *       above doesn't find it in the packaged layout; there is no lib/
+ *       under Resources/obs. See native/shim/README.md.
+ *   (c) "<shim dir>/libobs-opengl.dylib" — same packaged layout, but for
+ *       a flat-dylib shim placement directly in Contents/Frameworks/
+ *       (insurance against a future toolchain change back to flat).
  * `shim_dir` is the caller's already-resolved shim_own_dir() result (not
- * recomputed here). Returns 1 on success. */
+ * recomputed here). Returns 1 on success; on failure, sets a descriptive
+ * error naming every path tried (does not overwrite it with a generic
+ * message — the caller should just propagate the failure). */
 static int find_graphics_module_path(const char *sdk_dir, const char *shim_dir, char *out, size_t out_size) {
-    char candidate[PATH_MAX];
+    char a[PATH_MAX], b[PATH_MAX] = "", c[PATH_MAX] = "";
 
-    snprintf(candidate, sizeof(candidate), "%s/lib/libobs-opengl.dylib", sdk_dir);
-    if (path_exists(candidate)) { snprintf(out, out_size, "%s", candidate); return 1; }
+    snprintf(a, sizeof(a), "%s/lib/libobs-opengl.dylib", sdk_dir);
+    if (path_exists(a)) { snprintf(out, out_size, "%s", a); return 1; }
 
     if (shim_dir && shim_dir[0]) {
-        snprintf(candidate, sizeof(candidate), "%s/libobs-opengl.dylib", shim_dir);
-        if (path_exists(candidate)) { snprintf(out, out_size, "%s", candidate); return 1; }
-
-        snprintf(candidate, sizeof(candidate), "%s/../../../libobs-opengl.dylib", shim_dir);
-        if (path_exists(candidate)) {
-            if (!realpath(candidate, out)) snprintf(out, out_size, "%s", candidate);
+        snprintf(b, sizeof(b), "%s/../../../libobs-opengl.dylib", shim_dir);
+        if (path_exists(b)) {
+            if (!realpath(b, out)) snprintf(out, out_size, "%s", b);
             return 1;
         }
+
+        snprintf(c, sizeof(c), "%s/libobs-opengl.dylib", shim_dir);
+        if (path_exists(c)) { snprintf(out, out_size, "%s", c); return 1; }
     }
 
+    char msg[768];
+    int len = snprintf(msg, sizeof(msg), "could not locate libobs-opengl.dylib; tried \"%s\"", a);
+    if (b[0] && len > 0 && (size_t)len < sizeof(msg))
+        len += snprintf(msg + len, sizeof(msg) - (size_t)len, ", \"%s\"", b);
+    if (c[0] && len > 0 && (size_t)len < sizeof(msg))
+        len += snprintf(msg + len, sizeof(msg) - (size_t)len, ", \"%s\"", c);
+    if (len > 0 && (size_t)len < sizeof(msg))
+        snprintf(msg + len, sizeof(msg) - (size_t)len, " (see native/shim/README.md)");
+    set_error(msg);
     return 0;
 }
 
@@ -297,8 +306,8 @@ int rewind_obs_init(const char *out_dir, int seconds) {
 
     static char graphics_module[PATH_MAX];
     if (!find_graphics_module_path(sdk_dir, shim_dir, graphics_module, sizeof(graphics_module))) {
-        set_error("could not locate libobs-opengl.dylib relative to the SDK dir or the shim; "
-                   "see native/shim/README.md");
+        /* find_graphics_module_path() already set a detailed error naming
+         * every path it tried; don't clobber it with a generic one. */
         goto cleanup;
     }
 

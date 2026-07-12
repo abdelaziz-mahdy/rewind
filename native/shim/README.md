@@ -50,14 +50,16 @@ handful of C functions (see `rewind_obs.h`) that the Dart side calls via
    FFmpeg/x264/mbedTLS dylibs) directly in `Contents/Frameworks/`, and
    only `obs-plugins/`+`data/` under `Contents/Resources/obs` — so there
    is **no `lib/` under the resolved SDK dir** in that layout, only in
-   the dev-tree one. `find_graphics_module_path()` tries `<sdk
-   dir>/lib/libobs-opengl.dylib` first (dev-tree layout), then falls back
-   to `<shim dir>/libobs-opengl.dylib` and
-   `<shim dir>/../../../libobs-opengl.dylib` (packaged layout, flat and
-   nested-framework shim placement respectively — mirroring
-   `find_obs_sdk_dir()`'s own two packaged-layout candidates, minus the
+   the dev-tree one. `find_graphics_module_path()` tries, in order:
+   `<sdk dir>/lib/libobs-opengl.dylib` (dev-tree layout);
+   `<shim dir>/../../../libobs-opengl.dylib` (packaged layout, the
+   nested-framework shim placement Flutter's macOS toolchain actually
+   uses — mirrors `find_obs_sdk_dir()`'s own nested candidate, minus the
    extra `Resources/obs` hop since vendored dylibs sit directly in
-   `Frameworks/`). Found during a real packaged-app run — see
+   `Frameworks/`); `<shim dir>/libobs-opengl.dylib` (packaged layout,
+   flat-dylib shim placement, kept as insurance against a future
+   toolchain change). If none exist, the error names every path tried.
+   Found during a real packaged-app run — see
    `.superpowers/sdd/task-10-report.md` and `task-9-report.md`'s fix-round
    notes.
 3. **`obs_add_module_path`** for the `<sdk>/obs-plugins` (`.plugin`
