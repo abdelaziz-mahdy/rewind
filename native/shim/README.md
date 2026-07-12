@@ -148,6 +148,22 @@ pinned tag (32.1.2), not assumed from memory:
   — not the main display. The shim computes it the same way the property
   UI would: `CGDisplayCreateUUIDFromDisplayID(CGMainDisplayID())` →
   `CFUUIDCreateString`.
+- **Display picking (`rewind_list_displays`/`rewind_set_capture_display`).**
+  `"display_uuid"` (a string) is confirmed as `screen_capture`'s settings
+  key for the target display (`plugins/mac-capture/mac-sck-video-capture.m`,
+  `sck_video_capture_defaults`/`sck_video_capture_update`). Switching
+  displays does **not** require recreating the source: `.update =
+  sck_video_capture_update` re-reads `display_uuid` via
+  `get_display_migrate_settings()` and tears down/reinitialises its own
+  `SCStream` internally, so a plain `obs_source_update(g_capture, settings)`
+  on the existing source is enough — `rewind_set_capture_display()` does
+  exactly that when a capture source already exists, and just remembers the
+  preference (in a static, applied at the next `rewind_obs_init`)
+  otherwise. `rewind_list_displays()` enumerates via
+  `CGGetActiveDisplayList` + `CGDisplayCreateUUIDFromDisplayID` +
+  `CGDisplayPixelsWide/High` + `CGDisplayIsMain` — all CoreGraphics, already
+  reachable through the `ApplicationServices` umbrella header/framework this
+  file already includes/links; no new build flag needed.
 - **Source id `"screen_capture"` was correct as written in the brief** —
   double-checked because there's also a legacy `"display_capture"` source
   in the same plugin; `"screen_capture"` (ScreenCaptureKit-backed) is

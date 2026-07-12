@@ -1,10 +1,21 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:rewind/src/obs/capture_engine.dart';
+import 'package:rewind/src/obs/display_info.dart';
 
 class FakeCaptureEngine implements CaptureEngine {
   final List<String> calls = [];
   bool failSave = false;
+
+  /// Two fake displays, mirroring what a real multi-monitor setup would
+  /// report from `rewind_list_displays`.
+  final List<DisplayInfo> displays = const [
+    DisplayInfo(uuid: 'display-1', width: 1920, height: 1080, isMain: true),
+    DisplayInfo(uuid: 'display-2', width: 2560, height: 1440, isMain: false),
+  ];
+
+  /// Every uuid passed to [setCaptureDisplay], in call order.
+  final List<String> captureDisplayCalls = [];
 
   /// When false, [saveClip] reports a path but writes no file — mimics the
   /// C shim's stub mode, which the coordinator must not index.
@@ -55,4 +66,17 @@ class FakeCaptureEngine implements CaptureEngine {
   void shutdown() => calls.add('shutdown');
   @override
   String get lastError => failSave ? 'fake save failure' : '';
+
+  @override
+  List<DisplayInfo> listDisplays() {
+    calls.add('listDisplays');
+    return displays;
+  }
+
+  @override
+  bool setCaptureDisplay(String uuid) {
+    calls.add('setCaptureDisplay:$uuid');
+    captureDisplayCalls.add(uuid);
+    return true;
+  }
 }

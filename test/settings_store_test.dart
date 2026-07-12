@@ -14,6 +14,20 @@ void main() {
     final s = await SettingsStore(tmp).load();
     expect(s.defaultBufferSeconds, 30);
     expect(s.hotkey, 'Alt+F10');
+    expect(s.captureDisplayUuid, isNull);
+  });
+
+  test('captureDisplayUuid round-trips through toJson/fromJson', () {
+    final s = AppSettings(captureDisplayUuid: 'display-uuid-123');
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.captureDisplayUuid, 'display-uuid-123');
+  });
+
+  test('captureDisplayUuid round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(captureDisplayUuid: 'display-uuid-456'));
+    final loaded = await store.load();
+    expect(loaded.captureDisplayUuid, 'display-uuid-456');
   });
 
   test('save/load round-trips per-game config', () async {

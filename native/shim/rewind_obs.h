@@ -40,6 +40,20 @@ const char *rewind_last_error(void);
  * changes and a per-game buffer length applies). Returns 0 on success. */
 int rewind_set_buffer_seconds(int seconds);
 
+/* Enumerate the connected displays as a compact JSON array written into
+ * `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
+ *   [{"uuid":"...","width":1920,"height":1080,"main":true}, ...]
+ * Returns 0 on success, non-zero if enumeration failed or the buffer was too
+ * small (see rewind_last_error). Safe to call before rewind_obs_init. */
+int rewind_list_displays(char *json_out, int json_cap);
+
+/* Select which display the capture source should record, identified by the
+ * uuid string returned from rewind_list_displays. Safe to call before
+ * rewind_obs_init (the preference is remembered and applied at init); if
+ * the capture source already exists, it is reconfigured immediately.
+ * Returns 0 on success. */
+int rewind_set_capture_display(const char *display_uuid);
+
 #ifdef __cplusplus
 }
 #endif

@@ -29,6 +29,18 @@ external int _shutdown();
 @Native<Pointer<Utf8> Function()>(symbol: 'rewind_last_error')
 external Pointer<Utf8> _lastError();
 
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(symbol: 'rewind_list_displays')
+external int _listDisplays(Pointer<Utf8> jsonOut, int jsonCap);
+
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_set_capture_display')
+external int _setCaptureDisplay(Pointer<Utf8> displayUuid);
+
+/// Size of the buffer allocated for `rewind_list_displays`'s JSON
+/// out-param. Comfortably covers the display counts Rewind targets (a
+/// handful of monitors); the shim reports truncation via a non-zero return
+/// rather than silently corrupting output if it's ever exceeded.
+const int _kDisplayListBufferSize = 4096;
+
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
 class RewindObs {
@@ -64,6 +76,28 @@ class RewindObs {
       final r = _saveClip(p);
       if (r == nullptr) return null;
       return r.toDartString();
+    } finally {
+      malloc.free(p);
+    }
+  }
+
+  /// Raw JSON array from `rewind_list_displays`, or null on failure.
+  String? listDisplaysJson() {
+    final buf = malloc<Uint8>(_kDisplayListBufferSize);
+    try {
+      final p = buf.cast<Utf8>();
+      final r = _listDisplays(p, _kDisplayListBufferSize);
+      if (r != 0) return null;
+      return p.toDartString();
+    } finally {
+      malloc.free(buf);
+    }
+  }
+
+  int setCaptureDisplay(String uuid) {
+    final p = uuid.toNativeUtf8();
+    try {
+      return _setCaptureDisplay(p);
     } finally {
       malloc.free(p);
     }

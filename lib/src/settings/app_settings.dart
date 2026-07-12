@@ -9,11 +9,17 @@ class AppSettings {
   /// maps this to hotkey_manager). Example: "Alt+F10".
   String hotkey;
 
+  /// The display to capture, identified by a display uuid as reported by
+  /// `CaptureEngine.listDisplays`. Null means "use the main display" (the
+  /// capture engine's own default).
+  String? captureDisplayUuid;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
     this.defaultBufferSeconds = 30,
     this.hotkey = 'Alt+F10',
+    this.captureDisplayUuid,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -39,12 +45,14 @@ class AppSettings {
   Map<String, dynamic> toJson() => {
         'defaultBufferSeconds': defaultBufferSeconds,
         'hotkey': hotkey,
+        'captureDisplayUuid': captureDisplayUuid,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
         defaultBufferSeconds: j['defaultBufferSeconds'] as int? ?? 30,
         hotkey: j['hotkey'] as String? ?? 'Alt+F10',
+        captureDisplayUuid: j['captureDisplayUuid'] as String?,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

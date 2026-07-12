@@ -57,6 +57,13 @@ static obs_encoder_t *g_aenc    = NULL;
 static obs_output_t  *g_replay  = NULL;
 static int             g_seconds = 30;
 
+/* User's preferred capture display, as a "display_uuid" string (see
+ * rewind_set_capture_display). Empty means "use the main display" — the
+ * long-standing default computed by main_display_uuid() at init time. Can
+ * be set before rewind_obs_init(); applied at init and, if the capture
+ * source already exists, applied immediately via obs_source_update(). */
+static char g_display_uuid[128] = "";
+
 static int fail(const char *msg) { set_error(msg); return 1; }
 
 /* ---- SDK / module path discovery -----------------------------------
@@ -188,6 +195,55 @@ static void main_display_uuid(char *out, size_t out_size) {
     }
     CFRelease(uuid);
 }
+
+/* Look up a display's UUID string given its CGDirectDisplayID. Same
+ * approach as main_display_uuid(), for an arbitrary display. */
+static void display_uuid_for_id(CGDirectDisplayID display, char *out, size_t out_size) {
+    out[0] = '\0';
+    CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(display);
+    if (!uuid) return;
+    CFStringRef str = CFUUIDCreateString(kCFAllocatorDefault, uuid);
+    if (str) {
+        CFStringGetCString(str, out, (CFIndex)out_size, kCFStringEncodingUTF8);
+        CFRelease(str);
+    }
+    CFRelease(uuid);
+}
+
+/* Enumerate active displays into a compact JSON array. Returns 0 on
+ * success, non-zero (with set_error) if enumeration fails or `json_out` is
+ * too small to hold the result. */
+static int list_displays_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) return fail("invalid buffer");
+
+    CGDirectDisplayID ids[32];
+    uint32_t count = 0;
+    if (CGGetActiveDisplayList(32, ids, &count) != kCGErrorSuccess)
+        return fail("CGGetActiveDisplayList failed");
+
+    size_t pos = 0;
+    json_out[0] = '\0';
+#define APPEND(...) do { \
+        int n = snprintf(json_out + pos, (size_t)json_cap - pos, __VA_ARGS__); \
+        if (n < 0 || (size_t)n >= (size_t)json_cap - pos) return fail("display list truncated"); \
+        pos += (size_t)n; \
+    } while (0)
+
+    APPEND("[");
+    for (uint32_t i = 0; i < count; i++) {
+        char uuid[128];
+        display_uuid_for_id(ids[i], uuid, sizeof(uuid));
+        size_t w = CGDisplayPixelsWide(ids[i]);
+        size_t h = CGDisplayPixelsHigh(ids[i]);
+        APPEND("%s{\"uuid\":\"%s\",\"width\":%u,\"height\":%u,\"main\":%s}",
+               i == 0 ? "" : ",", uuid, (unsigned)w, (unsigned)h,
+               CGDisplayIsMain(ids[i]) ? "true" : "false");
+    }
+    APPEND("]");
+#undef APPEND
+    set_error("");
+    return 0;
+}
 #else
 static void query_main_display_size(uint32_t *width, uint32_t *height) {
     *width = 1920;
@@ -196,6 +252,10 @@ static void query_main_display_size(uint32_t *width, uint32_t *height) {
 static void main_display_uuid(char *out, size_t out_size) {
     (void)out_size;
     out[0] = '\0';
+}
+static int list_displays_json(char *json_out, int json_cap) {
+    (void)json_out; (void)json_cap;
+    return fail("display enumeration not supported on this platform");
 }
 #endif
 
@@ -336,7 +396,11 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     obs_data_set_int(cs, "type", 0); /* ScreenCaptureDisplayStream */
     obs_data_set_bool(cs, "show_cursor", true);
     char uuid[128];
-    main_display_uuid(uuid, sizeof(uuid));
+    if (g_display_uuid[0]) {
+        snprintf(uuid, sizeof(uuid), "%s", g_display_uuid);
+    } else {
+        main_display_uuid(uuid, sizeof(uuid));
+    }
     if (uuid[0]) obs_data_set_string(cs, "display_uuid", uuid);
     g_capture = obs_source_create("screen_capture", "rewind-display", cs, NULL);
     obs_data_release(cs);
@@ -503,6 +567,31 @@ int rewind_obs_shutdown(void) {
     return 0;
 }
 
+int rewind_list_displays(char *json_out, int json_cap) {
+    return list_displays_json(json_out, json_cap);
+}
+
+int rewind_set_capture_display(const char *display_uuid) {
+    if (!display_uuid) return fail("display_uuid is NULL");
+
+    snprintf(g_display_uuid, sizeof(g_display_uuid), "%s", display_uuid);
+
+    /* If the capture source already exists, reconfigure it in place —
+     * screen_capture's own .update callback (sck_video_capture_update,
+     * plugins/mac-capture/mac-sck-video-capture.m) tears down and
+     * re-initialises its stream for the new display_uuid, so
+     * obs_source_update() is enough; the source does not need to be
+     * recreated. */
+    if (g_capture) {
+        obs_data_t *cs = obs_data_create();
+        obs_data_set_string(cs, "display_uuid", g_display_uuid);
+        obs_source_update(g_capture, cs);
+        obs_data_release(cs);
+    }
+    set_error("");
+    return 0;
+}
+
 #else /* !REWIND_USE_LIBOBS: self-contained stub */
 
 int rewind_obs_init(const char *out_dir, int seconds) {
@@ -560,6 +649,30 @@ int rewind_set_buffer_seconds(int seconds) {
     /* TODO(libobs): update the replay-buffer output settings
      *   (obs_data_set_int(settings, "max_time_sec", seconds); then
      *    obs_output_update(replay_buffer_output, settings)). */
+    return 0;
+}
+
+/* Dependency-free literal (no CoreGraphics/platform APIs) so the stub stays
+ * buildable everywhere, including Windows. */
+static const char *k_stub_displays_json =
+    "[{\"uuid\":\"stub-display\",\"width\":1920,\"height\":1080,\"main\":true}]";
+
+static char g_stub_display_uuid[128] = "";
+
+int rewind_list_displays(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+    size_t needed = strlen(k_stub_displays_json) + 1;
+    if (needed > (size_t)json_cap) { set_error("display list truncated"); return 1; }
+    memcpy(json_out, k_stub_displays_json, needed);
+    set_error("");
+    return 0;
+}
+
+int rewind_set_capture_display(const char *display_uuid) {
+    if (!display_uuid) { set_error("display_uuid is NULL"); return 1; }
+    /* TODO(libobs): obs_source_update() the capture source's display_uuid. */
+    snprintf(g_stub_display_uuid, sizeof(g_stub_display_uuid), "%s", display_uuid);
+    set_error("");
     return 0;
 }
 
