@@ -55,25 +55,28 @@ polls `get_last_replay` (up to 5s at 50ms intervals) for the written path —
 there's no synchronous "save and return the path" call in the API, and the
 `saved()` signal would need signal-handler plumbing this shim doesn't have.
 
-## Known gap: `mac-videotoolbox` is not in the fetched SDK
+## `mac-videotoolbox` (status: re-fetch landed, not yet runtime-verified)
 
-**The VideoToolbox H.264 encoder currently has nowhere to come from.**
-`tools/fetch_libobs.sh` (Task 8) builds only `mac-capture`, `obs-ffmpeg`,
-and `coreaudio-encoder` — the VideoToolbox encoder is a separate module
-(`plugins/mac-videotoolbox` in the obs-studio tree) that isn't in that
-allow-list or shipped in `native/third_party/obs/obs-plugins/`. Neither is
-a software fallback (`obs-x264`) — `obs-ffmpeg` itself only registers
-NVENC/VAAPI (Linux) and AMF (Windows) encoders, none usable on macOS.
-
-Concretely: with the SDK as currently fetched, `rewind_obs_init` will run
+The VideoToolbox H.264 encoder is a separate module
+(`plugins/mac-videotoolbox` in the obs-studio tree) from
+`mac-capture`/`obs-ffmpeg`/`coreaudio-encoder`. Earlier fetches of
+`native/third_party/obs/` didn't include it (nor a software fallback —
+`obs-ffmpeg` itself only registers NVENC/VAAPI (Linux) and AMF (Windows)
+encoders, none usable on macOS), which meant `rewind_obs_init` would run
 all the way through capture-source creation and then fail at
 `obs_video_encoder_create("com.apple.videotoolbox.videoencoder.ave.avc", ...)`
-returning `NULL` ("VideoToolbox H.264 encoder unavailable"), because that
-encoder id is never registered — no loaded module provides it. This is not
-a shim bug; it needs `tools/fetch_libobs.sh`'s plugin allow-list
-(`plugins/CMakeLists.txt` patch) extended to add `mac-videotoolbox`,
-followed by a re-fetch. Flagged for Task 8 rework or a Task 10 follow-up
-before this path can actually produce clips end-to-end.
+returning `NULL`.
+
+`tools/fetch_libobs.sh` has since been re-run with `mac-videotoolbox`
+added to its plugin allow-list:
+`native/third_party/obs/obs-plugins/mac-videotoolbox.plugin` and
+`native/third_party/obs/data/obs-plugins/mac-videotoolbox/` both exist
+now, with the same `.plugin` bundle / flat data-dir layout as the other
+three modules — `setup_module_paths()`'s `%module%.plugin/Contents/MacOS`
++ `data/obs-plugins/%module%` templates need no shim change to pick it
+up. This hasn't been confirmed with an actual run of `rewind_obs_init`
+yet (this task's checks are compile/link-only) — worth a real smoke test
+once Task 10's linkage/bundling exists.
 
 ## Deviations from a naive port of the reference implementation
 

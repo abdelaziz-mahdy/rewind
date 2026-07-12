@@ -206,6 +206,17 @@ int rewind_obs_init(const char *out_dir, int seconds) {
 
     if (!obs_startup("en-US", NULL, NULL)) return fail("obs_startup failed");
 
+    /* From this point on, obs_startup() has succeeded and obs_startup()
+     * refuses to run a second time for the life of the process. Every
+     * failure below MUST go through `cleanup` (which releases whatever
+     * was created and calls obs_shutdown()) rather than returning
+     * directly — otherwise g_initialized stays 0, rewind_obs_shutdown()
+     * early-returns without calling obs_shutdown(), and every later
+     * rewind_obs_init() retry fails forever. This is not hypothetical:
+     * it fires on Screen Recording permission denial and (until the SDK
+     * re-fetch adding mac-videotoolbox lands) on the missing
+     * VideoToolbox encoder below. */
+
     uint32_t width = 1920, height = 1080;
     query_main_display_size(&width, &height);
 
@@ -228,10 +239,10 @@ int rewind_obs_init(const char *out_dir, int seconds) {
         .colorspace = VIDEO_CS_709, .range = VIDEO_RANGE_PARTIAL,
         .adapter = 0, .gpu_conversion = true, .scale_type = OBS_SCALE_BICUBIC,
     };
-    if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) return fail("obs_reset_video failed");
+    if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) { set_error("obs_reset_video failed"); goto cleanup; }
 
     struct obs_audio_info oai = { .samples_per_sec = 48000, .speakers = SPEAKERS_STEREO };
-    if (!obs_reset_audio(&oai)) return fail("obs_reset_audio failed");
+    if (!obs_reset_audio(&oai)) { set_error("obs_reset_audio failed"); goto cleanup; }
 
     setup_module_paths(sdk_dir);
     obs_load_all_modules();
@@ -248,8 +259,10 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     if (uuid[0]) obs_data_set_string(cs, "display_uuid", uuid);
     g_capture = obs_source_create("screen_capture", "rewind-display", cs, NULL);
     obs_data_release(cs);
-    if (!g_capture)
-        return fail("screen_capture source failed (Screen Recording permission not granted?)");
+    if (!g_capture) {
+        set_error("screen_capture source failed (Screen Recording permission not granted?)");
+        goto cleanup;
+    }
     obs_set_output_source(0, g_capture);
 
     /* Encoders: VideoToolbox H.264 + CoreAudio AAC. NOTE: the VideoToolbox
@@ -262,11 +275,14 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     g_venc = obs_video_encoder_create(
         "com.apple.videotoolbox.videoencoder.ave.avc", "rewind-venc", ve, NULL);
     obs_data_release(ve);
-    if (!g_venc) return fail("VideoToolbox H.264 encoder unavailable (mac-videotoolbox module not loaded)");
+    if (!g_venc) {
+        set_error("VideoToolbox H.264 encoder unavailable (mac-videotoolbox module not loaded)");
+        goto cleanup;
+    }
     obs_encoder_set_video(g_venc, obs_get_video());
 
     g_aenc = obs_audio_encoder_create("CoreAudio_AAC", "rewind-aenc", NULL, 0, NULL);
-    if (!g_aenc) return fail("CoreAudio AAC encoder unavailable");
+    if (!g_aenc) { set_error("CoreAudio AAC encoder unavailable"); goto cleanup; }
     obs_encoder_set_audio(g_aenc, obs_get_audio());
 
     /* Replay buffer output (obs-ffmpeg module). */
@@ -278,13 +294,31 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     obs_data_set_int(ro, "max_size_mb", 0);
     g_replay = obs_output_create("replay_buffer", "rewind-replay", ro, NULL);
     obs_data_release(ro);
-    if (!g_replay) return fail("replay_buffer output unavailable");
+    if (!g_replay) { set_error("replay_buffer output unavailable"); goto cleanup; }
     obs_output_set_video_encoder(g_replay, g_venc);
     obs_output_set_audio_encoder(g_replay, g_aenc, 0);
 
     g_initialized = 1;
     set_error("");
     return 0;
+
+cleanup:
+    /* g_initialized is still 0 here, so rewind_obs_shutdown()'s own
+     * early-return guard doesn't apply — release everything created so
+     * far (in the same order rewind_obs_shutdown() uses) and tear down
+     * obs_startup()'s global state ourselves, so a later
+     * rewind_obs_init() retry starts from a clean slate instead of
+     * obs_startup() refusing to run a second time forever. */
+    if (g_replay) { obs_output_release(g_replay); g_replay = NULL; }
+    if (g_venc) { obs_encoder_release(g_venc); g_venc = NULL; }
+    if (g_aenc) { obs_encoder_release(g_aenc); g_aenc = NULL; }
+    if (g_capture) {
+        obs_set_output_source(0, NULL);
+        obs_source_release(g_capture);
+        g_capture = NULL;
+    }
+    obs_shutdown();
+    return 1;
 }
 
 int rewind_start_buffer(void) {
@@ -303,6 +337,32 @@ const char *rewind_save_clip(const char *out_dir) {
         return NULL;
     }
     proc_handler_t *ph = obs_output_get_proc_handler(g_replay);
+
+    /* Snapshot the replay path as libobs currently reports it *before*
+     * triggering this save, and detect completion against that snapshot
+     * rather than the shim's own g_last_clip. The replay-buffer's
+     * filename format is second-resolution (see README), so comparing
+     * against g_last_clip breaks when two saves land in the same
+     * wall-clock second: the second save's completed path can be
+     * identical to the g_last_clip already recorded from the first, the
+     * change is never detected, and this call times out even though the
+     * save did complete. Comparing against a fresh "before" snapshot
+     * fixes that for the common case (saves in different seconds).
+     * NOTE: two saves within the very same second still can't be told
+     * apart from each other (both produce the same filename) — accepted
+     * as a residual limitation for v0.1. */
+    char before[sizeof(g_last_clip)] = "";
+    {
+        calldata_t snap = {0};
+        proc_handler_call(ph, "get_last_replay", &snap);
+        const char *p = calldata_string(&snap, "path");
+        if (p) {
+            strncpy(before, p, sizeof(before) - 1);
+            before[sizeof(before) - 1] = '\0';
+        }
+        calldata_free(&snap);
+    }
+
     calldata_t cd = {0};
     if (!proc_handler_call(ph, "save", &cd)) {
         set_error("save call failed");
@@ -317,7 +377,7 @@ const char *rewind_save_clip(const char *out_dir) {
         calldata_t out = {0};
         proc_handler_call(ph, "get_last_replay", &out);
         const char *path = calldata_string(&out, "path");
-        if (path && *path && strcmp(path, g_last_clip) != 0) {
+        if (path && *path && strcmp(path, before) != 0) {
             strncpy(g_last_clip, path, sizeof(g_last_clip) - 1);
             g_last_clip[sizeof(g_last_clip) - 1] = '\0';
             calldata_free(&out);
@@ -333,6 +393,7 @@ const char *rewind_save_clip(const char *out_dir) {
 int rewind_stop_buffer(void) {
     if (!g_initialized) return fail("not initialized");
     obs_output_stop(g_replay);
+    set_error("");
     return 0;
 }
 
@@ -344,6 +405,7 @@ int rewind_set_buffer_seconds(int seconds) {
     obs_data_set_int(s, "max_time_sec", seconds);
     obs_output_update(g_replay, s);
     obs_data_release(s);
+    set_error("");
     return 0;
 }
 
