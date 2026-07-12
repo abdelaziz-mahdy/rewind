@@ -25,6 +25,9 @@ class TrayService with TrayListener {
     _onToggleBuffer = onToggleBuffer;
     _onShowWindow = onShowWindow;
     _onQuit = onQuit;
+    // Re-init must not stack duplicate listeners (each would re-fire every
+    // menu callback); ObserverList.add permits duplicates.
+    trayManager.removeListener(this);
     trayManager.addListener(this);
     await trayManager.setIcon('assets/tray/tray_icon.png', isTemplate: true);
     await _rebuildMenu();
@@ -56,8 +59,12 @@ class TrayService with TrayListener {
       case 'save':
         await _onSaveClip?.call();
       case 'toggle':
-        await _onToggleBuffer?.call(!_bufferActive);
-        await setBufferState(!_bufferActive);
+        // Capture the target once: the callback may itself call
+        // setBufferState, and re-reading the mutated field here would
+        // flip the label back and desync the menu from reality.
+        final target = !_bufferActive;
+        await _onToggleBuffer?.call(target);
+        await setBufferState(target);
       case 'quit':
         _onQuit?.call();
     }
