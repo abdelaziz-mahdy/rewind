@@ -64,10 +64,16 @@ class ClipLibrary extends ChangeNotifier {
           final clip = Clip.fromJson((e as Map).cast<String, dynamic>());
           if (File(clip.path).existsSync()) {
             lib._clips.add(clip);
-            known.add(clip.path);
+            // Canonicalize so the disk scan below recognizes the same file
+            // even when the stored path differs in form (relative, ./, case).
+            known.add(p.canonicalize(clip.path));
           }
         }
       } catch (_) {
+        // Rebuild purely from the disk scan: discard anything a partially
+        // parsed index already contributed.
+        lib._clips.clear();
+        known.clear();
         try {
           await index.rename('${index.path}.bad');
         } catch (_) {}
@@ -77,7 +83,7 @@ class ClipLibrary extends ChangeNotifier {
       await for (final f in clipsDir.list()) {
         if (f is File &&
             p.extension(f.path).toLowerCase() == '.mp4' &&
-            !known.contains(f.path)) {
+            !known.contains(p.canonicalize(f.path))) {
           final stat = f.statSync();
           lib._clips.add(Clip(
             path: f.path,

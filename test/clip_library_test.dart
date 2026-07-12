@@ -28,6 +28,24 @@ void main() {
     expect(loaded.all.single.event, GameEventKind.manual);
   });
 
+  test('indexed file is not re-adopted when its stored path form differs',
+      () async {
+    final f = await _mp4(tmp, 'a.mp4');
+    // Same physical file, non-canonical path form (extra ./ segment).
+    final oddPath = p.join(tmp.path, '.', 'a.mp4');
+    final lib = ClipLibrary(clipsDir: tmp)
+      ..add(Clip(
+          path: oddPath,
+          gameId: 'league_of_legends',
+          event: GameEventKind.pentaKill,
+          createdAt: DateTime(2026, 7, 1),
+          sizeBytes: 8));
+    await lib.save();
+    final loaded = await ClipLibrary.load(tmp);
+    expect(loaded.all, hasLength(1), reason: 'must not double-add $f');
+    expect(loaded.all.single.event, GameEventKind.pentaKill);
+  });
+
   test('load drops entries whose file is gone', () async {
     final lib = ClipLibrary(clipsDir: tmp)
       ..add(Clip(
