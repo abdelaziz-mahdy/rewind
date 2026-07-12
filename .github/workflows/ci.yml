@@ -37,4 +37,25 @@ jobs:
           channel: stable
       - run: flutter config --enable-${{ matrix.target }}-desktop
       - run: flutter pub get
+      - run: flutter test
+        if: matrix.target == 'windows'
       - run: flutter build ${{ matrix.target }} --debug
+
+  build-macos-libobs:
+    name: Build macOS (real libobs)
+    needs: analyze-test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Cache libobs SDK
+        uses: actions/cache@v4
+        with:
+          path: native/third_party/obs
+          key: libobs-${{ runner.arch }}-32.1.2-deps-2025-08-23-recipe-2
+      - run: bash tools/fetch_libobs.sh
+      - run: flutter pub get
+      - run: flutter build macos --debug
+      - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Debug/rewind.app
