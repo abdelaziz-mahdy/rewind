@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'src/clip/clip_library.dart';
@@ -26,7 +28,7 @@ class _RewindAppState extends State<RewindApp> {
   @override
   void initState() {
     super.initState();
-    final library = ClipLibrary();
+    final library = ClipLibrary(clipsDir: Directory('clips'));
     final settings = AppSettings(); // TODO: load/persist from disk
     final obs = RewindObs.tryLoad();
     // TODO: resolve a real per-OS clips directory via path_provider.
