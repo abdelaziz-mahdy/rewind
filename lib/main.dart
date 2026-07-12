@@ -34,6 +34,10 @@ Future<void> main() async {
   // real replay buffer. A failed init leaves the app browsable with a banner.
   CaptureEngine? engine = RewindObsEngine();
   String? captureError;
+  // Apply the user's saved capture-display choice before init so the shim
+  // targets it from the first frame (no-op when null: main display).
+  final savedDisplay = settings.captureDisplayUuid;
+  if (savedDisplay != null) engine.setCaptureDisplay(savedDisplay);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
     captureError = engine.lastError;
