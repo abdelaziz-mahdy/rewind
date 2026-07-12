@@ -26,6 +26,9 @@ external Pointer<Utf8> _saveClip(Pointer<Utf8> outDir);
 @Native<Int32 Function()>(symbol: 'rewind_obs_shutdown')
 external int _shutdown();
 
+@Native<Pointer<Utf8> Function()>(symbol: 'rewind_last_error')
+external Pointer<Utf8> _lastError();
+
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
 class RewindObs {
@@ -51,6 +54,9 @@ class RewindObs {
   int setBufferSeconds(int seconds) => _setBufferSeconds(seconds);
 
   int shutdown() => _shutdown();
+
+  /// Description of the most recent shim-level failure, or "" if none.
+  String lastError() => _lastError().toDartString();
 
   String? saveClip(String outDir) {
     final p = outDir.toNativeUtf8();

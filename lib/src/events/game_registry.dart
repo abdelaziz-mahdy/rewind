@@ -42,6 +42,9 @@ class GameRegistry {
     _supervisor ??= Timer.periodic(interval, (_) => _tick());
   }
 
+  /// One supervision pass — used by tests and by [startSupervising].
+  Future<void> tickNow() => _tick();
+
   Future<void> _tick() async {
     for (final s in _sources) {
       final running = await s.isGameRunning();

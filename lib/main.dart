@@ -7,6 +7,7 @@ import 'src/clip/storage_manager.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_registry.dart';
 import 'src/obs/rewind_obs_ffi.dart';
+import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
 
 void main() {
@@ -42,7 +43,7 @@ class _RewindAppState extends State<RewindApp> {
       storage: StorageManager(library),
       settings: settings,
       outDir: outDir,
-      obs: obs,
+      engine: obs == null ? null : RewindObsEngine(obs),
     )..start();
     // TODO: register the global hotkey (hotkey_manager) -> _coordinator.onHotkey()
   }

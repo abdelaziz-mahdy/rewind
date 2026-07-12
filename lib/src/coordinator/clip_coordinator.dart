@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
-import '../obs/rewind_obs_ffi.dart';
+import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
 
 /// Central brain: listens to auto-detected game activity + game events + the
@@ -16,12 +18,16 @@ class ClipCoordinator {
   final ClipLibrary library;
   final StorageManager storage;
   final AppSettings settings;
-  final RewindObs? obs; // null in dev mode (shim not built)
+  final CaptureEngine? engine; // null in dev mode (shim not built)
   final String outDir;
 
-  /// The most-recently-activated game, used to attribute manual hotkey clips
-  /// and to pick the buffer length. Null when no game is detected.
-  String? _activeGameId;
+  /// The most-recently-activated game, used to attribute manual hotkey clips,
+  /// pick the buffer length, and let the UI show what's being captured. Null
+  /// when no game is detected.
+  final ValueNotifier<String?> activeGame = ValueNotifier(null);
+
+  /// Whether a real capture backend is wired up (false in dev mode).
+  bool get captureAvailable => engine != null;
 
   ClipCoordinator({
     required this.registry,
@@ -29,19 +35,19 @@ class ClipCoordinator {
     required this.storage,
     required this.settings,
     required this.outDir,
-    this.obs,
+    this.engine,
   });
 
-  void start() {
+  void start({bool supervise = true}) {
     // Auto-detection: when a game becomes active, apply its buffer length.
     registry.activity.listen((a) {
       if (a.active) {
-        _activeGameId = a.gameId;
+        activeGame.value = a.gameId;
         final cfg = settings.configFor(a.gameId);
-        obs?.setBufferSeconds(cfg.bufferSeconds);
-      } else if (_activeGameId == a.gameId) {
-        _activeGameId = null;
-        obs?.setBufferSeconds(settings.defaultBufferSeconds);
+        engine?.setBufferSeconds(cfg.bufferSeconds);
+      } else if (activeGame.value == a.gameId) {
+        activeGame.value = null;
+        engine?.setBufferSeconds(settings.defaultBufferSeconds);
       }
     });
 
@@ -51,18 +57,18 @@ class ClipCoordinator {
       if (cfg.autoClip && cfg.enabledEvents.contains(e.kind)) _save(e);
     });
 
-    registry.startSupervising();
+    if (supervise) registry.startSupervising();
   }
 
   /// Manual hotkey entry point: store the last N seconds (per active game's
   /// buffer length, or the default) immediately.
-  void onHotkey() {
-    final gameId = _activeGameId ?? 'desktop';
-    _save(GameEvent(gameId: gameId, kind: GameEventKind.manual));
+  Future<void> onHotkey() {
+    final gameId = activeGame.value ?? 'desktop';
+    return _save(GameEvent(gameId: gameId, kind: GameEventKind.manual));
   }
 
   Future<void> _save(GameEvent e) async {
-    final path = obs?.saveClip(outDir);
+    final path = engine?.saveClip(outDir);
     if (path == null) return; // dev mode or save failed
 
     final size = await _sizeOf(path);
