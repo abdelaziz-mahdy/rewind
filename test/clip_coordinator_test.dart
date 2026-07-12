@@ -129,4 +129,17 @@ void main() {
     await coordinator.onHotkey();
     expect(library.all, isEmpty);
   });
+
+  test('successful save persists the library index', () async {
+    await coordinator.onHotkey();
+    expect(File('${tmp.path}/clips.json').existsSync(), isTrue);
+  });
+
+  test('a reported path with no file on disk (stub mode) is not indexed',
+      () async {
+    engine.writeFile = false;
+    await coordinator.onHotkey();
+    expect(library.all, isEmpty);
+    expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
+  });
 }

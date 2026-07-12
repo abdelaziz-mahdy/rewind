@@ -5,6 +5,10 @@ import 'package:rewind/src/obs/capture_engine.dart';
 class FakeCaptureEngine implements CaptureEngine {
   final List<String> calls = [];
   bool failSave = false;
+
+  /// When false, [saveClip] reports a path but writes no file — mimics the
+  /// C shim's stub mode, which the coordinator must not index.
+  bool writeFile = true;
   int? lastBufferSeconds;
   int _n = 0;
 
@@ -38,9 +42,12 @@ class FakeCaptureEngine implements CaptureEngine {
   String? saveClip(String outDir) {
     calls.add('save');
     if (failSave) return null;
-    final f = File(p.join(outDir, 'clip-${_n++}.mp4'))
-      ..createSync(recursive: true)
-      ..writeAsBytesSync(List.filled(16, 0));
+    final f = File(p.join(outDir, 'clip-${_n++}.mp4'));
+    if (writeFile) {
+      f
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(List.filled(16, 0));
+    }
     return f.path;
   }
 

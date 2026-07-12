@@ -68,25 +68,28 @@ class ClipCoordinator {
   }
 
   Future<void> _save(GameEvent e) async {
-    final path = engine?.saveClip(outDir);
-    if (path == null) return; // dev mode or save failed
-
-    final size = await _sizeOf(path);
-    library.add(Clip(
-      path: path,
-      gameId: e.gameId,
-      event: e.kind,
-      createdAt: e.time,
-      sizeBytes: size,
-    ));
-    await storage.enforce();
-  }
-
-  Future<int> _sizeOf(String path) async {
     try {
-      return await File(path).length();
-    } catch (_) {
-      return 0;
+      final path = engine?.saveClip(outDir);
+      if (path == null) return; // dev mode or save failed
+
+      final file = File(path);
+      // The stub shim reports a path without writing anything; never index
+      // a clip whose file doesn't exist.
+      if (!await file.exists()) return;
+
+      library.add(Clip(
+        path: path,
+        gameId: e.gameId,
+        event: e.kind,
+        createdAt: e.time,
+        sizeBytes: await file.length(),
+      ));
+      await library.save();
+      await storage.enforce();
+    } catch (err) {
+      // Auto-clip saves are fire-and-forget from the event stream; a failed
+      // save (disk full, index write error) must never crash the app.
+      debugPrint('Rewind: clip save failed: $err');
     }
   }
 }
