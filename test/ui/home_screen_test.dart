@@ -5,6 +5,7 @@ import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
+import 'package:rewind/src/events/game_catalog.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/settings/app_settings.dart';
@@ -34,14 +35,20 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  HomeScreen home({String? error, ValueNotifier<bool>? bufferActive}) =>
+  HomeScreen home({
+    String? error,
+    ValueNotifier<bool>? bufferActive,
+    VoidCallback? onOpenClipsFolder,
+  }) =>
       HomeScreen(
           coordinator: coordinator,
           library: library,
           captureError: error,
           bufferActive: bufferActive,
           hotkeyLabel: 'Alt+F10',
-          onOpenSettings: () {});
+          onOpenSettings: () {},
+          onSettingsChanged: (_) async {},
+          onOpenClipsFolder: onOpenClipsFolder ?? () {});
 
   testWidgets('empty state shows hotkey hint', (t) async {
     await t.pumpWidget(_app(home()));
@@ -113,7 +120,23 @@ void main() {
     expect(find.text('Desktop'), findsOneWidget);
     coordinator.activeGame.value = 'league_of_legends';
     await t.pump();
-    expect(find.text('league_of_legends'), findsOneWidget);
+    expect(find.text('League of Legends'), findsOneWidget);
+  });
+
+  testWidgets('the folder AppBar button invokes onOpenClipsFolder', (t) async {
+    var opened = false;
+    await t.pumpWidget(_app(home(onOpenClipsFolder: () => opened = true)));
+    await t.tap(find.widgetWithIcon(IconButton, Icons.folder_open_outlined));
+    expect(opened, isTrue);
+  });
+
+  testWidgets(
+      'the empty-state "Open clips folder" button invokes the '
+      'callback', (t) async {
+    var opened = false;
+    await t.pumpWidget(_app(home(onOpenClipsFolder: () => opened = true)));
+    await t.tap(find.widgetWithText(TextButton, 'Open clips folder'));
+    expect(opened, isTrue);
   });
 
   testWidgets('a save error shows a SnackBar with the message', (t) async {
@@ -182,10 +205,20 @@ void main() {
     Finder countIn(Finder chipFinder, int count) =>
         find.descendant(of: chipFinder, matching: find.text('$count'));
 
-    testWidgets('absent with a single gameId', (t) async {
+    testWidgets('absent with only desktop clips', (t) async {
       addDesktopClip('a', DateTime(2026, 7, 1));
       await t.pumpWidget(_app(home()));
       expect(find.byType(GameFilterRail), findsNothing);
+    });
+
+    testWidgets(
+        'visible with a single non-desktop game (All + that game), not just '
+        '2+ distinct gameIds', (t) async {
+      addLeagueClip('a', DateTime(2026, 7, 1));
+      await t.pumpWidget(_app(home()));
+      expect(find.byType(GameFilterRail), findsOneWidget);
+      expect(chip('all'), findsOneWidget);
+      expect(chip('league_of_legends'), findsOneWidget);
     });
 
     testWidgets('chips appear when 2+ gameIds exist with correct counts',
@@ -252,17 +285,22 @@ void main() {
     });
   });
 
-  group('prettifyGameId', () {
+  group('displayNameFor', () {
     test('known id gets its curated display name', () {
-      expect(prettifyGameId('league_of_legends'), 'League of Legends');
+      expect(displayNameFor('league_of_legends'), 'League of Legends');
     });
 
-    test('unknown single-word id is title-cased', () {
-      expect(prettifyGameId('desktop'), 'Desktop');
+    test('null or "desktop" resolves to Desktop', () {
+      expect(displayNameFor(null), 'Desktop');
+      expect(displayNameFor('desktop'), 'Desktop');
+    });
+
+    test('a catalog entry resolves to its curated display name', () {
+      expect(displayNameFor('app:cs2'), 'Counter-Strike 2');
     });
 
     test('unknown multi-word id is title-cased on underscores', () {
-      expect(prettifyGameId('counter_strike_2'), 'Counter Strike 2');
+      expect(displayNameFor('counter_strike_2'), 'Counter Strike 2');
     });
   });
 }

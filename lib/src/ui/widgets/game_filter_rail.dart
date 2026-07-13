@@ -1,22 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../clip/clip.dart';
+import '../../events/game_catalog.dart';
 import '../theme.dart';
-
-/// Turns a raw gameId ("league_of_legends", "desktop") into a friendly
-/// label. A small known-name map fixes cases naive title-casing gets wrong
-/// (the lowercase "of" in League of Legends); anything else is title-cased
-/// on underscores.
-String prettifyGameId(String gameId) {
-  const known = {'league_of_legends': 'League of Legends'};
-  final name = known[gameId];
-  if (name != null) return name;
-  return gameId
-      .split('_')
-      .where((word) => word.isNotEmpty)
-      .map((word) => word[0].toUpperCase() + word.substring(1))
-      .join(' ');
-}
 
 /// Horizontal filter-chip rail for narrowing the library to one app/game.
 /// "All" always leads, followed by one chip per distinct [Clip.gameId]
@@ -45,7 +31,7 @@ class GameFilterRail extends StatelessWidget {
     }
 
     final ids = counts.keys.toList()
-      ..sort((a, b) => prettifyGameId(a).compareTo(prettifyGameId(b)));
+      ..sort((a, b) => displayNameFor(a).compareTo(displayNameFor(b)));
 
     return SizedBox(
       height: 40,
@@ -64,7 +50,7 @@ class GameFilterRail extends StatelessWidget {
             const SizedBox(width: 8),
             _FilterChip(
               key: ValueKey('gameFilterChip:$id'),
-              label: prettifyGameId(id),
+              label: displayNameFor(id),
               count: counts[id]!,
               selected: selected == id,
               onTap: () => onSelected(id),

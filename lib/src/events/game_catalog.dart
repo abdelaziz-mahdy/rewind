@@ -115,3 +115,24 @@ const List<CatalogGame> popularGamesCatalog = [
     processMatch: 'GenshinImpact',
   ),
 ];
+
+/// Human-friendly label for a gameId, used everywhere a gameId is shown to
+/// the user (status strip, clip rows, the filter rail, per-game settings).
+/// Resolution order: a [popularGamesCatalog] hit (covers process-detected
+/// `app:<slug>` ids) first, then the null/`'desktop'` sentinel, then generic
+/// title-casing on underscores — with a small known-name map fixing cases
+/// naive title-casing gets wrong (the lowercase "of" in League of Legends).
+String displayNameFor(String? gameId) {
+  if (gameId == null || gameId == 'desktop') return 'Desktop';
+  for (final game in popularGamesCatalog) {
+    if (game.gameId == gameId) return game.displayName;
+  }
+  const known = {'league_of_legends': 'League of Legends'};
+  final name = known[gameId];
+  if (name != null) return name;
+  return gameId
+      .split('_')
+      .where((word) => word.isNotEmpty)
+      .map((word) => word[0].toUpperCase() + word.substring(1))
+      .join(' ');
+}

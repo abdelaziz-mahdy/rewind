@@ -4,12 +4,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../coordinator/clip_coordinator.dart';
+import '../../events/game_catalog.dart';
+import '../../obs/app_info.dart';
+import '../../obs/display_info.dart';
+import '../../settings/app_settings.dart';
 import '../theme.dart';
 
 /// Top-of-home hero card: buffering indicator (large numerals), active-game
-/// chip, the "Save clip" action, and (when capture failed to start) an error
-/// banner. This is the visual anchor of the whole app — the one place a
-/// glance should tell you "is it recording, and what."
+/// chip, the capture-source chip, the "Save clip" action, and (when capture
+/// failed to start) an error banner. This is the visual anchor of the whole
+/// app — the one place a glance should tell you "is it recording, what game,
+/// and from where."
 class StatusStrip extends StatelessWidget {
   final ClipCoordinator coordinator;
   final String? captureError;
@@ -17,10 +22,29 @@ class StatusStrip extends StatelessWidget {
   /// Live buffer state; null means "running iff no capture error".
   final ValueListenable<bool>? bufferActive;
 
+  /// Connected displays the capture-source chip can switch between. The chip
+  /// is hidden entirely when this is empty (e.g. capture failed to start).
+  final List<DisplayInfo> displays;
+
+  /// Applications the capture-source chip can switch to, alongside displays.
+  final List<AppInfo> capturableApps;
+
+  /// Called (mirroring [coordinator.settings], mutated in place) whenever the
+  /// capture-source chip or the buffer quick-set changes a setting.
+  final Future<void> Function(AppSettings) onSettingsChanged;
+
+  /// Opens the full Settings screen — used by the buffer quick-set's
+  /// "Custom…" entry, which needs the free-text field Settings has.
+  final VoidCallback onOpenSettings;
+
   const StatusStrip({
     required this.coordinator,
     this.captureError,
     this.bufferActive,
+    this.displays = const [],
+    this.capturableApps = const [],
+    required this.onSettingsChanged,
+    required this.onOpenSettings,
     super.key,
   });
 
@@ -50,11 +74,15 @@ class StatusStrip extends StatelessWidget {
       Flexible(
         child: ValueListenableBuilder<String?>(
           valueListenable: coordinator.activeGame,
-          builder: (context, gameId, _) => Text(
-            'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
+          builder: (context, gameId, _) => _BufferQuickSet(
+            label:
+                'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
             style: theme.textTheme.heroNumeral,
+            onPick: (seconds) {
+              coordinator.settings.defaultBufferSeconds = seconds;
+              onSettingsChanged(coordinator.settings);
+            },
+            onOpenSettings: onOpenSettings,
           ),
         ),
       ),
@@ -97,8 +125,17 @@ class StatusStrip extends StatelessWidget {
                 ValueListenableBuilder<String?>(
                   valueListenable: coordinator.activeGame,
                   builder: (context, gameId, _) =>
-                      _GameChip(label: gameId ?? 'Desktop'),
+                      _GameChip(label: displayNameFor(gameId)),
                 ),
+                if (displays.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _SourceChip(
+                    displays: displays,
+                    capturableApps: capturableApps,
+                    settings: coordinator.settings,
+                    onSettingsChanged: onSettingsChanged,
+                  ),
+                ],
                 const SizedBox(width: 16),
                 FilledButton.icon(
                   onPressed: captureError == null
@@ -111,6 +148,51 @@ class StatusStrip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Wraps the "Buffering · N s" readout so tapping it offers a quick way to
+/// change the default buffer length without a trip to Settings — 15/30/60,
+/// or "Custom…" which hands off to the full Settings screen for the
+/// free-text field.
+class _BufferQuickSet extends StatelessWidget {
+  final String label;
+  final TextStyle? style;
+  final ValueChanged<int> onPick;
+  final VoidCallback onOpenSettings;
+
+  const _BufferQuickSet({
+    required this.label,
+    required this.style,
+    required this.onPick,
+    required this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<Object>(
+      tooltip: '',
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        if (value == 'custom') {
+          onOpenSettings();
+          return;
+        }
+        onPick(value as int);
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 15, child: Text('15 s')),
+        PopupMenuItem(value: 30, child: Text('30 s')),
+        PopupMenuItem(value: 60, child: Text('60 s')),
+        PopupMenuItem(value: 'custom', child: Text('Custom…')),
+      ],
+      child: Text(
+        label,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        style: style,
       ),
     );
   }
@@ -155,10 +237,141 @@ class _GameChip extends StatelessWidget {
   }
 }
 
+/// Pill showing the current capture source (a whole display, or a single
+/// app) — mirrors [_GameChip]'s shape. Tapping it opens a single unified
+/// menu (displays, then a divider, then apps) to switch targets; the choice
+/// is written straight through [onSettingsChanged] via the same path
+/// Settings uses. This is the direct answer to "where is my recording coming
+/// from" without a trip to Settings.
+class _SourceChip extends StatelessWidget {
+  final List<DisplayInfo> displays;
+  final List<AppInfo> capturableApps;
+  final AppSettings settings;
+  final Future<void> Function(AppSettings) onSettingsChanged;
+
+  const _SourceChip({
+    required this.displays,
+    required this.capturableApps,
+    required this.settings,
+    required this.onSettingsChanged,
+  });
+
+  /// Index into [displays] the chip should describe: the explicit saved
+  /// choice if it still identifies a connected display, else whichever
+  /// display is main, else the first one.
+  int _displayIndex() {
+    final saved = settings.captureDisplayUuid;
+    if (saved != null) {
+      final i = displays.indexWhere((d) => d.uuid == saved);
+      if (i != -1) return i;
+    }
+    final mainIdx = displays.indexWhere((d) => d.isMain);
+    return mainIdx != -1 ? mainIdx : 0;
+  }
+
+  String get _label {
+    final appId = settings.captureAppBundleId;
+    if (appId != null) {
+      final match = capturableApps.where((a) => a.bundleId == appId);
+      return match.isNotEmpty ? match.first.name : appId;
+    }
+    if (displays.isEmpty) return 'Display 1';
+    return 'Display ${_displayIndex() + 1}';
+  }
+
+  static String _displayMenuLabel(int index, DisplayInfo d) =>
+      'Entire Display ${index + 1} — ${d.width}×${d.height}'
+      '${d.isMain ? ' (Main)' : ''}';
+
+  void _pickDisplay(DisplayInfo d) {
+    settings.captureDisplayUuid = d.uuid;
+    settings.captureAppBundleId = null;
+    onSettingsChanged(settings);
+  }
+
+  void _pickApp(AppInfo a) {
+    settings.captureAppBundleId = a.bundleId;
+    onSettingsChanged(settings);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final icon = settings.captureAppBundleId != null
+        ? Icons.apps_outlined
+        : Icons.desktop_windows_outlined;
+    return PopupMenuButton<Object>(
+      tooltip: '',
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        if (value is DisplayInfo) {
+          _pickDisplay(value);
+        } else if (value is AppInfo) {
+          _pickApp(value);
+        }
+      },
+      itemBuilder: (context) => [
+        for (var i = 0; i < displays.length; i++)
+          PopupMenuItem(
+            value: displays[i],
+            child: Text(_displayMenuLabel(i, displays[i])),
+          ),
+        if (displays.isNotEmpty && capturableApps.isNotEmpty)
+          const PopupMenuDivider(),
+        for (final app in capturableApps)
+          PopupMenuItem(value: app, child: Text(app.name)),
+      ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 200),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.fromBorderSide(hairlineBorder()),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Capturing: $_label',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.labelMedium,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(Icons.expand_more,
+                  size: 16, color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ErrorBanner extends StatelessWidget {
   final String message;
 
   const _ErrorBanner({required this.message});
+
+  bool get _isPermissionError =>
+      Platform.isMacOS && message.toLowerCase().contains('permission');
+
+  static Future<void> _openScreenRecordingSettings() async {
+    try {
+      await Process.run('open', [
+        'x-apple.systempreferences:com.apple.preference.security'
+            '?Privacy_ScreenCapture'
+      ]);
+    } catch (_) {
+      // Best-effort: no OS handler available is not fatal.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -183,7 +396,24 @@ class _ErrorBanner extends StatelessWidget {
         children: [
           const Icon(Icons.warning_amber_rounded, color: amber),
           const SizedBox(width: 8),
-          Expanded(child: Text(text)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(text),
+                if (_isPermissionError) ...[
+                  const SizedBox(height: 8),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton(
+                      onPressed: _openScreenRecordingSettings,
+                      child: Text('Open Screen Recording Settings'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );

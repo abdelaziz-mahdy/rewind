@@ -5,6 +5,9 @@ import 'package:talker_flutter/talker_flutter.dart';
 import '../clip/clip_library.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../log/log.dart';
+import '../obs/app_info.dart';
+import '../obs/display_info.dart';
+import '../settings/app_settings.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/game_filter_rail.dart';
 import 'widgets/status_strip.dart';
@@ -21,6 +24,21 @@ class HomeScreen extends StatefulWidget {
   final String hotkeyLabel;
   final VoidCallback onOpenSettings;
 
+  /// Connected displays / capturable apps, forwarded to the status strip's
+  /// capture-source chip (see [StatusStrip]). Defaults to empty so existing
+  /// callers/tests that don't care about capture-source switching don't need
+  /// to wire it.
+  final List<DisplayInfo> displays;
+  final List<AppInfo> capturableApps;
+
+  /// Persists a settings change (mutated in place) — used by the
+  /// capture-source chip and the buffer quick-set.
+  final Future<void> Function(AppSettings) onSettingsChanged;
+
+  /// Reveals the clips folder in the OS file manager — wired to the AppBar
+  /// folder button and the empty-state's text button.
+  final VoidCallback onOpenClipsFolder;
+
   const HomeScreen({
     required this.coordinator,
     required this.library,
@@ -28,6 +46,10 @@ class HomeScreen extends StatefulWidget {
     this.bufferActive,
     required this.hotkeyLabel,
     required this.onOpenSettings,
+    this.displays = const [],
+    this.capturableApps = const [],
+    required this.onSettingsChanged,
+    required this.onOpenClipsFolder,
     super.key,
   });
 
@@ -90,6 +112,11 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Rewind'),
         actions: [
           IconButton(
+            tooltip: 'Open clips folder',
+            icon: const Icon(Icons.folder_open_outlined),
+            onPressed: widget.onOpenClipsFolder,
+          ),
+          IconButton(
             tooltip: 'Logs',
             icon: const Icon(Icons.receipt_long_outlined),
             onPressed: _openLogs,
@@ -107,6 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
             coordinator: widget.coordinator,
             captureError: widget.captureError,
             bufferActive: widget.bufferActive,
+            displays: widget.displays,
+            capturableApps: widget.capturableApps,
+            onSettingsChanged: widget.onSettingsChanged,
+            onOpenSettings: widget.onOpenSettings,
           ),
           const Divider(height: 1),
           Expanded(
@@ -115,7 +146,10 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (context, _) {
                 final all = widget.library.all;
                 if (all.isEmpty) {
-                  return _EmptyLibrary(hotkeyLabel: widget.hotkeyLabel);
+                  return _EmptyLibrary(
+                    hotkeyLabel: widget.hotkeyLabel,
+                    onOpenClipsFolder: widget.onOpenClipsFolder,
+                  );
                 }
                 final filterId = _filterGameId;
                 final visible = filterId == null
@@ -123,14 +157,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     : all.where((c) => c.gameId == filterId).toList();
                 final clips = List.of(visible)
                   ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                // Filtering a single-game library has nothing to offer, so
-                // the rail is omitted entirely (not just visually hidden)
-                // once fewer than two distinct gameIds remain.
-                final hasMultipleGames =
-                    all.map((c) => c.gameId).toSet().length > 1;
+                // The rail is omitted entirely (not just visually hidden)
+                // when it has nothing to offer: a library of nothing but
+                // desktop clips has no game to filter by.
+                final hasNonDesktopGame = all.any((c) => c.gameId != 'desktop');
                 return Column(
                   children: [
-                    if (hasMultipleGames)
+                    if (hasNonDesktopGame)
                       GameFilterRail(
                         clips: all,
                         selected: _filterGameId,
@@ -138,7 +171,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     Expanded(
                       child: clips.isEmpty
-                          ? _EmptyLibrary(hotkeyLabel: widget.hotkeyLabel)
+                          ? _EmptyLibrary(
+                              hotkeyLabel: widget.hotkeyLabel,
+                              onOpenClipsFolder: widget.onOpenClipsFolder,
+                            )
                           : ListView.builder(
                               itemCount: clips.length,
                               itemBuilder: (context, i) => ClipTile(
@@ -158,8 +194,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _EmptyLibrary extends StatelessWidget {
   final String hotkeyLabel;
+  final VoidCallback onOpenClipsFolder;
 
-  const _EmptyLibrary({required this.hotkeyLabel});
+  const _EmptyLibrary({
+    required this.hotkeyLabel,
+    required this.onOpenClipsFolder,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +223,12 @@ class _EmptyLibrary extends StatelessWidget {
               Text(' to save your last moment',
                   style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
             ],
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: onOpenClipsFolder,
+            icon: const Icon(Icons.folder_open_outlined, size: 18),
+            label: const Text('Open clips folder'),
           ),
         ],
       ),

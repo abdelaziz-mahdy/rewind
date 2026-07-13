@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../events/game_catalog.dart';
 import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
@@ -269,7 +270,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          Expanded(child: Text(cfg.gameId)),
+                          Expanded(child: Text(displayNameFor(cfg.gameId))),
                           SizedBox(
                             width: 100,
                             child: TextField(

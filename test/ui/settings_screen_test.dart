@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
+import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 
@@ -307,5 +308,20 @@ void main() {
 
     expect(find.text('Entire display'), findsOneWidget);
     expect(settings.captureAppBundleId, 'com.example.stale');
+  });
+
+  testWidgets(
+      'a per-game row shows the friendly display name, not the '
+      'raw gameId', (t) async {
+    final settings = AppSettings()
+      ..setConfig(GameConfig(gameId: 'app:cs2', bufferSeconds: 45));
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: settings,
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    expect(find.text('Counter-Strike 2'), findsOneWidget);
+    expect(find.text('app:cs2'), findsNothing);
   });
 }

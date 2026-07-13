@@ -25,6 +25,22 @@ import 'src/ui/home_screen.dart';
 import 'src/ui/settings_screen.dart';
 import 'src/ui/theme.dart';
 
+/// Reveals the clips folder in the OS file manager — shared by the Home
+/// AppBar/empty-state buttons and the tray's "Open clips folder" item.
+/// Best-effort: no OS handler available (or an unsupported platform) is not
+/// fatal, mirroring `ClipTile`'s own `_open`/`_reveal` helpers.
+Future<void> _openClipsFolder(String path) async {
+  try {
+    if (Platform.isMacOS) {
+      await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      await Process.run('explorer', [path]);
+    }
+  } catch (_) {
+    // Best-effort: no OS handler available is not fatal.
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -140,6 +156,7 @@ Future<void> main() async {
       await hotkeys.dispose();
       exit(0);
     },
+    onOpenClips: () => _openClipsFolder(clipsDir.path),
   );
   // Seed the tray's toggle label from the real startup state — its internal
   // default assumes an active buffer, which is wrong when capture failed.
@@ -153,6 +170,7 @@ Future<void> main() async {
     bufferActive: bufferActive,
     displays: displays,
     capturableApps: capturableApps,
+    onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -209,6 +227,7 @@ class RewindApp extends StatelessWidget {
   final List<AppInfo> capturableApps;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final Future<void> Function(bool recording) onHotkeyRecording;
+  final VoidCallback onOpenClipsFolder;
 
   const RewindApp({
     required this.coordinator,
@@ -220,6 +239,7 @@ class RewindApp extends StatelessWidget {
     required this.capturableApps,
     required this.onSettingsChanged,
     required this.onHotkeyRecording,
+    required this.onOpenClipsFolder,
     super.key,
   });
 
@@ -235,6 +255,10 @@ class RewindApp extends StatelessWidget {
           captureError: captureError,
           bufferActive: bufferActive,
           hotkeyLabel: settings.hotkey,
+          displays: displays,
+          capturableApps: capturableApps,
+          onSettingsChanged: onSettingsChanged,
+          onOpenClipsFolder: onOpenClipsFolder,
           onOpenSettings: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => SettingsScreen(

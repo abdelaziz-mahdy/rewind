@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
+import '../../events/game_catalog.dart';
 import '../../events/game_event.dart';
 import '../player_screen.dart';
 import '../theme.dart';
@@ -135,7 +136,7 @@ class _ClipTileState extends State<ClipTile> {
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    clip.gameId,
+                    displayNameFor(clip.gameId),
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(fontWeight: FontWeight.w600),
