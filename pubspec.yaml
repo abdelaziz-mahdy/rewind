@@ -22,6 +22,9 @@ dependencies:
   code_assets: ^1.2.1
   native_toolchain_c: ^0.19.2
   talker_flutter: ^5.1.17
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/clip/clip_library.dart';
@@ -24,6 +25,7 @@ import 'src/ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
 
   final store = SettingsStore(await getApplicationSupportDirectory());
   final settings = await store.load();
@@ -144,6 +146,32 @@ Future<void> main() async {
         talker.info('Hotkey "${s.hotkey}" registered');
       }
     },
+    onHotkeyRecording: (recording) async {
+      if (recording) {
+        // Suspend the live global hotkey while the recorder is listening:
+        // otherwise pressing the currently-bound combo mid-record both
+        // fires a spurious save and, since the OS owns it at system scope,
+        // may never reach the recorder's key handler at all — making it
+        // impossible to re-record the hotkey that's already in use.
+        await hotkeys.dispose();
+        return;
+      }
+      // Recording just ended — re-bind. Two cases share this branch:
+      //  - Cancelled (Escape / click away / navigated off Settings): binds
+      //    the still-unchanged `settings.hotkey`, restoring what was live
+      //    before recording started.
+      //  - A combo was just captured: onSettingsChanged above already
+      //    mutated `settings.hotkey` and re-bound it before this callback
+      //    fires (see SettingsScreen.onHotkeyRecording doc), so this call
+      //    re-binds the *same new* value — a redundant but harmless extra
+      //    unregister+register, not a stale rebind, since it reads
+      //    `settings.hotkey` fresh rather than a captured copy.
+      if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
+        talker.warning('Could not re-register hotkey "${settings.hotkey}"');
+      } else {
+        talker.info('Hotkey "${settings.hotkey}" re-registered');
+      }
+    },
   ));
 }
 
@@ -155,6 +183,7 @@ class RewindApp extends StatelessWidget {
   final ValueNotifier<bool> bufferActive;
   final List<DisplayInfo> displays;
   final Future<void> Function(AppSettings) onSettingsChanged;
+  final Future<void> Function(bool recording) onHotkeyRecording;
 
   const RewindApp({
     required this.coordinator,
@@ -164,6 +193,7 @@ class RewindApp extends StatelessWidget {
     required this.bufferActive,
     required this.displays,
     required this.onSettingsChanged,
+    required this.onHotkeyRecording,
     super.key,
   });
 
@@ -185,6 +215,7 @@ class RewindApp extends StatelessWidget {
                 settings: settings,
                 onChanged: onSettingsChanged,
                 displays: displays,
+                onHotkeyRecording: onHotkeyRecording,
               ),
             ),
           ),

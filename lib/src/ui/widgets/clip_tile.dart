@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
 import '../../events/game_event.dart';
+import '../player_screen.dart';
 import '../theme.dart';
 
 /// "pentaKill" -> "PENTA KILL".
@@ -61,12 +62,13 @@ Color eventColor(BuildContext context, GameEventKind kind) {
 Color _rotateAccent(Color accent, double hue) =>
     HSLColor.fromColor(accent).withHue(hue % 360).toColor();
 
-enum _ClipAction { reveal, delete }
+enum _ClipAction { openDefault, reveal, delete }
 
 /// One row in the clip library: thumbnail placeholder, event badge + game
 /// name, relative age + size, and a menu for reveal/delete. Tap opens the
-/// clip with the OS default player. The trailing menu fades in on hover so
-/// the row stays clean at rest.
+/// clip in the in-app [PlayerScreen]; the overflow menu still offers
+/// launching the OS default player for anyone who wants an external app.
+/// The trailing menu fades in on hover so the row stays clean at rest.
 class ClipTile extends StatefulWidget {
   final Clip clip;
   final ClipLibrary library;
@@ -102,7 +104,7 @@ class _ClipTileState extends State<ClipTile> {
         child: Material(
           type: MaterialType.transparency,
           child: ListTile(
-            onTap: () => _open(clip.path),
+            onTap: () => _openInApp(context, clip),
             leading: Container(
               width: 64,
               height: 44,
@@ -152,6 +154,9 @@ class _ClipTileState extends State<ClipTile> {
               child: PopupMenuButton<_ClipAction>(
                 onSelected: (action) => _onAction(context, action),
                 itemBuilder: (context) => [
+                  const PopupMenuItem(
+                      value: _ClipAction.openDefault,
+                      child: Text('Open in default player')),
                   PopupMenuItem(
                     value: _ClipAction.reveal,
                     child: Text(Platform.isMacOS
@@ -171,6 +176,8 @@ class _ClipTileState extends State<ClipTile> {
 
   Future<void> _onAction(BuildContext context, _ClipAction action) async {
     switch (action) {
+      case _ClipAction.openDefault:
+        await _open(widget.clip.path);
       case _ClipAction.reveal:
         await _reveal(widget.clip.path);
       case _ClipAction.delete:
@@ -193,6 +200,13 @@ class _ClipTileState extends State<ClipTile> {
         );
         if (confirmed == true) await widget.library.deleteClip(widget.clip);
     }
+  }
+
+  static void _openInApp(BuildContext context, Clip clip) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: playerScreenRouteName),
+      builder: (_) => PlayerScreen(path: clip.path, title: clip.gameId),
+    ));
   }
 
   static Future<void> _open(String path) async {
