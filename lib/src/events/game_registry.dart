@@ -3,13 +3,23 @@ import 'dart:async';
 import 'game_event.dart';
 import 'game_event_source.dart';
 import 'league_event_watcher.dart';
+import 'process_watcher_source.dart';
 
 /// A game becoming active or inactive (auto-detection result).
 class GameActivity {
   final String gameId;
   final String displayName;
   final bool active;
-  GameActivity(this.gameId, this.displayName, this.active);
+
+  /// The OS process-name substring that identified this game, when the
+  /// source is a [ProcessWatcherSource] (populated in [GameRegistry._tick]).
+  /// Null for vendor-API sources like League, which have no OS process to
+  /// match — the coordinator uses this to find the game's running
+  /// app/window for auto-switching the capture target; see
+  /// `ClipCoordinator`. Not set on deactivation (not needed for reverts).
+  final String? processMatch;
+
+  GameActivity(this.gameId, this.displayName, this.active, {this.processMatch});
 }
 
 /// Holds all known game integrations and supervises which are active.
@@ -52,7 +62,12 @@ class GameRegistry {
         _active.add(s.gameId);
         await s.start();
         s.events().listen(_merged.add);
-        _activity.add(GameActivity(s.gameId, s.displayName, true));
+        _activity.add(GameActivity(
+          s.gameId,
+          s.displayName,
+          true,
+          processMatch: s is ProcessWatcherSource ? s.processMatch : null,
+        ));
       } else if (!running && _active.contains(s.gameId)) {
         _active.remove(s.gameId);
         await s.stop();

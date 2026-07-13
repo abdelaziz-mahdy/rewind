@@ -8,6 +8,7 @@ import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
 import '../log/log.dart';
+import '../obs/app_info.dart';
 import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
 
@@ -35,6 +36,12 @@ class ClipCoordinator {
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
 
+  /// The game whose capture target we auto-switched to (see
+  /// [_autoSwitchCaptureFor]), so [_revertAutoSwitchFor] only reverts when
+  /// THAT specific game deactivates — not some unrelated game exiting while
+  /// the switched-to game is still running.
+  String? _autoSwitchedGameId;
+
   ClipCoordinator({
     required this.registry,
     required this.library,
@@ -52,15 +59,13 @@ class ClipCoordinator {
         talker.info('Detected ${a.displayName} running');
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);
-        // Future hook: auto-switching the capture target (display -> this
-        // game's window/app) on detection is a deliberate non-goal here —
-        // no design exists yet for how that should interact with a
-        // manually-chosen `settings.captureAppBundleId` (whose app may be
-        // unrelated to the detected game, e.g. a Discord overlay capture).
-        // This is the place a future auto-attach feature would hook in.
-      } else if (activeGame.value == a.gameId) {
-        activeGame.value = null;
-        engine?.setBufferSeconds(settings.defaultBufferSeconds);
+        _autoSwitchCaptureFor(a);
+      } else {
+        if (activeGame.value == a.gameId) {
+          activeGame.value = null;
+          engine?.setBufferSeconds(settings.defaultBufferSeconds);
+        }
+        _revertAutoSwitchFor(a);
       }
     });
 
@@ -71,6 +76,56 @@ class ClipCoordinator {
     });
 
     if (supervise) registry.startSupervising();
+  }
+
+  /// On a game activation, temporarily point the capture target at that
+  /// game's running app/window — a "follow the game" convenience that does
+  /// NOT persist to [AppSettings.captureAppBundleId] (the user's manually
+  /// chosen capture target, which may be unrelated, e.g. a Discord overlay
+  /// capture). Reverted by [_revertAutoSwitchFor] when the game exits.
+  ///
+  /// No-ops when: there's no capture backend (dev mode), the setting is
+  /// off, the game has no [GameActivity.processMatch] (vendor-API sources
+  /// like League have no OS process to match against a window), or no
+  /// currently-capturable app matches yet (e.g. the game's window hasn't
+  /// appeared yet — no retry loop in this round, a future refinement).
+  void _autoSwitchCaptureFor(GameActivity a) {
+    final capture = engine;
+    final processMatch = a.processMatch;
+    if (capture == null ||
+        !settings.autoSwitchCapture ||
+        processMatch == null) {
+      return;
+    }
+
+    final needle = processMatch.toLowerCase();
+    AppInfo? match;
+    for (final app in capture.listCapturableApps()) {
+      if (app.name.toLowerCase().contains(needle) ||
+          app.bundleId.toLowerCase().contains(needle)) {
+        match = app;
+        break;
+      }
+    }
+    if (match == null) {
+      talker
+          .info('Auto-switch: no running window matched ${a.displayName} yet');
+      return;
+    }
+
+    capture.setCaptureApp(match.bundleId);
+    _autoSwitchedGameId = a.gameId;
+    talker.info('Auto-switched capture to ${match.name}');
+  }
+
+  /// Reverts an auto-switch made by [_autoSwitchCaptureFor], but only when
+  /// the deactivating game [a] is the one we switched for — an unrelated
+  /// game exiting must not clobber the still-running game's capture target.
+  void _revertAutoSwitchFor(GameActivity a) {
+    if (_autoSwitchedGameId != a.gameId) return;
+    _autoSwitchedGameId = null;
+    engine?.setCaptureApp(settings.captureAppBundleId);
+    talker.info('Reverted capture after ${a.displayName} exited');
   }
 
   /// Manual hotkey entry point: store the last N seconds (per active game's

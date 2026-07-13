@@ -79,6 +79,23 @@ void main() {
     expect(loaded.configFor('app:cs2').processMatch, 'cs2');
   });
 
+  test('autoSwitchCapture defaults to true', () {
+    expect(AppSettings().autoSwitchCapture, isTrue);
+  });
+
+  test('autoSwitchCapture round-trips through toJson/fromJson', () {
+    final s = AppSettings(autoSwitchCapture: false);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.autoSwitchCapture, isFalse);
+  });
+
+  test('autoSwitchCapture round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(autoSwitchCapture: false));
+    final loaded = await store.load();
+    expect(loaded.autoSwitchCapture, isFalse);
+  });
+
   test('GameConfig.processMatch defaults to null when absent', () {
     final s = AppSettings()..setConfig(GameConfig(gameId: 'g'));
     final loaded = AppSettings.fromJson(s.toJson());

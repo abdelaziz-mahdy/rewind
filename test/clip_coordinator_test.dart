@@ -6,15 +6,25 @@ import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
+import 'package:rewind/src/events/process_watcher_source.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'fakes/fake_capture_engine.dart';
 import 'fakes/fake_game_source.dart';
+import 'fakes/fake_process_lister.dart';
 
 void main() {
   late Directory tmp;
   late FakeCaptureEngine engine;
   late FakeGameSource league;
+  // Matches FakeCaptureEngine's "Stub App One" (bundleId com.rewind.stub.one)
+  // — used by the auto-switch-capture tests below.
+  late FakeProcessLister gameLister;
+  late ProcessWatcherSource game;
+  // A source whose processMatch matches no entry in
+  // FakeCaptureEngine.apps — used by the "no matching window yet" test.
+  late FakeProcessLister noMatchLister;
+  late ProcessWatcherSource noMatchGame;
   late GameRegistry registry;
   late ClipLibrary library;
   late AppSettings settings;
@@ -24,7 +34,21 @@ void main() {
     tmp = Directory.systemTemp.createTempSync('rewind_test');
     engine = FakeCaptureEngine();
     league = FakeGameSource('league_of_legends', 'League of Legends');
-    registry = GameRegistry(sources: [league]);
+    gameLister = FakeProcessLister();
+    game = ProcessWatcherSource(
+      gameId: 'app:stub_game',
+      displayName: 'Stub Game',
+      processMatch: 'stub.one',
+      lister: gameLister,
+    );
+    noMatchLister = FakeProcessLister();
+    noMatchGame = ProcessWatcherSource(
+      gameId: 'app:no_match_game',
+      displayName: 'No Match Game',
+      processMatch: 'totally-unmatched-app',
+      lister: noMatchLister,
+    );
+    registry = GameRegistry(sources: [league, game, noMatchGame]);
     library = ClipLibrary(clipsDir: tmp);
     settings = AppSettings();
     coordinator = ClipCoordinator(
@@ -187,5 +211,75 @@ void main() {
     await coordinator.onHotkey();
     expect(library.all, isEmpty);
     expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
+  });
+
+  group('auto-switch capture', () {
+    test(
+        'activation with a matching running app switches capture without '
+        'persisting the choice', () async {
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, ['com.rewind.stub.one']);
+      expect(settings.captureAppBundleId, isNull);
+    });
+
+    test('deactivation reverts capture to null when no persisted choice',
+        () async {
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.captureAppCalls, ['com.rewind.stub.one']);
+
+      gameLister.names = [];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, ['com.rewind.stub.one', null]);
+    });
+
+    test('deactivation reverts capture to the persisted choice when set',
+        () async {
+      settings.captureAppBundleId = 'com.persisted.app';
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      gameLister.names = [];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+          engine.captureAppCalls, ['com.rewind.stub.one', 'com.persisted.app']);
+    });
+
+    test('autoSwitchCapture=false makes activation not switch capture',
+        () async {
+      settings.autoSwitchCapture = false;
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, isEmpty);
+    });
+
+    test('no matching capturable app makes no capture switch call', () async {
+      noMatchLister.names = ['totally-unmatched-app.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, isEmpty);
+    });
+
+    test(
+        'a game without a processMatch (e.g. League) does not switch '
+        'capture', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, isEmpty);
+    });
   });
 }

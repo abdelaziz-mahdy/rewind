@@ -21,6 +21,13 @@ class AppSettings {
   /// revert.
   String? captureAppBundleId;
 
+  /// Whether detecting a game becoming active should temporarily switch the
+  /// capture target to that game's running app/window (reverting to
+  /// [captureAppBundleId] — the persisted choice — when the game exits).
+  /// This is a follow-the-game convenience, not a persisted capture
+  /// preference; see `ClipCoordinator`. Defaults to on.
+  bool autoSwitchCapture;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
@@ -28,6 +35,7 @@ class AppSettings {
     this.hotkey = 'Alt+F10',
     this.captureDisplayUuid,
     this.captureAppBundleId,
+    this.autoSwitchCapture = true,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -55,6 +63,7 @@ class AppSettings {
         'hotkey': hotkey,
         'captureDisplayUuid': captureDisplayUuid,
         'captureAppBundleId': captureAppBundleId,
+        'autoSwitchCapture': autoSwitchCapture,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -63,6 +72,7 @@ class AppSettings {
         hotkey: j['hotkey'] as String? ?? 'Alt+F10',
         captureDisplayUuid: j['captureDisplayUuid'] as String?,
         captureAppBundleId: j['captureAppBundleId'] as String?,
+        autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),
