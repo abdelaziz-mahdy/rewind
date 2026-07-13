@@ -28,6 +28,14 @@ class ClipCoordinator {
   /// when no game is detected.
   final ValueNotifier<String?> activeGame = ValueNotifier(null);
 
+  /// Every currently-active game, mirroring [GameRegistry.activeGameIds] as a
+  /// notifier so UI (the rail's live dots, the game hub, Supported Games) can
+  /// listen without polling the registry directly. Unlike [activeGame] (only
+  /// the most-recently-activated game, used to attribute manual hotkey
+  /// clips), multiple games can be live at once — e.g. a process-detected
+  /// background app alongside League — and this tracks all of them.
+  final ValueNotifier<Set<String>> activeGameIds = ValueNotifier(<String>{});
+
   /// The error from the most recent failed save, for the UI to surface
   /// (e.g. a SnackBar). Null when there is no error to show, including
   /// right after a subsequent successful save.
@@ -64,6 +72,7 @@ class ClipCoordinator {
     registry.activity.listen((a) {
       if (a.active) {
         activeGame.value = a.gameId;
+        activeGameIds.value = {...activeGameIds.value, a.gameId};
         talker.info('Detected ${a.displayName} running');
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);
@@ -73,6 +82,7 @@ class ClipCoordinator {
           activeGame.value = null;
           engine?.setBufferSeconds(settings.defaultBufferSeconds);
         }
+        activeGameIds.value = {...activeGameIds.value}..remove(a.gameId);
         _revertAutoSwitchFor(a);
       }
     });

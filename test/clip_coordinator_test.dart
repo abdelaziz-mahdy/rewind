@@ -213,6 +213,71 @@ void main() {
     expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
   });
 
+  group('activeGameIds', () {
+    test('starts empty', () {
+      expect(coordinator.activeGameIds.value, isEmpty);
+    });
+
+    test('activation adds the game', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.activeGameIds.value, {'league_of_legends'});
+    });
+
+    test('deactivation removes the game', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.activeGameIds.value, {'league_of_legends'});
+
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.activeGameIds.value, isEmpty);
+    });
+
+    test('two simultaneously-active games are both tracked (cross-game)',
+        () async {
+      league.running = true;
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        coordinator.activeGameIds.value,
+        {'league_of_legends', 'app:stub_game'},
+      );
+    });
+
+    test('deactivating one active game leaves the other tracked', () async {
+      league.running = true;
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.activeGameIds.value, {'app:stub_game'});
+    });
+
+    test(
+        'activeGame (single) still tracks only the most recent activation, '
+        'independent of activeGameIds', () async {
+      league.running = true;
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.activeGameIds.value, hasLength(2));
+      expect(coordinator.activeGame.value, isNotNull);
+    });
+  });
+
   group('auto-switch capture', () {
     test(
         'activation with a matching running app switches capture without '
