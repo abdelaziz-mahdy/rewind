@@ -26,6 +26,13 @@ fail() { echo "E2E FAIL: $*" >&2; exit 1; }
 [[ -d "$APP" ]] || fail "app not found: $APP (flutter build macos --debug first)"
 [[ -x "$APP/Contents/MacOS/obs-ffmpeg-mux" ]] || fail "obs-ffmpeg-mux helper missing from the bundle"
 
+# Wake the display and keep it awake for the duration of the test — a
+# sleeping display records as faithful black frames and fails the pixel
+# check with a misleading verdict.
+caffeinate -d -u -t 45 &
+CAFF_PID=$!
+trap 'kill $CAFF_PID 2>/dev/null || true' EXIT
+
 pkill -x rewind 2>/dev/null && sleep 1 || true
 mkdir -p "$CLIPS_DIR"
 BEFORE_COUNT=$(ls "$CLIPS_DIR"/*.mp4 2>/dev/null | wc -l | tr -d ' ')
