@@ -1,13 +1,14 @@
+import 'dart:io' show Platform;
+
 import 'package:tray_manager/tray_manager.dart';
 
 /// Menu-bar / system-tray presence with quick actions.
 ///
-/// Known issue (v0.1): `tray_manager`'s Windows backend loads the tray icon
-/// via `LoadImage(..., IMAGE_ICON, ..., LR_LOADFROMFILE)`, which expects a
-/// real `.ico` file. We only ship `assets/tray/tray_icon.png` for now, so on
-/// Windows the tray icon may render blank/default; the menu and callbacks
-/// still work. A `.ico` variant can be added later without changing this
-/// service's API — see `docs/COMPLIANCE.md`/README known-issues.
+/// `tray_manager`'s Windows backend loads the tray icon via
+/// `LoadImage(..., IMAGE_ICON, ..., LR_LOADFROMFILE)`, which needs a real
+/// `.ico` (a PNG loads as null → blank tray icon). macOS instead wants a
+/// template PNG (`isTemplate: true` lets the OS tint it for light/dark menu
+/// bars). Each platform therefore gets its own asset.
 class TrayService with TrayListener {
   Future<void> Function()? _onSaveClip;
   Future<void> Function(bool)? _onToggleBuffer;
@@ -29,7 +30,12 @@ class TrayService with TrayListener {
     // menu callback); ObserverList.add permits duplicates.
     trayManager.removeListener(this);
     trayManager.addListener(this);
-    await trayManager.setIcon('assets/tray/tray_icon.png', isTemplate: true);
+    await trayManager.setIcon(
+      Platform.isWindows
+          ? 'assets/tray/tray_icon_windows.ico'
+          : 'assets/tray/tray_icon.png',
+      isTemplate: !Platform.isWindows,
+    );
     await _rebuildMenu();
   }
 
