@@ -101,9 +101,7 @@ class CachingProcessLister implements ProcessLister {
   Future<List<String>> runningProcessNames() async {
     final cached = _cached;
     final at = _fetchedAt;
-    if (cached != null &&
-        at != null &&
-        DateTime.now().difference(at) < ttl) {
+    if (cached != null && at != null && DateTime.now().difference(at) < ttl) {
       return cached;
     }
     final fresh = await _inner.runningProcessNames();
