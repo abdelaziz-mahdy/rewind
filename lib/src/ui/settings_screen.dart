@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../hotkey/key_capture.dart';
+import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
@@ -19,6 +20,12 @@ class SettingsScreen extends StatefulWidget {
   /// Connected displays the user can pick as the capture source. The
   /// "Capture display" section is hidden entirely when this is empty.
   final List<DisplayInfo> displays;
+
+  /// Applications with at least one on-screen window, as an alternative
+  /// capture target to a whole display. The "Capture application" dropdown
+  /// is hidden entirely when this is empty. Defaults to empty so existing
+  /// callers/tests that don't care about app capture don't need to wire it.
+  final List<AppInfo> capturableApps;
 
   /// Called with `true` when the hotkey recorder starts listening and
   /// `false` whenever it stops (a captured combo, Escape, clicking away, or
@@ -43,6 +50,7 @@ class SettingsScreen extends StatefulWidget {
     required this.settings,
     required this.onChanged,
     required this.displays,
+    this.capturableApps = const [],
     this.onHotkeyRecording,
     super.key,
   });
@@ -140,6 +148,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// The bundle id the dropdown should show as selected: the saved choice
+  /// only if it's one of the currently-listed [widget.capturableApps] —
+  /// unlike [_selectedDisplayUuid], falling back to null ("Entire display")
+  /// is always valid here (it's a real menu item, not a
+  /// [DropdownButtonFormField] with no matching value), so a saved bundle
+  /// id for an app that isn't currently running just shows as "Entire
+  /// display" without touching the persisted setting.
+  String? _selectedAppBundleId() {
+    final saved = widget.settings.captureAppBundleId;
+    return saved != null &&
+            widget.capturableApps.any((a) => a.bundleId == saved)
+        ? saved
+        : null;
+  }
+
+  void _handleAppChanged(String? bundleId) {
+    widget.settings.captureAppBundleId = bundleId;
+    widget.onChanged(widget.settings);
+  }
+
   @override
   Widget build(BuildContext context) {
     final configs = widget.settings.allConfigs.toList();
@@ -197,6 +225,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                     ],
                     onChanged: _handleDisplayChanged,
+                  ),
+                ],
+                if (widget.capturableApps.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text('Capture application',
+                      style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedAppBundleId(),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        child: Text('Entire display'),
+                      ),
+                      for (final app in widget.capturableApps)
+                        DropdownMenuItem<String?>(
+                          value: app.bundleId,
+                          child: Text(app.name),
+                        ),
+                    ],
+                    onChanged: _handleAppChanged,
                   ),
                 ],
               ],

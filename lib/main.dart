@@ -11,8 +11,10 @@ import 'src/clip/clips_dir.dart';
 import 'src/clip/storage_manager.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_registry.dart';
+import 'src/events/source_builder.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/log.dart';
+import 'src/obs/app_info.dart';
 import 'src/obs/capture_engine.dart';
 import 'src/obs/display_info.dart';
 import 'src/obs/rewind_obs_engine.dart';
@@ -42,6 +44,7 @@ Future<void> main() async {
   // e.g. an unplugged external monitor — must be dropped, or capture
   // silently records black.
   final connectedDisplays = engine.listDisplays();
+  final connectedApps = engine.listCapturableApps();
   final savedDisplay =
       validDisplayUuid(settings.captureDisplayUuid, connectedDisplays);
   if (settings.captureDisplayUuid != null && savedDisplay == null) {
@@ -50,6 +53,21 @@ Future<void> main() async {
     await store.save(settings);
   }
   if (savedDisplay != null) engine.setCaptureDisplay(savedDisplay);
+  // Apply a saved capture-app choice before init, mirroring the display
+  // pattern above — but, unlike the display case, deliberately WITHOUT
+  // stale-validation against `connectedApps`: capturing a specific app is a
+  // persistent "always capture this app" preference the user may set
+  // before that app is even open, not a piece of hardware that's either
+  // connected or not. Per native/shim/README.md ("Application picking"),
+  // the shim does NOT fall back to display capture when the bundle id
+  // matches no currently-running app — it stays in application-capture
+  // mode with a blank feed (logged, not fatal) until a window for that
+  // bundle id appears. Clearing the setting here just because the app
+  // isn't open yet would silently discard the user's choice every
+  // restart, which is worse than a temporary blank feed.
+  if (settings.captureAppBundleId != null) {
+    engine.setCaptureApp(settings.captureAppBundleId);
+  }
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
     captureError = engine.lastError;
@@ -65,9 +83,10 @@ Future<void> main() async {
         'Capture engine started (buffering ${settings.defaultBufferSeconds}s)');
   }
   final displays = engine != null ? connectedDisplays : const <DisplayInfo>[];
+  final capturableApps = engine != null ? connectedApps : const <AppInfo>[];
 
   final coordinator = ClipCoordinator(
-    registry: GameRegistry(),
+    registry: GameRegistry(sources: buildSources(settings)),
     library: library,
     storage: StorageManager(library),
     settings: settings,
@@ -130,6 +149,7 @@ Future<void> main() async {
     captureError: captureError,
     bufferActive: bufferActive,
     displays: displays,
+    capturableApps: capturableApps,
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -140,6 +160,10 @@ Future<void> main() async {
       if (s.captureDisplayUuid != null) {
         engine?.setCaptureDisplay(s.captureDisplayUuid!);
       }
+      // Unlike the display line above, this is unconditional: null is a
+      // meaningful choice here ("Entire display") that the engine must be
+      // told about explicitly to revert out of a previously-set app target.
+      engine?.setCaptureApp(s.captureAppBundleId);
       if (!await hotkeys.bind(s.hotkey, coordinator.onHotkey)) {
         talker.warning('Could not register hotkey "${s.hotkey}"');
       } else {
@@ -179,6 +203,7 @@ class RewindApp extends StatelessWidget {
   final String? captureError;
   final ValueNotifier<bool> bufferActive;
   final List<DisplayInfo> displays;
+  final List<AppInfo> capturableApps;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final Future<void> Function(bool recording) onHotkeyRecording;
 
@@ -189,6 +214,7 @@ class RewindApp extends StatelessWidget {
     required this.captureError,
     required this.bufferActive,
     required this.displays,
+    required this.capturableApps,
     required this.onSettingsChanged,
     required this.onHotkeyRecording,
     super.key,
@@ -212,6 +238,7 @@ class RewindApp extends StatelessWidget {
                 settings: settings,
                 onChanged: onSettingsChanged,
                 displays: displays,
+                capturableApps: capturableApps,
                 onHotkeyRecording: onHotkeyRecording,
               ),
             ),

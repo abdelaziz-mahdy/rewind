@@ -41,6 +41,50 @@ void main() {
     expect(loaded.configFor('league_of_legends').bufferSeconds, 90);
   });
 
+  test('captureAppBundleId round-trips through toJson/fromJson', () {
+    final s = AppSettings(captureAppBundleId: 'com.example.app');
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.captureAppBundleId, 'com.example.app');
+  });
+
+  test('captureAppBundleId round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(captureAppBundleId: 'com.example.app'));
+    final loaded = await store.load();
+    expect(loaded.captureAppBundleId, 'com.example.app');
+  });
+
+  test('null captureAppBundleId round-trips as null (not overwritten)',
+      () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings());
+    final loaded = await store.load();
+    expect(loaded.captureAppBundleId, isNull);
+  });
+
+  test('GameConfig.processMatch round-trips through toJson/fromJson', () {
+    final s = AppSettings();
+    s.setConfig(GameConfig(gameId: 'app:cs2', processMatch: 'cs2'));
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.configFor('app:cs2').processMatch, 'cs2');
+  });
+
+  test('GameConfig.processMatch round-trips through the settings store',
+      () async {
+    final store = SettingsStore(tmp);
+    final s = AppSettings();
+    s.setConfig(GameConfig(gameId: 'app:cs2', processMatch: 'cs2'));
+    await store.save(s);
+    final loaded = await store.load();
+    expect(loaded.configFor('app:cs2').processMatch, 'cs2');
+  });
+
+  test('GameConfig.processMatch defaults to null when absent', () {
+    final s = AppSettings()..setConfig(GameConfig(gameId: 'g'));
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.configFor('g').processMatch, isNull);
+  });
+
   test('corrupt file is backed up and defaults returned', () async {
     final store = SettingsStore(tmp);
     store.file.writeAsStringSync('{not json');

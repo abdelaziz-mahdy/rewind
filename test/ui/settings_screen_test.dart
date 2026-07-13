@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
@@ -219,5 +220,92 @@ void main() {
 
     expect(calls, isNotEmpty);
     expect(calls.last.captureDisplayUuid, 'uuid-2');
+  });
+
+  const apps = [
+    AppInfo(bundleId: 'com.example.one', name: 'App One', pid: 1),
+    AppInfo(bundleId: 'com.example.two', name: 'App Two', pid: 2),
+  ];
+
+  testWidgets('no capturable apps hides the Capture application section',
+      (t) async {
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+      capturableApps: const [],
+    )));
+
+    expect(find.textContaining('Capture application'), findsNothing);
+  });
+
+  testWidgets(
+      'capture application section lists apps plus "Entire display", '
+      'defaulting to "Entire display"', (t) async {
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+      capturableApps: apps,
+    )));
+
+    expect(find.textContaining('Capture application'), findsOneWidget);
+    expect(find.text('Entire display'), findsOneWidget);
+  });
+
+  testWidgets(
+      'picking an app updates settings.captureAppBundleId and '
+      'fires onChanged', (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+      capturableApps: apps,
+    )));
+
+    await t.tap(find.text('Entire display'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('App Two').last);
+    await t.pumpAndSettle();
+
+    expect(calls, isNotEmpty);
+    expect(calls.last.captureAppBundleId, 'com.example.two');
+  });
+
+  testWidgets('picking "Entire display" reverts captureAppBundleId to null',
+      (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(captureAppBundleId: 'com.example.one'),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+      capturableApps: apps,
+    )));
+
+    expect(find.text('App One'), findsOneWidget);
+
+    await t.tap(find.text('App One'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Entire display').last);
+    await t.pumpAndSettle();
+
+    expect(calls, isNotEmpty);
+    expect(calls.last.captureAppBundleId, isNull);
+  });
+
+  testWidgets(
+      'a saved bundle id not in capturableApps shows as "Entire display" '
+      'without touching the persisted setting', (t) async {
+    final settings = AppSettings(captureAppBundleId: 'com.example.stale');
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: settings,
+      onChanged: (_) async {},
+      displays: const [],
+      capturableApps: apps,
+    )));
+
+    expect(find.text('Entire display'), findsOneWidget);
+    expect(settings.captureAppBundleId, 'com.example.stale');
   });
 }

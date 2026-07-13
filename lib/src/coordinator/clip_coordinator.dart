@@ -49,8 +49,15 @@ class ClipCoordinator {
     registry.activity.listen((a) {
       if (a.active) {
         activeGame.value = a.gameId;
+        talker.info('Detected ${a.displayName} running');
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);
+        // Future hook: auto-switching the capture target (display -> this
+        // game's window/app) on detection is a deliberate non-goal here —
+        // no design exists yet for how that should interact with a
+        // manually-chosen `settings.captureAppBundleId` (whose app may be
+        // unrelated to the detected game, e.g. a Discord overlay capture).
+        // This is the place a future auto-attach feature would hook in.
       } else if (activeGame.value == a.gameId) {
         activeGame.value = null;
         engine?.setBufferSeconds(settings.defaultBufferSeconds);

@@ -14,11 +14,21 @@ class GameConfig {
   /// Event kinds to auto-clip for this game.
   Set<GameEventKind> enabledEvents;
 
+  /// Case-insensitive substring to match against running process names for
+  /// auto-detecting this entry (see `ProcessWatcherSource.processMatch`).
+  /// Null means no auto-detection: this config is only ever applied when
+  /// some other source (a vendor-API watcher, or a catalog entry sharing
+  /// this [gameId]) reports the game active. Not set by any UI yet — this
+  /// is the data-model half of per-app auto-detection; see
+  /// `lib/src/events/source_builder.dart`.
+  String? processMatch;
+
   GameConfig({
     required this.gameId,
     this.bufferSeconds = 30,
     this.autoClip = true,
     Set<GameEventKind>? enabledEvents,
+    this.processMatch,
   }) : enabledEvents = enabledEvents ??
             {
               GameEventKind.manual,
@@ -35,6 +45,7 @@ class GameConfig {
         'bufferSeconds': bufferSeconds,
         'autoClip': autoClip,
         'enabledEvents': enabledEvents.map((e) => e.name).toList(),
+        'processMatch': processMatch,
       };
 
   factory GameConfig.fromJson(Map<String, dynamic> j) => GameConfig(
@@ -45,5 +56,6 @@ class GameConfig {
             .map((n) => GameEventKind.values.firstWhere((e) => e.name == n,
                 orElse: () => GameEventKind.other))
             .toSet(),
+        processMatch: j['processMatch'] as String?,
       );
 }

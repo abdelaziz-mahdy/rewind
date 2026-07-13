@@ -14,12 +14,20 @@ class AppSettings {
   /// capture engine's own default).
   String? captureDisplayUuid;
 
+  /// The application to capture, identified by a bundle id as reported by
+  /// `CaptureEngine.listCapturableApps`. Null means "capture the whole
+  /// display" (per [captureDisplayUuid]) rather than a single app —
+  /// `CaptureEngine.setCaptureApp(null)` is how the engine is told to
+  /// revert.
+  String? captureAppBundleId;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
     this.defaultBufferSeconds = 30,
     this.hotkey = 'Alt+F10',
     this.captureDisplayUuid,
+    this.captureAppBundleId,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -46,6 +54,7 @@ class AppSettings {
         'defaultBufferSeconds': defaultBufferSeconds,
         'hotkey': hotkey,
         'captureDisplayUuid': captureDisplayUuid,
+        'captureAppBundleId': captureAppBundleId,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -53,6 +62,7 @@ class AppSettings {
         defaultBufferSeconds: j['defaultBufferSeconds'] as int? ?? 30,
         hotkey: j['hotkey'] as String? ?? 'Alt+F10',
         captureDisplayUuid: j['captureDisplayUuid'] as String?,
+        captureAppBundleId: j['captureAppBundleId'] as String?,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),
