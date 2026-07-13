@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import '../hotkey/hotkey_descriptor.dart';
+import '../hotkey/key_capture.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
@@ -31,9 +32,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final TextEditingController _hotkeyController;
-  String? _hotkeyError;
-
   late int _bufferSeconds;
   late bool _customBuffer;
   late final TextEditingController _customBufferController;
@@ -43,7 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _hotkeyController = TextEditingController(text: widget.settings.hotkey);
     _bufferSeconds = widget.settings.defaultBufferSeconds;
     _customBuffer = _bufferSeconds != 30 && _bufferSeconds != 60;
     _customBufferController = TextEditingController(text: '$_bufferSeconds');
@@ -51,7 +48,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _hotkeyController.dispose();
     _customBufferController.dispose();
     for (final c in _perGameControllers.values) {
       c.dispose();
@@ -63,12 +59,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _perGameControllers.putIfAbsent(cfg.gameId,
           () => TextEditingController(text: '${cfg.bufferSeconds}'));
 
+  /// Called by [_HotkeyRecorderField] once a combo is captured (or the
+  /// field is cleared, [value] == ''). The recorder only ever produces
+  /// combos [HotkeyDescriptor] already accepts, so no validation needed
+  /// here — unlike the old free-text field.
   void _handleHotkeyChanged(String value) {
-    if (HotkeyDescriptor.parse(value) == null) {
-      setState(() => _hotkeyError = 'Invalid hotkey, e.g. "Alt+F10"');
-      return;
-    }
-    setState(() => _hotkeyError = null);
     widget.settings.hotkey = value;
     widget.onChanged(widget.settings);
   }
@@ -189,12 +184,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _Section(
             title: 'Hotkey',
-            child: TextField(
-              controller: _hotkeyController,
-              decoration: InputDecoration(
-                hintText: 'Alt+F10',
-                errorText: _hotkeyError,
-              ),
+            child: _HotkeyRecorderField(
+              value: widget.settings.hotkey,
               onChanged: _handleHotkeyChanged,
             ),
           ),
@@ -269,6 +260,162 @@ class _Section extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+/// A press-to-record hotkey field: click it, then press the combo — no
+/// typing. Typing a hotkey doesn't make sense to a user who doesn't know
+/// the descriptor grammar ("Alt+F10"); pressing the actual keys does.
+///
+/// There's deliberately no "edit as text" fallback: every combo the
+/// recorder can produce is exactly the set [HotkeyDescriptor] accepts (same
+/// physical-key map [HotkeyService] binds), so text entry couldn't reach
+/// any state the recorder can't. The one thing text entry offered besides
+/// setting a combo — clearing it — is a dedicated clear button here instead.
+class _HotkeyRecorderField extends StatefulWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _HotkeyRecorderField({required this.value, required this.onChanged});
+
+  @override
+  State<_HotkeyRecorderField> createState() => _HotkeyRecorderFieldState();
+}
+
+class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
+  final _focusNode = FocusNode(debugLabel: 'hotkey-recorder');
+  bool _listening = false;
+  String? _hint;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _startListening() {
+    setState(() {
+      _listening = true;
+      _hint = null;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _cancel() {
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _hint = null;
+    });
+  }
+
+  void _clear() {
+    setState(() {
+      _listening = false;
+      _hint = null;
+    });
+    widget.onChanged('');
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_listening || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _cancel();
+      return KeyEventResult.handled;
+    }
+
+    final keyboard = HardwareKeyboard.instance;
+    final capture = mapKeyDownToHotkey(
+      event,
+      alt: keyboard.isAltPressed,
+      control: keyboard.isControlPressed,
+      shift: keyboard.isShiftPressed,
+      meta: keyboard.isMetaPressed,
+    );
+    switch (capture.status) {
+      case HotkeyCaptureStatus.ignored:
+        // Modifier held on its own, or an unsupported key — stay listening.
+        return KeyEventResult.handled;
+      case HotkeyCaptureStatus.rejectedNoModifier:
+        setState(() => _hint = 'Hold a modifier too, e.g. Ctrl or Alt');
+        return KeyEventResult.handled;
+      case HotkeyCaptureStatus.accepted:
+        final descriptor = capture.descriptor!.toString();
+        setState(() {
+          _listening = false;
+          _hint = null;
+        });
+        widget.onChanged(descriptor);
+        return KeyEventResult.handled;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final display = _listening
+        ? 'Press keys…'
+        : (widget.value.isEmpty ? 'Click to set a hotkey' : widget.value);
+    final textColor =
+        _listening ? theme.colorScheme.primary : theme.colorScheme.onSurface;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Focus(
+          focusNode: _focusNode,
+          onKeyEvent: _handleKeyEvent,
+          onFocusChange: (hasFocus) {
+            if (!hasFocus && _listening) _cancel();
+          },
+          child: Material(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _startListening,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _listening
+                        ? theme.colorScheme.primary
+                        : Colors.white.withValues(alpha: 0.08),
+                    width: _listening ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        display,
+                        style: TextStyle(
+                            color: textColor, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (!_listening && widget.value.isNotEmpty)
+                      IconButton(
+                        tooltip: 'Clear hotkey',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: _clear,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (_hint != null) ...[
+          const SizedBox(height: 6),
+          Text(_hint!,
+              style: TextStyle(color: theme.colorScheme.error, fontSize: 12)),
+        ],
+      ],
     );
   }
 }

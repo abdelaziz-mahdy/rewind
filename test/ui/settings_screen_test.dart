@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
@@ -7,9 +8,14 @@ import 'package:rewind/src/ui/theme.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
+/// Taps the hotkey recorder field, putting it into "Press keys…" state.
+Future<void> _startRecording(WidgetTester t) async {
+  await t.tap(find.textContaining(RegExp(r'Click to set a hotkey|^Alt\+')));
+  await t.pump();
+}
+
 void main() {
-  testWidgets(
-      'invalid hotkey shows validation error and does not call onChanged',
+  testWidgets('recording Alt+F10 updates settings and fires onChanged',
       (t) async {
     final calls = <AppSettings>[];
     await t.pumpWidget(_app(SettingsScreen(
@@ -18,11 +24,78 @@ void main() {
       displays: const [],
     )));
 
-    await t.enterText(find.byType(TextField).first, 'not a hotkey');
+    await _startRecording(t);
+    expect(find.text('Press keys…'), findsOneWidget);
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.f10);
     await t.pump();
 
-    expect(find.textContaining('Invalid hotkey'), findsOneWidget);
+    expect(calls, isNotEmpty);
+    expect(calls.last.hotkey, 'Alt+F10');
+    expect(find.text('Alt+F10'), findsOneWidget);
+
+    await t.sendKeyUpEvent(LogicalKeyboardKey.f10);
+    await t.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+  });
+
+  testWidgets(
+      'bare letter without a modifier is rejected and settings unchanged',
+      (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    await _startRecording(t);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+    await t.pump();
+
     expect(calls, isEmpty);
+    // Still listening — the hint is shown and the field didn't close.
+    expect(find.text('Press keys…'), findsOneWidget);
+    expect(find.textContaining('modifier'), findsOneWidget);
+
+    await t.sendKeyUpEvent(LogicalKeyboardKey.keyS);
+  });
+
+  testWidgets('Escape cancels recording, leaving the prior value', (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    await _startRecording(t);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+
+    expect(calls, isEmpty);
+    expect(find.text('Press keys…'), findsNothing);
+    expect(find.text('Alt+F10'), findsOneWidget); // AppSettings() default
+
+    await t.sendKeyUpEvent(LogicalKeyboardKey.escape);
+  });
+
+  testWidgets('a bare F-key is accepted with no modifier needed', (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    await _startRecording(t);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.f9);
+    await t.pump();
+
+    expect(calls, isNotEmpty);
+    expect(calls.last.hotkey, 'F9');
+
+    await t.sendKeyUpEvent(LogicalKeyboardKey.f9);
   });
 
   testWidgets('picking 60s updates settings via onChanged', (t) async {
