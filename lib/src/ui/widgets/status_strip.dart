@@ -37,6 +37,16 @@ class StatusStrip extends StatelessWidget {
   /// "Custom…" entry, which needs the free-text field Settings has.
   final VoidCallback onOpenSettings;
 
+  /// Bumped by the caller at the end of every [onSettingsChanged] call.
+  /// `StatusStrip` is otherwise stateless, and the capture-source chip /
+  /// buffer quick-set mutate `coordinator.settings` in place rather than
+  /// replacing it — without something to listen to, the settings-derived
+  /// labels (the buffer readout, the source chip) would only refresh on the
+  /// next unrelated rebuild (e.g. `activeGame` changing), not immediately
+  /// after the user's own pick. Optional: existing callers/tests that don't
+  /// exercise the chip/quick-set don't need to wire it.
+  final ValueListenable<int>? settingsRevision;
+
   const StatusStrip({
     required this.coordinator,
     this.captureError,
@@ -45,6 +55,7 @@ class StatusStrip extends StatelessWidget {
     this.capturableApps = const [],
     required this.onSettingsChanged,
     required this.onOpenSettings,
+    this.settingsRevision,
     super.key,
   });
 
@@ -79,7 +90,20 @@ class StatusStrip extends StatelessWidget {
                 'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
             style: theme.textTheme.heroNumeral,
             onPick: (seconds) {
-              coordinator.settings.defaultBufferSeconds = seconds;
+              // Mirrors exactly what `bufferSecondsFor` reads: with a game
+              // active, `configFor` lazily creates (or reuses) that game's
+              // per-game row, which is what `bufferSecondsFor` — and the
+              // engine's own buffer-length calls — check FIRST. Writing only
+              // `defaultBufferSeconds` here would be a silent no-op once any
+              // game has ever been detected: the label and the engine would
+              // keep reading the (unrelated) per-game value forever after.
+              if (gameId != null) {
+                final cfg = coordinator.settings.configFor(gameId);
+                cfg.bufferSeconds = seconds;
+                coordinator.settings.setConfig(cfg);
+              } else {
+                coordinator.settings.defaultBufferSeconds = seconds;
+              }
               onSettingsChanged(coordinator.settings);
             },
             onOpenSettings: onOpenSettings,
@@ -101,6 +125,18 @@ class StatusStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final revision = settingsRevision;
+    if (revision == null) return _buildContent(context);
+    // See [settingsRevision]'s doc: forces a rebuild after an in-place
+    // settings mutation the widget tree otherwise has no other reason to
+    // notice.
+    return ValueListenableBuilder<int>(
+      valueListenable: revision,
+      builder: (context, _, __) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -122,18 +158,26 @@ class StatusStrip extends StatelessWidget {
               children: [
                 Expanded(child: _liveIndicator(context)),
                 const SizedBox(width: 16),
-                ValueListenableBuilder<String?>(
-                  valueListenable: coordinator.activeGame,
-                  builder: (context, gameId, _) =>
-                      _GameChip(label: displayNameFor(gameId)),
+                Flexible(
+                  child: ValueListenableBuilder<String?>(
+                    valueListenable: coordinator.activeGame,
+                    builder: (context, gameId, _) =>
+                        _GameChip(label: displayNameFor(gameId)),
+                  ),
                 ),
                 if (displays.isNotEmpty) ...[
                   const SizedBox(width: 8),
-                  _SourceChip(
-                    displays: displays,
-                    capturableApps: capturableApps,
-                    settings: coordinator.settings,
-                    onSettingsChanged: onSettingsChanged,
+                  Flexible(
+                    child: ValueListenableBuilder<String?>(
+                      valueListenable: coordinator.autoSwitchedAppName,
+                      builder: (context, autoName, _) => _SourceChip(
+                        displays: displays,
+                        capturableApps: capturableApps,
+                        settings: coordinator.settings,
+                        onSettingsChanged: onSettingsChanged,
+                        autoSwitchedAppName: autoName,
+                      ),
+                    ),
                   ),
                 ],
                 const SizedBox(width: 16),
@@ -249,11 +293,19 @@ class _SourceChip extends StatelessWidget {
   final AppSettings settings;
   final Future<void> Function(AppSettings) onSettingsChanged;
 
+  /// [ClipCoordinator.autoSwitchedAppName]'s current value: non-null while a
+  /// "follow the game" auto-switch is live, in which case it takes priority
+  /// over the persisted source — the chip should show what's actually being
+  /// captured right now, not the preference auto-switch is temporarily
+  /// overriding.
+  final String? autoSwitchedAppName;
+
   const _SourceChip({
     required this.displays,
     required this.capturableApps,
     required this.settings,
     required this.onSettingsChanged,
+    this.autoSwitchedAppName,
   });
 
   /// Index into [displays] the chip should describe: the explicit saved
@@ -270,6 +322,7 @@ class _SourceChip extends StatelessWidget {
   }
 
   String get _label {
+    if (autoSwitchedAppName case final auto?) return '$auto (auto)';
     final appId = settings.captureAppBundleId;
     if (appId != null) {
       final match = capturableApps.where((a) => a.bundleId == appId);
@@ -297,9 +350,10 @@ class _SourceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final icon = settings.captureAppBundleId != null
-        ? Icons.apps_outlined
-        : Icons.desktop_windows_outlined;
+    final icon =
+        autoSwitchedAppName != null || settings.captureAppBundleId != null
+            ? Icons.apps_outlined
+            : Icons.desktop_windows_outlined;
     return PopupMenuButton<Object>(
       tooltip: '',
       padding: EdgeInsets.zero,

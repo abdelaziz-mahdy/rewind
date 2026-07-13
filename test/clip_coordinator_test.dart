@@ -281,5 +281,30 @@ void main() {
 
       expect(engine.captureAppCalls, isEmpty);
     });
+
+    test('sets autoSwitchedAppName to the matched app on activation switch',
+        () async {
+      expect(coordinator.autoSwitchedAppName.value, isNull);
+
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.autoSwitchedAppName.value, 'Stub App One');
+    });
+
+    test('clears autoSwitchedAppName when the auto-switched game deactivates',
+        () async {
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.autoSwitchedAppName.value, 'Stub App One');
+
+      gameLister.names = [];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.autoSwitchedAppName.value, isNull);
+    });
   });
 }

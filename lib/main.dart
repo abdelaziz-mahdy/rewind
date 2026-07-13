@@ -136,6 +136,12 @@ Future<void> main() async {
   final bufferActive =
       ValueNotifier<bool>(engine != null && captureError == null);
 
+  // Bumped at the end of every settings change (see StatusStrip's
+  // settingsRevision doc) so the capture-source chip and buffer readout
+  // refresh immediately after the user picks something, rather than only on
+  // the next unrelated rebuild.
+  final settingsRevision = ValueNotifier<int>(0);
+
   final tray = TrayService();
   await tray.init(
     onSaveClip: coordinator.onHotkey,
@@ -171,6 +177,7 @@ Future<void> main() async {
     displays: displays,
     capturableApps: capturableApps,
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
+    settingsRevision: settingsRevision,
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -190,6 +197,7 @@ Future<void> main() async {
       } else {
         talker.info('Hotkey "${s.hotkey}" registered');
       }
+      settingsRevision.value++;
     },
     onHotkeyRecording: (recording) async {
       if (recording) {
@@ -228,6 +236,7 @@ class RewindApp extends StatelessWidget {
   final Future<void> Function(AppSettings) onSettingsChanged;
   final Future<void> Function(bool recording) onHotkeyRecording;
   final VoidCallback onOpenClipsFolder;
+  final ValueListenable<int>? settingsRevision;
 
   const RewindApp({
     required this.coordinator,
@@ -240,6 +249,7 @@ class RewindApp extends StatelessWidget {
     required this.onSettingsChanged,
     required this.onHotkeyRecording,
     required this.onOpenClipsFolder,
+    this.settingsRevision,
     super.key,
   });
 
@@ -259,6 +269,7 @@ class RewindApp extends StatelessWidget {
           capturableApps: capturableApps,
           onSettingsChanged: onSettingsChanged,
           onOpenClipsFolder: onOpenClipsFolder,
+          settingsRevision: settingsRevision,
           onOpenSettings: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => SettingsScreen(

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip_library.dart';
@@ -66,14 +67,19 @@ void main() {
     List<AppInfo> capturableApps = const [],
     String? captureError,
     Future<void> Function(AppSettings)? onSettingsChanged,
+    ValueListenable<int>? settingsRevision,
+    // Lets a test grab the coordinator before pumping, to set activeGame /
+    // autoSwitchedAppName ahead of time.
+    ClipCoordinator? coordinatorOverride,
   }) =>
       StatusStrip(
-        coordinator: makeCoordinator(settings),
+        coordinator: coordinatorOverride ?? makeCoordinator(settings),
         captureError: captureError,
         displays: displays,
         capturableApps: capturableApps,
         onSettingsChanged: onSettingsChanged ?? (_) async {},
         onOpenSettings: () {},
+        settingsRevision: settingsRevision,
       );
 
   group('capture-source chip', () {
@@ -158,6 +164,95 @@ void main() {
 
       expect(calls, isNotEmpty);
       expect(calls.last.defaultBufferSeconds, 60);
+    });
+
+    testWidgets(
+        'with an active game, picking 60s writes THAT game\'s per-game '
+        'buffer length — not the default, which bufferSecondsFor would '
+        'never read again once a per-game row exists', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      final coordinator = makeCoordinator(settings);
+      coordinator.activeGame.value = 'league_of_legends';
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        coordinatorOverride: coordinator,
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      expect(find.textContaining('Buffering · 30 s'), findsOneWidget);
+      await t.tap(find.textContaining('Buffering · 30 s'));
+      await settleMenu(t);
+      await t.tap(find.text('60 s').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      expect(settings.bufferSecondsFor('league_of_legends'), 60);
+      expect(settings.defaultBufferSeconds, 30);
+    });
+  });
+
+  group('settings changes refresh labels immediately (settingsRevision)', () {
+    testWidgets(
+        'picking a source updates the chip label without waiting '
+        'for an unrelated rebuild', (t) async {
+      final settings = AppSettings();
+      final revision = ValueNotifier<int>(0);
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        capturableApps: _apps,
+        settingsRevision: revision,
+        onSettingsChanged: (s) async => revision.value++,
+      )));
+
+      expect(find.textContaining('Capturing: Display 1'), findsOneWidget);
+      await t.tap(find.textContaining('Capturing: Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('App Two').last);
+      await settleMenu(t);
+
+      expect(find.textContaining('Capturing: App Two'), findsOneWidget);
+      expect(find.textContaining('Capturing: Display 1'), findsNothing);
+    });
+
+    testWidgets(
+        'picking a buffer length updates the readout without '
+        'waiting for an unrelated rebuild', (t) async {
+      final settings = AppSettings();
+      final revision = ValueNotifier<int>(0);
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        settingsRevision: revision,
+        onSettingsChanged: (s) async => revision.value++,
+      )));
+
+      expect(find.textContaining('Buffering · 30 s'), findsOneWidget);
+      await t.tap(find.textContaining('Buffering · 30 s'));
+      await settleMenu(t);
+      await t.tap(find.text('60 s').last);
+      await settleMenu(t);
+
+      expect(find.textContaining('Buffering · 60 s'), findsOneWidget);
+    });
+  });
+
+  group('auto-switch chip', () {
+    testWidgets(
+        'shows the auto-switched app name (with "(auto)") ahead of the '
+        'persisted source while the coordinator is following a game',
+        (t) async {
+      final settings = AppSettings(captureAppBundleId: 'com.example.one');
+      final coordinator = makeCoordinator(settings);
+      coordinator.autoSwitchedAppName.value = 'Stub App One';
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        capturableApps: _apps,
+        coordinatorOverride: coordinator,
+      )));
+
+      expect(find.textContaining('Capturing: Stub App One (auto)'),
+          findsOneWidget);
+      expect(find.textContaining('Capturing: App One'), findsNothing);
     });
   });
 

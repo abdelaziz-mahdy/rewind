@@ -42,6 +42,14 @@ class ClipCoordinator {
   /// the switched-to game is still running.
   String? _autoSwitchedGameId;
 
+  /// The name of the app capture was auto-switched to (see
+  /// [_autoSwitchCaptureFor]), for the UI to show what's actually being
+  /// captured while a "follow the game" auto-switch is in effect — as
+  /// opposed to [AppSettings.captureAppBundleId]/[AppSettings.captureDisplayUuid],
+  /// the persisted choice the UI otherwise reflects, which auto-switch
+  /// deliberately does not touch. Null when no auto-switch is active.
+  final ValueNotifier<String?> autoSwitchedAppName = ValueNotifier(null);
+
   ClipCoordinator({
     required this.registry,
     required this.library,
@@ -115,6 +123,7 @@ class ClipCoordinator {
 
     capture.setCaptureApp(match.bundleId);
     _autoSwitchedGameId = a.gameId;
+    autoSwitchedAppName.value = match.name;
     talker.info('Auto-switched capture to ${match.name}');
   }
 
@@ -124,6 +133,7 @@ class ClipCoordinator {
   void _revertAutoSwitchFor(GameActivity a) {
     if (_autoSwitchedGameId != a.gameId) return;
     _autoSwitchedGameId = null;
+    autoSwitchedAppName.value = null;
     engine?.setCaptureApp(settings.captureAppBundleId);
     talker.info('Reverted capture after ${a.displayName} exited');
   }

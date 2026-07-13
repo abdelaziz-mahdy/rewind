@@ -39,6 +39,11 @@ class HomeScreen extends StatefulWidget {
   /// folder button and the empty-state's text button.
   final VoidCallback onOpenClipsFolder;
 
+  /// Forwarded to [StatusStrip.settingsRevision] — see its doc. Optional so
+  /// existing callers/tests that don't exercise the capture-source chip or
+  /// buffer quick-set don't need to wire it.
+  final ValueListenable<int>? settingsRevision;
+
   const HomeScreen({
     required this.coordinator,
     required this.library,
@@ -50,6 +55,7 @@ class HomeScreen extends StatefulWidget {
     this.capturableApps = const [],
     required this.onSettingsChanged,
     required this.onOpenClipsFolder,
+    this.settingsRevision,
     super.key,
   });
 
@@ -138,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
             capturableApps: widget.capturableApps,
             onSettingsChanged: widget.onSettingsChanged,
             onOpenSettings: widget.onOpenSettings,
+            settingsRevision: widget.settingsRevision,
           ),
           const Divider(height: 1),
           Expanded(
