@@ -71,27 +71,6 @@ else
   exit 1
 fi
 
-# --- Known gap check (see header comment #3): warn if the shim was built
-# as a nested framework, since its packaged-app SDK lookup won't resolve
-# Contents/Resources/obs in that layout for a truly relocated app. Not
-# fixed here (would require modifying rewind_obs.c) — the dev-tree walk-up
-# fallback still covers builds run from inside the repo.
-SHIM_FRAMEWORK="$FRAMEWORKS/rewind_obs.framework"
-if [[ -d "$SHIM_FRAMEWORK/Versions" ]]; then
-  echo "warning: rewind_obs shim is a nested framework bundle; its packaged-app" >&2
-  echo "         SDK lookup (dladdr-based, see rewind_obs.c) will NOT find" >&2
-  echo "         $RESOURCES_OBS if this app is moved outside the source tree." >&2
-  echo "         See this script's header comment for details/follow-up." >&2
-elif [[ -f "$FRAMEWORKS/rewind_obs.dylib" || -f "$FRAMEWORKS/librewind_obs.dylib" ]]; then
-  # Flat-dylib layout (if a future toolchain change stops wrapping the code
-  # asset in its own framework) — "<shim dir>/../Resources/obs" already
-  # resolves to Contents/Resources/obs directly; no gap in that case.
-  echo "==> Shim is a flat dylib; packaged-app SDK lookup resolves correctly"
-else
-  echo "warning: could not locate the built rewind_obs shim under $FRAMEWORKS" \
-       "to check its SDK lookup path" >&2
-fi
-
 # --- Defense-in-depth rpath on the main app binary. The shim itself is
 # compiled with its own correct rpaths (see hook/build.dart); this covers
 # any dyld @rpath resolution that also consults the loading chain's rpaths.
@@ -105,7 +84,12 @@ else
   echo "warning: app binary not found/executable at $APP_BINARY" >&2
 fi
 
-echo "==> Ad-hoc re-signing $APP_PATH"
-codesign --force --deep -s - "$APP_PATH"
+# Sign with the same identity Xcode uses (EXPANDED_CODE_SIGN_IDENTITY is set
+# inside build phases), so the app keeps ONE stable signature and macOS TCC
+# grants (Screen Recording) survive rebuilds. Ad-hoc only as a last resort
+# for manual invocations outside a build.
+SIGN_ID="${REWIND_SIGN_IDENTITY:-${EXPANDED_CODE_SIGN_IDENTITY:--}}"
+echo "==> Re-signing $APP_PATH (identity: $SIGN_ID)"
+codesign --force --deep -s "$SIGN_ID" "$APP_PATH"
 
 echo "==> Done. libobs runtime bundled into $APP_PATH"

@@ -163,9 +163,13 @@ class _ErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const amber = Color(0xFFFFB74D);
-    final text = Platform.isMacOS
-        ? '$message\nGrant Screen Recording permission in System Settings → '
-            'Privacy & Security'
+    // Only coach the user toward the permission pane when the failure is
+    // actually about permission — the shim reports that case explicitly.
+    // Any other error must stand on its own instead of misdirecting.
+    final text = Platform.isMacOS &&
+            message.toLowerCase().contains('permission') &&
+            !message.contains('System Settings')
+        ? '$message\nSystem Settings → Privacy & Security → Screen Recording'
         : message;
     return Container(
       padding: const EdgeInsets.all(12),

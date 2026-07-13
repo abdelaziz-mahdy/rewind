@@ -46,6 +46,7 @@ const char *rewind_last_error(void) {
 #include <unistd.h>
 #include <limits.h>
 #include <stdint.h>
+#include <mach-o/dyld.h>
 
 #ifdef __APPLE__
 #include <ApplicationServices/ApplicationServices.h>
@@ -327,6 +328,17 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     if (g_initialized) return 0;
     g_seconds = seconds > 0 ? seconds : 30;
 
+    /* Ask TCC directly instead of letting capture fail with a misleading
+     * generic error later. CGRequestScreenCaptureAccess() shows the system
+     * prompt the first time (subsequent calls are no-ops), so the user gets
+     * the native dialog AND our banner explains the state precisely. */
+    if (!CGPreflightScreenCaptureAccess()) {
+        CGRequestScreenCaptureAccess();
+        return fail("Screen Recording permission is not granted to this app. "
+                    "Enable it under System Settings > Privacy & Security > "
+                    "Screen Recording, then relaunch Rewind.");
+    }
+
     char sdk_dir[PATH_MAX];
     if (!find_obs_sdk_dir(sdk_dir, sizeof(sdk_dir)))
         return fail("could not locate the libobs SDK (obs-plugins/data) relative to the shim; "
@@ -466,11 +478,31 @@ cleanup:
     return 1;
 }
 
+/* obs-ffmpeg's replay buffer spawns the obs-ffmpeg-mux helper from the
+ * directory of the MAIN executable; if it's absent, obs_output_start fails
+ * with no last_error set. Check for it so the failure names its cause. */
+static int mux_helper_present(void) {
+    char path[PATH_MAX];
+    uint32_t cap = sizeof(path);
+    if (_NSGetExecutablePath(path, &cap) != 0) return -1;
+    char *slash = strrchr(path, '/');
+    if (!slash) return -1;
+    snprintf(slash + 1, sizeof(path) - (size_t)(slash + 1 - path),
+             "obs-ffmpeg-mux");
+    return access(path, X_OK) == 0;
+}
+
 int rewind_start_buffer(void) {
     if (!g_initialized) return fail("not initialized");
     if (!obs_output_start(g_replay)) {
         const char *err = obs_output_get_last_error(g_replay);
-        return fail(err ? err : "replay buffer failed to start");
+        if (err && *err) return fail(err);
+        if (mux_helper_present() == 0)
+            return fail("replay buffer failed to start: the obs-ffmpeg-mux "
+                        "helper is missing next to the app executable "
+                        "(rebuild, or re-run tools/bundle_obs_macos.sh)");
+        return fail("replay buffer failed to start (no detail from libobs; "
+                    "check the in-app Logs screen)");
     }
     return 0;
 }
