@@ -15,7 +15,7 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.0 # locate the clips directory per-OS
   hotkey_manager: ^0.2.3 # global hotkey (manual "clip that")
-  tray_manager: ^0.2.3   # menu-bar / tray presence
+  tray_manager: ^0.5.3   # menu-bar / tray presence
 
   # Native build hooks — compile & bundle the C shim automatically.
   hooks: ^2.0.2
