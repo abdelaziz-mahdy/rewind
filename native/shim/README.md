@@ -175,6 +175,75 @@ pinned tag (32.1.2), not assumed from memory:
   keys, the `save`/`get_last_replay` proc names, `os_sleep_ms`) matched
   the brief's reference code as written against the 32.1.2 headers and
   `plugins/obs-ffmpeg/obs-ffmpeg-mux.c` source.
+- **Application picking (`rewind_list_capturable_apps`/
+  `rewind_set_capture_app`).** `screen_capture`'s settings keys, confirmed
+  in `plugins/mac-capture/mac-sck-video-capture.m`
+  (`sck_video_capture_defaults`/`sck_video_capture_update`/
+  `init_screen_stream`'s `ScreenCaptureApplicationStream` case): `"type"`
+  (int, `0`=display / `1`=window / `2`=application —
+  `ScreenCaptureDisplayStream`/`ScreenCaptureWindowStream`/
+  `ScreenCaptureApplicationStream`) and `"application"` (string, a bundle
+  id, matched against `SCRunningApplication.bundleIdentifier` in
+  `shareable_content.applications`). Only display (`0`) and application
+  (`2`) are wired up — window (`1`, keyed by `"window"`, a `CGWindowID` —
+  see the same file) is out of scope for this task, deliberately not
+  implemented.
+  - **Application capture still needs `"display_uuid"`.** `init_screen_stream`'s
+    `ScreenCaptureApplicationStream` case calls `get_target_display()`
+    (backed by `sc->display`, set every `.update` from
+    `get_display_migrate_settings(settings)` — same helper the display-only
+    path uses, `window-utils.m`) — an app target with no display resolves
+    to `CGDirectDisplayID 0` and the stream silently fails to start (logged,
+    not fatal — `MACCAP_ERR("init_screen_stream: Invalid target display
+    ID:  %u\n", ...)`, source stays valid with `sc->disp = NULL`, i.e. a
+    blank feed). `rewind_obs_init()` and `rewind_set_capture_app()` both
+    always set `display_uuid` (from `g_display_uuid`/`main_display_uuid()`)
+    alongside `type`/`application`, exactly like the display-only path —
+    the app target just also carries a display target under it, used if
+    the app target is ever cleared.
+  - **Switching types re-inits in place, same as display switching.**
+    `sck_video_capture_update`'s early-return fast path only applies when
+    `"type"` doesn't change; any type change (including the boundary this
+    task cares about — display ⟷ application) falls through to
+    `destroy_screen_stream()` + `init_screen_stream()`, run against the
+    *already-running* `obs_source_t`. So `rewind_set_capture_app()` reuses
+    the same update-not-recreate approach as `rewind_set_capture_display()`
+    — `obs_source_update(g_capture, settings)` is enough, no source
+    recreation.
+  - **`obs_source_update()` merges, it doesn't replace.** Confirmed against
+    `libobs/obs-source.c`: `obs_source_update()` calls
+    `obs_data_apply(source->context.settings, settings)` (a merge — only
+    the keys present in `settings` are overwritten) *before* passing the
+    full persisted `source->context.settings` to `.update`. This is why
+    `rewind_set_capture_app()` doesn't need to resend `display_uuid` when
+    switching *away* from an app back to plain display capture (just
+    `"type": 0`) — whatever `display_uuid` the source already has (from
+    init or a prior `rewind_set_capture_display`) survives the merge and
+    is what `.update` reads.
+  - **App enumeration is pure C, not a port of `mac-sck-common.m`'s
+    `build_application_list()`** (which walks `SCShareableContent` via
+    ObjC/`SCShareableContent.applications`, async, needs a semaphore-gated
+    round trip). Instead: `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly
+    | kCGWindowListExcludeDesktopElements, kCGNullWindowID)` (CoreGraphics)
+    gives every on-screen window's `kCGWindowOwnerPID`; `proc_pidpath()`
+    (`<libproc.h>`, part of libSystem, no extra framework) resolves that
+    pid to its executable's absolute path; walking the path up to the
+    nearest ancestor directory ending in `.app` gives the bundle root,
+    which `CFBundleCreate()`/`CFBundleGetIdentifier()` (CoreFoundation)
+    reads for the bundle id — the same identifier
+    `ScreenCaptureApplicationStream`'s match loop compares against
+    (`SCRunningApplication.bundleIdentifier` is populated from the
+    process's own containing bundle — same relationship, walked in the
+    opposite direction). Verified with a real link + run (not just
+    `-fsyntax-only`): `CGWindowListCopyWindowInfo`/`CFBundleCreate`/
+    `proc_pidpath` all resolve against the framework set already linked
+    (`ApplicationServices` pulls in CoreGraphics'/CoreFoundation's headers
+    transitively via `CoreServices`, `libproc` is in `libSystem`) — no new
+    `-framework` flag needed, confirmed via `otool -L` showing an identical
+    load-command set before/after this change. Dedup is by bundle id (a
+    running app can have many on-screen windows); the process's own pid
+    and any window whose owning pid's bundle id can't be resolved (e.g. a
+    bundle-less helper/CLI process) are skipped.
 
 ## Wiring up real libobs
 

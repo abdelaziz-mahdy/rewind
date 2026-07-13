@@ -1,3 +1,4 @@
+import 'app_info.dart';
 import 'display_info.dart';
 
 /// Seam between the coordinator and the capture backend.
@@ -39,6 +40,20 @@ abstract class CaptureEngine {
   /// source is already running, it is reconfigured immediately. Returns
   /// false on failure.
   bool setCaptureDisplay(String uuid);
+
+  /// Enumerate applications that currently have at least one capturable
+  /// on-screen window. Safe to call before [init]. Returns an empty list
+  /// if enumeration fails (see [lastError]).
+  List<AppInfo> listCapturableApps();
+
+  /// Select a specific application to capture instead of a whole display,
+  /// identified by an [AppInfo.bundleId] from [listCapturableApps]. Safe
+  /// to call before [init] (the preference is remembered and applied at
+  /// init — an app target takes precedence over a display target if both
+  /// are set); if the capture source is already running, it is
+  /// reconfigured immediately. Passing `null` reverts to display capture.
+  /// Returns false on failure.
+  bool setCaptureApp(String? bundleId);
 
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.

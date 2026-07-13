@@ -1,4 +1,5 @@
 import '../log/log.dart';
+import 'app_info.dart';
 import 'capture_engine.dart';
 import 'display_info.dart';
 import 'rewind_obs_ffi.dart';
@@ -41,4 +42,22 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setCaptureDisplay(String uuid) => _obs.setCaptureDisplay(uuid) == 0;
+
+  @override
+  List<AppInfo> listCapturableApps() {
+    final json = _obs.listCapturableAppsJson();
+    if (json == null) {
+      talker.warning('listCapturableApps failed: ${_obs.lastError()}');
+      return const [];
+    }
+    try {
+      return AppInfo.listFromJson(json);
+    } catch (err, stack) {
+      talker.handle(err, stack);
+      return const [];
+    }
+  }
+
+  @override
+  bool setCaptureApp(String? bundleId) => _obs.setCaptureApp(bundleId) == 0;
 }

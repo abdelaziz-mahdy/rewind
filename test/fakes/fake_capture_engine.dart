@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/capture_engine.dart';
 import 'package:rewind/src/obs/display_info.dart';
 
@@ -16,6 +17,17 @@ class FakeCaptureEngine implements CaptureEngine {
 
   /// Every uuid passed to [setCaptureDisplay], in call order.
   final List<String> captureDisplayCalls = [];
+
+  /// Two fake apps, mirroring what a real desktop's on-screen windows would
+  /// report from `rewind_list_capturable_apps`.
+  final List<AppInfo> apps = const [
+    AppInfo(bundleId: 'com.rewind.stub.one', name: 'Stub App One', pid: 1001),
+    AppInfo(bundleId: 'com.rewind.stub.two', name: 'Stub App Two', pid: 1002),
+  ];
+
+  /// Every bundle id passed to [setCaptureApp], in call order (null entries
+  /// record a revert-to-display call).
+  final List<String?> captureAppCalls = [];
 
   /// When false, [saveClip] reports a path but writes no file — mimics the
   /// C shim's stub mode, which the coordinator must not index.
@@ -77,6 +89,19 @@ class FakeCaptureEngine implements CaptureEngine {
   bool setCaptureDisplay(String uuid) {
     calls.add('setCaptureDisplay:$uuid');
     captureDisplayCalls.add(uuid);
+    return true;
+  }
+
+  @override
+  List<AppInfo> listCapturableApps() {
+    calls.add('listCapturableApps');
+    return apps;
+  }
+
+  @override
+  bool setCaptureApp(String? bundleId) {
+    calls.add('setCaptureApp:${bundleId ?? 'null'}');
+    captureAppCalls.add(bundleId);
     return true;
   }
 }

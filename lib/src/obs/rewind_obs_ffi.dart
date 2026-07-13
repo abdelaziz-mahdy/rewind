@@ -35,11 +35,24 @@ external int _listDisplays(Pointer<Utf8> jsonOut, int jsonCap);
 @Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_set_capture_display')
 external int _setCaptureDisplay(Pointer<Utf8> displayUuid);
 
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(
+    symbol: 'rewind_list_capturable_apps')
+external int _listCapturableApps(Pointer<Utf8> jsonOut, int jsonCap);
+
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_set_capture_app')
+external int _setCaptureApp(Pointer<Utf8> bundleId);
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
 /// rather than silently corrupting output if it's ever exceeded.
 const int _kDisplayListBufferSize = 4096;
+
+/// Size of the buffer allocated for `rewind_list_capturable_apps`'s JSON
+/// out-param. Larger than [_kDisplayListBufferSize]: a busy desktop can
+/// easily have a few dozen apps with on-screen windows, each entry wider
+/// than a display entry (bundle id + name strings vs. a uuid + two ints).
+const int _kAppListBufferSize = 16384;
 
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
@@ -98,6 +111,30 @@ class RewindObs {
     final p = uuid.toNativeUtf8();
     try {
       return _setCaptureDisplay(p);
+    } finally {
+      malloc.free(p);
+    }
+  }
+
+  /// Raw JSON array from `rewind_list_capturable_apps`, or null on failure.
+  String? listCapturableAppsJson() {
+    final buf = malloc<Uint8>(_kAppListBufferSize);
+    try {
+      final p = buf.cast<Utf8>();
+      final r = _listCapturableApps(p, _kAppListBufferSize);
+      if (r != 0) return null;
+      return p.toDartString();
+    } finally {
+      malloc.free(buf);
+    }
+  }
+
+  /// Selects an application to capture, or reverts to display capture when
+  /// [bundleId] is null.
+  int setCaptureApp(String? bundleId) {
+    final p = (bundleId ?? '').toNativeUtf8();
+    try {
+      return _setCaptureApp(p);
     } finally {
       malloc.free(p);
     }

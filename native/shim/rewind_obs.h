@@ -54,6 +54,26 @@ int rewind_list_displays(char *json_out, int json_cap);
  * Returns 0 on success. */
 int rewind_set_capture_display(const char *display_uuid);
 
+/* Enumerate applications that currently have at least one capturable
+ * on-screen window, as a compact JSON array written into `json_out` (a
+ * caller-owned buffer of `json_cap` bytes), e.g.
+ *   [{"bundle_id":"com.apple.Safari","name":"Safari","pid":1234}, ...]
+ * Deduplicated by bundle id; apps whose bundle id can't be resolved and
+ * this process itself are omitted. Returns 0 on success, non-zero if
+ * enumeration failed or the buffer was too small (see rewind_last_error).
+ * Safe to call before rewind_obs_init. */
+int rewind_list_capturable_apps(char *json_out, int json_cap);
+
+/* Select a specific application to capture instead of a whole display,
+ * identified by the bundle id string returned from
+ * rewind_list_capturable_apps. Passing NULL or "" reverts to display
+ * capture (see rewind_set_capture_display) using whichever display was
+ * last selected. Safe to call before rewind_obs_init (the preference is
+ * remembered and applied at init — an app target takes precedence over a
+ * display target if both are set); if the capture source already exists,
+ * it is reconfigured immediately. Returns 0 on success. */
+int rewind_set_capture_app(const char *bundle_id);
+
 #ifdef __cplusplus
 }
 #endif
