@@ -58,7 +58,7 @@ if command -v ffprobe >/dev/null 2>&1; then
   awk -v d="$DURATION" 'BEGIN { exit !(d > 1) }' || fail "clip too short (${DURATION}s)"
   # Mean luma across sampled frames: pure black encodes ≈ 16 (limited range).
   LUMA=$(ffmpeg -v error -i "$CLIP" -vf "select=not(mod(n\,30)),signalstats,metadata=print" -f null - 2>&1 \
-    | awk -F: '/YAVG/ { sum += $NF; n++ } END { if (n) printf "%.1f", sum / n; else print 0 }')
+    | awk -F= '/YAVG/ { sum += $2; n++ } END { if (n) printf "%.1f", sum / n; else print 0 }')
   awk -v l="$LUMA" 'BEGIN { exit !(l > 20) }' || fail "clip appears to be black frames (mean luma $LUMA — permission or capture-source problem)"
   echo "==> Pixel check passed (duration ${DURATION}s, mean luma $LUMA)"
 else

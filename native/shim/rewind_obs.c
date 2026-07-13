@@ -174,8 +174,22 @@ static int find_obs_sdk_dir(char *out, size_t out_size) {
 #ifdef __APPLE__
 static void query_main_display_size(uint32_t *width, uint32_t *height) {
     CGDirectDisplayID display = CGMainDisplayID();
-    size_t w = CGDisplayPixelsWide(display);
-    size_t h = CGDisplayPixelsHigh(display);
+    /* ScreenCaptureKit delivers frames in PHYSICAL pixels, but
+     * CGDisplayPixelsWide/High return POINTS on Retina displays (half the
+     * pixel size). Sizing the canvas in points leaves the capture rendered
+     * 1:1 with only its top-left quarter visible. CGDisplayModeGetPixelWidth
+     * gives the true pixel dimensions. */
+    size_t w = 0, h = 0;
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(display);
+    if (mode) {
+        w = CGDisplayModeGetPixelWidth(mode);
+        h = CGDisplayModeGetPixelHeight(mode);
+        CGDisplayModeRelease(mode);
+    }
+    if (w == 0 || h == 0) {
+        w = CGDisplayPixelsWide(display);
+        h = CGDisplayPixelsHigh(display);
+    }
     *width = w > 0 ? (uint32_t)w : 1920;
     *height = h > 0 ? (uint32_t)h : 1080;
 }
