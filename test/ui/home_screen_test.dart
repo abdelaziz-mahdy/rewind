@@ -10,6 +10,7 @@ import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/home_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/game_filter_rail.dart';
 import '../fakes/fake_capture_engine.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
@@ -160,5 +161,108 @@ void main() {
     // per-game section before a game has ever actually been configured.
     await t.pumpWidget(_app(home()));
     expect(coordinator.settings.allConfigs, isEmpty);
+  });
+
+  group('game filter rail', () {
+    void addDesktopClip(String name, DateTime createdAt) => library.add(Clip(
+        path: '${tmp.path}/$name.mp4',
+        gameId: 'desktop',
+        event: GameEventKind.manual,
+        createdAt: createdAt,
+        sizeBytes: 1));
+
+    void addLeagueClip(String name, DateTime createdAt) => library.add(Clip(
+        path: '${tmp.path}/$name.mp4',
+        gameId: 'league_of_legends',
+        event: GameEventKind.pentaKill,
+        createdAt: createdAt,
+        sizeBytes: 1));
+
+    Finder chip(String id) => find.byKey(ValueKey('gameFilterChip:$id'));
+    Finder countIn(Finder chipFinder, int count) =>
+        find.descendant(of: chipFinder, matching: find.text('$count'));
+
+    testWidgets('absent with a single gameId', (t) async {
+      addDesktopClip('a', DateTime(2026, 7, 1));
+      await t.pumpWidget(_app(home()));
+      expect(find.byType(GameFilterRail), findsNothing);
+    });
+
+    testWidgets('chips appear when 2+ gameIds exist with correct counts',
+        (t) async {
+      addDesktopClip('a', DateTime(2026, 7, 1));
+      addDesktopClip('b', DateTime(2026, 7, 2));
+      addLeagueClip('c', DateTime(2026, 7, 3));
+      await t.pumpWidget(_app(home()));
+
+      expect(chip('all'), findsOneWidget);
+      expect(countIn(chip('all'), 3), findsOneWidget);
+      expect(chip('desktop'), findsOneWidget);
+      expect(countIn(chip('desktop'), 2), findsOneWidget);
+      expect(chip('league_of_legends'), findsOneWidget);
+      expect(countIn(chip('league_of_legends'), 1), findsOneWidget);
+      expect(
+          find.descendant(
+              of: chip('league_of_legends'),
+              matching: find.text('League of Legends')),
+          findsOneWidget);
+    });
+
+    testWidgets('selecting a chip filters rows', (t) async {
+      addDesktopClip('a', DateTime(2026, 7, 1));
+      addLeagueClip('b', DateTime(2026, 7, 2));
+      await t.pumpWidget(_app(home()));
+
+      // Both event badges visible under "All".
+      expect(find.text('MANUAL'), findsOneWidget);
+      expect(find.text('PENTA KILL'), findsOneWidget);
+
+      await t.tap(chip('league_of_legends'));
+      await t.pump();
+
+      expect(find.text('MANUAL'), findsNothing);
+      expect(find.text('PENTA KILL'), findsOneWidget);
+    });
+
+    testWidgets('deleting the last clip of the filtered game resets to All',
+        (t) async {
+      addDesktopClip('a', DateTime(2026, 7, 1));
+      addLeagueClip('b', DateTime(2026, 7, 2));
+      await t.pumpWidget(_app(home()));
+
+      await t.tap(chip('league_of_legends'));
+      await t.pump();
+      expect(find.text('PENTA KILL'), findsOneWidget);
+      expect(find.text('MANUAL'), findsNothing);
+
+      // Use the synchronous remove() rather than deleteClip() — deleteClip
+      // does real File I/O (already covered by clip_library_test.dart's
+      // plain test()) which hangs indefinitely inside testWidgets' fake
+      // async zone without tester.runAsync(). remove() triggers the same
+      // notifyListeners() the filter-reset logic reacts to.
+      final leagueClip =
+          library.all.firstWhere((c) => c.gameId == 'league_of_legends');
+      library.remove(leagueClip);
+      await t.pump();
+
+      // Filter reset to All: only the remaining desktop clip's rail is
+      // gone (single gameId left) and its row is back.
+      expect(find.byType(GameFilterRail), findsNothing);
+      expect(find.text('MANUAL'), findsOneWidget);
+    });
+  });
+
+  group('prettifyGameId', () {
+    test('known id gets its curated display name', () {
+      expect(prettifyGameId('league_of_legends'), 'League of Legends');
+    });
+
+    test('unknown single-word id is title-cased', () {
+      expect(prettifyGameId('desktop'), 'Desktop');
+    });
+
+    test('unknown multi-word id is title-cased on underscores', () {
+      expect(prettifyGameId('counter_strike_2'), 'Counter Strike 2');
+    });
   });
 }

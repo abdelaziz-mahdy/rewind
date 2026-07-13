@@ -6,6 +6,7 @@ import '../clip/clip_library.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../log/log.dart';
 import 'widgets/clip_tile.dart';
+import 'widgets/game_filter_rail.dart';
 import 'widgets/status_strip.dart';
 
 /// The main window: status strip up top, clip library below.
@@ -35,16 +36,31 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  /// Selected gameId in the filter rail; null means "All". Reset to null
+  /// whenever its game has no clips left (e.g. its last clip was deleted).
+  String? _filterGameId;
+
   @override
   void initState() {
     super.initState();
     widget.coordinator.lastSaveError.addListener(_showSaveErrorIfAny);
+    widget.library.addListener(_pruneFilterIfGameGone);
   }
 
   @override
   void dispose() {
     widget.coordinator.lastSaveError.removeListener(_showSaveErrorIfAny);
+    widget.library.removeListener(_pruneFilterIfGameGone);
     super.dispose();
+  }
+
+  void _pruneFilterIfGameGone() {
+    final filter = _filterGameId;
+    if (filter == null) return;
+    final stillPresent = widget.library.all.any((c) => c.gameId == filter);
+    if (!stillPresent && mounted) {
+      setState(() => _filterGameId = null);
+    }
   }
 
   void _showSaveErrorIfAny() {
@@ -97,15 +113,39 @@ class _HomeScreenState extends State<HomeScreen> {
             child: ListenableBuilder(
               listenable: widget.library,
               builder: (context, _) {
-                if (widget.library.all.isEmpty) {
+                final all = widget.library.all;
+                if (all.isEmpty) {
                   return _EmptyLibrary(hotkeyLabel: widget.hotkeyLabel);
                 }
-                final clips = List.of(widget.library.all)
+                final filterId = _filterGameId;
+                final visible = filterId == null
+                    ? all
+                    : all.where((c) => c.gameId == filterId).toList();
+                final clips = List.of(visible)
                   ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                return ListView.builder(
-                  itemCount: clips.length,
-                  itemBuilder: (context, i) =>
-                      ClipTile(clip: clips[i], library: widget.library),
+                // Filtering a single-game library has nothing to offer, so
+                // the rail is omitted entirely (not just visually hidden)
+                // once fewer than two distinct gameIds remain.
+                final hasMultipleGames =
+                    all.map((c) => c.gameId).toSet().length > 1;
+                return Column(
+                  children: [
+                    if (hasMultipleGames)
+                      GameFilterRail(
+                        clips: all,
+                        selected: _filterGameId,
+                        onSelected: (id) => setState(() => _filterGameId = id),
+                      ),
+                    Expanded(
+                      child: clips.isEmpty
+                          ? _EmptyLibrary(hotkeyLabel: widget.hotkeyLabel)
+                          : ListView.builder(
+                              itemCount: clips.length,
+                              itemBuilder: (context, i) => ClipTile(
+                                  clip: clips[i], library: widget.library),
+                            ),
+                    ),
+                  ],
                 );
               },
             ),
