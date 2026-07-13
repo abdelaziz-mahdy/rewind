@@ -13,6 +13,7 @@ import 'src/events/game_registry.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/log.dart';
 import 'src/obs/capture_engine.dart';
+import 'src/obs/display_info.dart';
 import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
 import 'src/settings/settings_store.dart';
@@ -52,6 +53,7 @@ Future<void> main() async {
     talker.info(
         'Capture engine started (buffering ${settings.defaultBufferSeconds}s)');
   }
+  final displays = engine?.listDisplays() ?? const <DisplayInfo>[];
 
   final coordinator = ClipCoordinator(
     registry: GameRegistry(),
@@ -116,6 +118,7 @@ Future<void> main() async {
     settings: settings,
     captureError: captureError,
     bufferActive: bufferActive,
+    displays: displays,
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -123,6 +126,9 @@ Future<void> main() async {
       // game-activity transition or app restart.
       engine
           ?.setBufferSeconds(s.bufferSecondsFor(coordinator.activeGame.value));
+      if (s.captureDisplayUuid != null) {
+        engine?.setCaptureDisplay(s.captureDisplayUuid!);
+      }
       if (!await hotkeys.bind(s.hotkey, coordinator.onHotkey)) {
         talker.warning('Could not register hotkey "${s.hotkey}"');
       } else {
@@ -138,6 +144,7 @@ class RewindApp extends StatelessWidget {
   final AppSettings settings;
   final String? captureError;
   final ValueNotifier<bool> bufferActive;
+  final List<DisplayInfo> displays;
   final Future<void> Function(AppSettings) onSettingsChanged;
 
   const RewindApp({
@@ -146,6 +153,7 @@ class RewindApp extends StatelessWidget {
     required this.settings,
     required this.captureError,
     required this.bufferActive,
+    required this.displays,
     required this.onSettingsChanged,
     super.key,
   });
@@ -167,6 +175,7 @@ class RewindApp extends StatelessWidget {
               builder: (_) => SettingsScreen(
                 settings: settings,
                 onChanged: onSettingsChanged,
+                displays: displays,
               ),
             ),
           ),

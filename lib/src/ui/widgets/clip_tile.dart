@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
 import '../../events/game_event.dart';
+import '../theme.dart';
 
 /// "pentaKill" -> "PENTA KILL".
 String eventBadge(GameEventKind kind) => kind.name
@@ -27,64 +28,136 @@ String formatSize(int bytes) {
   return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
 }
 
+/// Badge tint per event kind, derived from the single accent color by
+/// rotating its hue (kills warm to amber, objectives shift to violet) so the
+/// library stays legible at a glance without turning into an RGB rainbow.
+Color eventColor(BuildContext context, GameEventKind kind) {
+  final scheme = Theme.of(context).colorScheme;
+  switch (kind) {
+    case GameEventKind.manual:
+    case GameEventKind.victory:
+      return scheme.primary;
+    case GameEventKind.defeat:
+      return scheme.error;
+    case GameEventKind.other:
+      return scheme.outline;
+    case GameEventKind.kill:
+    case GameEventKind.doubleKill:
+    case GameEventKind.tripleKill:
+    case GameEventKind.quadraKill:
+    case GameEventKind.pentaKill:
+    case GameEventKind.ace:
+      return _rotateAccent(scheme.primary, 32); // amber
+    case GameEventKind.dragonKill:
+    case GameEventKind.dragonSteal:
+    case GameEventKind.baronKill:
+    case GameEventKind.baronSteal:
+    case GameEventKind.turretKill:
+    case GameEventKind.inhibitorKill:
+      return _rotateAccent(scheme.primary, 266); // violet
+  }
+}
+
+Color _rotateAccent(Color accent, double hue) =>
+    HSLColor.fromColor(accent).withHue(hue % 360).toColor();
+
 enum _ClipAction { reveal, delete }
 
 /// One row in the clip library: thumbnail placeholder, event badge + game
 /// name, relative age + size, and a menu for reveal/delete. Tap opens the
-/// clip with the OS default player.
-class ClipTile extends StatelessWidget {
+/// clip with the OS default player. The trailing menu fades in on hover so
+/// the row stays clean at rest.
+class ClipTile extends StatefulWidget {
   final Clip clip;
   final ClipLibrary library;
 
   const ClipTile({required this.clip, required this.library, super.key});
 
   @override
+  State<ClipTile> createState() => _ClipTileState();
+}
+
+class _ClipTileState extends State<ClipTile> {
+  bool _hovering = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      onTap: () => _open(clip.path),
-      leading: Container(
-        width: 64,
-        height: 44,
+    final clip = widget.clip;
+    final accent = eventColor(context, clip.event);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
+          color: _hovering
+              ? Colors.white.withValues(alpha: 0.03)
+              : Colors.transparent,
+          border: Border(bottom: hairlineBorder(0.06)),
         ),
-        child: const Icon(Icons.play_arrow_rounded),
-      ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: ListTile(
+          onTap: () => _open(clip.path),
+          leading: Container(
+            width: 64,
+            height: 44,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.fromBorderSide(hairlineBorder()),
             ),
-            child: Text(
-              eventBadge(clip.event),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.bold,
+            child: Icon(Icons.play_arrow_rounded,
+                color: theme.colorScheme.onSurfaceVariant),
+          ),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: accent.withValues(alpha: 0.5)),
+                ),
+                child: Text(
+                  eventBadge(clip.event),
+                  style: theme.textTheme.microLabel.copyWith(color: accent),
+                ),
               ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  clip.gameId,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          subtitle: Text(
+            '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          trailing: AnimatedOpacity(
+            duration: const Duration(milliseconds: 120),
+            opacity: _hovering ? 1 : 0.55,
+            child: PopupMenuButton<_ClipAction>(
+              onSelected: (action) => _onAction(context, action),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _ClipAction.reveal,
+                  child: Text(Platform.isMacOS
+                      ? 'Reveal in Finder'
+                      : 'Reveal in Explorer'),
+                ),
+                const PopupMenuItem(
+                    value: _ClipAction.delete, child: Text('Delete')),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Flexible(child: Text(clip.gameId, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-      subtitle: Text(
-          '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}'),
-      trailing: PopupMenuButton<_ClipAction>(
-        onSelected: (action) => _onAction(context, action),
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            value: _ClipAction.reveal,
-            child: Text(
-                Platform.isMacOS ? 'Reveal in Finder' : 'Reveal in Explorer'),
-          ),
-          const PopupMenuItem(value: _ClipAction.delete, child: Text('Delete')),
-        ],
+        ),
       ),
     );
   }
@@ -92,7 +165,7 @@ class ClipTile extends StatelessWidget {
   Future<void> _onAction(BuildContext context, _ClipAction action) async {
     switch (action) {
       case _ClipAction.reveal:
-        await _reveal(clip.path);
+        await _reveal(widget.clip.path);
       case _ClipAction.delete:
         final confirmed = await showDialog<bool>(
           context: context,
@@ -111,7 +184,7 @@ class ClipTile extends StatelessWidget {
             ],
           ),
         );
-        if (confirmed == true) await library.deleteClip(clip);
+        if (confirmed == true) await widget.library.deleteClip(widget.clip);
     }
   }
 

@@ -123,15 +123,62 @@ class _EmptyLibrary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.video_library_outlined,
-              size: 48, color: Theme.of(context).colorScheme.outline),
+          Icon(Icons.movie_creation_outlined,
+              size: 56, color: muted.withValues(alpha: 0.5)),
+          const SizedBox(height: 16),
+          Text('No clips yet', style: theme.textTheme.titleMedium),
           const SizedBox(height: 12),
-          Text('No clips yet — press $hotkeyLabel'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Press ',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
+              _KeyCap(label: hotkeyLabel),
+              Text(' to save your last moment',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: muted)),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// A hotkey rendered as a physical keyboard key: bordered cap with a
+/// slightly darker "bottom edge" shadow, tabular figures for any digits.
+class _KeyCap extends StatelessWidget {
+  final String label;
+
+  const _KeyCap({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
   }
