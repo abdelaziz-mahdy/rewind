@@ -384,11 +384,13 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
           _listening = false;
           _hint = null;
         });
-        // onChanged first: it mutates settings.hotkey synchronously (see
-        // SettingsScreen doc), so onRecording(false) — which typically
-        // rebinds off that same live object — reads the new value already.
+        // Only onChanged here: its handler already rebinds the (new) hotkey.
+        // Also firing onRecording(false) would start a SECOND concurrent
+        // unregisterAll+register cycle; if the two interleave, the hotkey
+        // ends up registered twice and one press saves two clips. Cancel
+        // paths (Escape/focus loss/dispose) still fire onRecording(false),
+        // since no onChanged rebind happens there.
         widget.onChanged(descriptor);
-        widget.onRecording?.call(false);
         return KeyEventResult.handled;
     }
   }

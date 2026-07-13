@@ -156,16 +156,13 @@ Future<void> main() async {
         await hotkeys.dispose();
         return;
       }
-      // Recording just ended — re-bind. Two cases share this branch:
-      //  - Cancelled (Escape / click away / navigated off Settings): binds
-      //    the still-unchanged `settings.hotkey`, restoring what was live
-      //    before recording started.
-      //  - A combo was just captured: onSettingsChanged above already
-      //    mutated `settings.hotkey` and re-bound it before this callback
-      //    fires (see SettingsScreen.onHotkeyRecording doc), so this call
-      //    re-binds the *same new* value — a redundant but harmless extra
-      //    unregister+register, not a stale rebind, since it reads
-      //    `settings.hotkey` fresh rather than a captured copy.
+      // Recording ended WITHOUT a capture (Escape / click away / navigated
+      // off Settings): re-bind the still-unchanged `settings.hotkey`,
+      // restoring what was live before recording started. The successful
+      // capture path deliberately does NOT reach here — onSettingsChanged
+      // owns that rebind, and a second concurrent unregisterAll+register
+      // cycle could interleave into a double registration (one press,
+      // two saved clips).
       if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
         talker.warning('Could not re-register hotkey "${settings.hotkey}"');
       } else {

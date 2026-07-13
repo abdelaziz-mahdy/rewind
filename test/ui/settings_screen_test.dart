@@ -99,8 +99,9 @@ void main() {
   });
 
   testWidgets(
-      'onHotkeyRecording fires true on start and false on both '
-      'Escape-cancel and a successful capture', (t) async {
+      'onHotkeyRecording fires true on start, false on Escape-cancel, and '
+      'is NOT re-fired on a successful capture (onChanged owns that rebind)',
+      (t) async {
     final calls = <AppSettings>[];
     final recording = <bool>[];
     await t.pumpWidget(_app(SettingsScreen(
@@ -127,7 +128,11 @@ void main() {
     await t.pump();
     await t.sendKeyUpEvent(LogicalKeyboardKey.f9);
 
-    expect(recording, [true, false, true, false]);
+    // The capture path fires onChanged (whose handler rebinds the NEW
+    // hotkey) and deliberately does NOT also fire onRecording(false):
+    // two concurrent unregisterAll+register cycles can interleave into a
+    // double registration, making one press save two clips.
+    expect(recording, [true, false, true]);
     expect(calls, isNotEmpty);
     expect(calls.last.hotkey, 'F9');
   });
