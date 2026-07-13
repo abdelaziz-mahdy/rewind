@@ -20,10 +20,30 @@ class SettingsScreen extends StatefulWidget {
   /// "Capture display" section is hidden entirely when this is empty.
   final List<DisplayInfo> displays;
 
+  /// Called with `true` when the hotkey recorder starts listening and
+  /// `false` whenever it stops (a captured combo, Escape, clicking away, or
+  /// the field being torn down mid-record) — so the caller can suspend the
+  /// live system-wide hotkey while recording. Without this, the
+  /// currently-bound combo stays live during recording: pressing it
+  /// mid-record both fires a spurious save and, since the OS owns it at
+  /// system scope, may never reach this widget at all — making it
+  /// impossible to re-record the hotkey currently in use.
+  ///
+  /// On a successful capture, [onChanged] (which mutates `settings.hotkey`
+  /// synchronously before doing anything async) is always called *before*
+  /// this callback fires with `false`. A caller that re-binds off the live
+  /// `settings` object — as `onChanged` itself typically also does — will
+  /// therefore see the newly-captured value on both calls, not a stale one;
+  /// the extra bind is redundant but harmless (re-registering the same
+  /// combo twice), not a "rebind the old value over the new one" bug.
+  /// Optional so existing callers/tests don't need to wire it.
+  final Future<void> Function(bool recording)? onHotkeyRecording;
+
   const SettingsScreen({
     required this.settings,
     required this.onChanged,
     required this.displays,
+    this.onHotkeyRecording,
     super.key,
   });
 
@@ -187,6 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: _HotkeyRecorderField(
               value: widget.settings.hotkey,
               onChanged: _handleHotkeyChanged,
+              onRecording: widget.onHotkeyRecording,
             ),
           ),
           if (configs.isNotEmpty)
@@ -277,7 +298,14 @@ class _HotkeyRecorderField extends StatefulWidget {
   final String value;
   final ValueChanged<String> onChanged;
 
-  const _HotkeyRecorderField({required this.value, required this.onChanged});
+  /// See [SettingsScreen.onHotkeyRecording] — forwarded as-is.
+  final Future<void> Function(bool recording)? onRecording;
+
+  const _HotkeyRecorderField({
+    required this.value,
+    required this.onChanged,
+    this.onRecording,
+  });
 
   @override
   State<_HotkeyRecorderField> createState() => _HotkeyRecorderFieldState();
@@ -290,6 +318,10 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
 
   @override
   void dispose() {
+    // Covers navigating away from Settings mid-record (e.g. back button) —
+    // the same "recording ended without a capture" case as Escape/click-away,
+    // just via widget teardown instead of a key/focus event.
+    if (_listening) widget.onRecording?.call(false);
     _focusNode.dispose();
     super.dispose();
   }
@@ -300,14 +332,18 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
       _hint = null;
     });
     _focusNode.requestFocus();
+    widget.onRecording?.call(true);
   }
 
+  /// Escape or clicking away — recording ends with nothing captured, so the
+  /// previously-bound hotkey needs to come back.
   void _cancel() {
     if (!mounted) return;
     setState(() {
       _listening = false;
       _hint = null;
     });
+    widget.onRecording?.call(false);
   }
 
   void _clear() {
@@ -348,7 +384,11 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
           _listening = false;
           _hint = null;
         });
+        // onChanged first: it mutates settings.hotkey synchronously (see
+        // SettingsScreen doc), so onRecording(false) — which typically
+        // rebinds off that same live object — reads the new value already.
         widget.onChanged(descriptor);
+        widget.onRecording?.call(false);
         return KeyEventResult.handled;
     }
   }

@@ -98,6 +98,40 @@ void main() {
     await t.sendKeyUpEvent(LogicalKeyboardKey.f9);
   });
 
+  testWidgets(
+      'onHotkeyRecording fires true on start and false on both '
+      'Escape-cancel and a successful capture', (t) async {
+    final calls = <AppSettings>[];
+    final recording = <bool>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+      onHotkeyRecording: (r) async => recording.add(r),
+    )));
+
+    // Start listening, then cancel with Escape.
+    await _startRecording(t);
+    expect(recording, [true]);
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+    await t.sendKeyUpEvent(LogicalKeyboardKey.escape);
+    expect(recording, [true, false]);
+
+    // Start listening again, this time capture a combo successfully.
+    await _startRecording(t);
+    expect(recording, [true, false, true]);
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.f9);
+    await t.pump();
+    await t.sendKeyUpEvent(LogicalKeyboardKey.f9);
+
+    expect(recording, [true, false, true, false]);
+    expect(calls, isNotEmpty);
+    expect(calls.last.hotkey, 'F9');
+  });
+
   testWidgets('picking 60s updates settings via onChanged', (t) async {
     final calls = <AppSettings>[];
     await t.pumpWidget(_app(SettingsScreen(
