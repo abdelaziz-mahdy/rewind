@@ -174,4 +174,38 @@ void main() {
       );
     });
   });
+
+  group('CachingProcessLister', () {
+    test('serves repeated calls within the ttl from one snapshot', () async {
+      var calls = 0;
+      final inner = _CountingLister(() {
+        calls++;
+        return ['gameproc'];
+      });
+      final caching = CachingProcessLister(inner);
+      await caching.runningProcessNames();
+      await caching.runningProcessNames();
+      await caching.runningProcessNames();
+      expect(calls, 1);
+    });
+
+    test('refreshes once the ttl has elapsed', () async {
+      var calls = 0;
+      final inner = _CountingLister(() {
+        calls++;
+        return ['gameproc'];
+      });
+      final caching = CachingProcessLister(inner, ttl: Duration.zero);
+      await caching.runningProcessNames();
+      await caching.runningProcessNames();
+      expect(calls, 2);
+    });
+  });
+}
+
+class _CountingLister implements ProcessLister {
+  final List<String> Function() _onList;
+  _CountingLister(this._onList);
+  @override
+  Future<List<String>> runningProcessNames() async => _onList();
 }

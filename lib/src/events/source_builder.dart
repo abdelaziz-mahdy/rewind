@@ -23,12 +23,18 @@ List<GameEventSource> buildSources(AppSettings settings) {
   final sources = <GameEventSource>[LeagueEventWatcher()];
   final seenGameIds = {for (final s in sources) s.gameId};
 
+  // ONE shared, tick-cached lister for every process watcher: without it,
+  // each of the dozen+ sources spawns its own `ps`/`tasklist` every
+  // supervision tick, forever.
+  final lister = CachingProcessLister(const SystemProcessLister());
+
   for (final g in popularGamesCatalog) {
     if (!seenGameIds.add(g.gameId)) continue;
     sources.add(ProcessWatcherSource(
       gameId: g.gameId,
       displayName: g.displayName,
       processMatch: g.processMatch,
+      lister: lister,
     ));
   }
 
@@ -43,6 +49,7 @@ List<GameEventSource> buildSources(AppSettings settings) {
       gameId: cfg.gameId,
       displayName: cfg.gameId,
       processMatch: match,
+      lister: lister,
     ));
   }
 

@@ -79,6 +79,40 @@ class SystemProcessLister implements ProcessLister {
   }
 }
 
+/// Shares one process-list snapshot between many watcher sources.
+///
+/// [GameRegistry] polls every source each supervision tick; with a dozen
+/// catalog sources each shelling out its own `ps`/`tasklist`, that's a
+/// steady stream of process spawns forever. Wrapping ONE [SystemProcessLister]
+/// in this cache and injecting it into every source collapses a whole tick's
+/// lookups into a single spawn ([ttl] just needs to sit below the tick
+/// interval so each tick still gets a fresh snapshot).
+class CachingProcessLister implements ProcessLister {
+  final ProcessLister _inner;
+  final Duration ttl;
+
+  List<String>? _cached;
+  DateTime? _fetchedAt;
+
+  CachingProcessLister(this._inner,
+      {this.ttl = const Duration(milliseconds: 1500)});
+
+  @override
+  Future<List<String>> runningProcessNames() async {
+    final cached = _cached;
+    final at = _fetchedAt;
+    if (cached != null &&
+        at != null &&
+        DateTime.now().difference(at) < ttl) {
+      return cached;
+    }
+    final fresh = await _inner.runningProcessNames();
+    _cached = fresh;
+    _fetchedAt = DateTime.now();
+    return fresh;
+  }
+}
+
 /// Detects a user-chosen application by checking the OS process list.
 ///
 /// This exists purely for *detection* (so Rewind can auto-apply a saved

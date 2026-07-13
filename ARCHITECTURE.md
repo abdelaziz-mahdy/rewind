@@ -100,6 +100,18 @@ That was the fast-MVP alternative (drive an installed OBS over WebSocket, no nat
 
 Embedding libobs (GPLv3) makes Rewind a GPLv3 work as a whole. This is intentional and fine — Rewind is free/open-source software. Do not introduce GPL-incompatible dependencies.
 
+Third-party dependencies with license relevance, checked GPLv3-compatible:
+
+- **media_kit / media_kit_video / media_kit_libs_video** (in-app playback):
+  Dart packages are MIT; the bundled native **libmpv** is LGPL v2.1 —
+  compatible. (`fvp` was evaluated and rejected: its libmdk core is
+  proprietary/key-gated, GPL-incompatible.)
+- **talker_flutter** (logging + in-app log screen): MIT.
+- **hotkey_manager / tray_manager / path_provider / http / ffi / path**: MIT/BSD.
+
+When adding a dependency, record its license here if it ships native code or
+is anything other than a routine MIT/BSD pub package.
+
 ## Game integration plugins (extensibility)
 
 Rewind is designed so **new games plug in without touching the capture engine or core app**. Every integration implements one interface:

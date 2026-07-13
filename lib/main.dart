@@ -141,6 +141,9 @@ Future<void> main() async {
       exit(0);
     },
   );
+  // Seed the tray's toggle label from the real startup state — its internal
+  // default assumes an active buffer, which is wrong when capture failed.
+  await tray.setBufferState(bufferActive.value);
 
   runApp(RewindApp(
     coordinator: coordinator,
