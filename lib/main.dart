@@ -36,8 +36,17 @@ Future<void> main() async {
   CaptureEngine? engine = RewindObsEngine();
   String? captureError;
   // Apply the user's saved capture-display choice before init so the shim
-  // targets it from the first frame (no-op when null: main display).
-  final savedDisplay = settings.captureDisplayUuid;
+  // targets it from the first frame (null: main display). A stale UUID —
+  // e.g. an unplugged external monitor — must be dropped, or capture
+  // silently records black.
+  final connectedDisplays = engine.listDisplays();
+  final savedDisplay =
+      validDisplayUuid(settings.captureDisplayUuid, connectedDisplays);
+  if (settings.captureDisplayUuid != null && savedDisplay == null) {
+    talker.warning('Saved capture display not found; using main display');
+    settings.captureDisplayUuid = null;
+    await store.save(settings);
+  }
   if (savedDisplay != null) engine.setCaptureDisplay(savedDisplay);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
@@ -53,7 +62,7 @@ Future<void> main() async {
     talker.info(
         'Capture engine started (buffering ${settings.defaultBufferSeconds}s)');
   }
-  final displays = engine?.listDisplays() ?? const <DisplayInfo>[];
+  final displays = engine != null ? connectedDisplays : const <DisplayInfo>[];
 
   final coordinator = ClipCoordinator(
     registry: GameRegistry(),

@@ -37,3 +37,9 @@ class DisplayInfo {
   String toString() => 'DisplayInfo($uuid, ${width}x$height'
       '${isMain ? ', main' : ''})';
 }
+
+/// Returns [saved] only if it identifies a currently connected display —
+/// a stale UUID (e.g. an unplugged external monitor) must not be applied,
+/// or capture silently records black. Null means "use the main display".
+String? validDisplayUuid(String? saved, List<DisplayInfo> displays) =>
+    saved != null && displays.any((d) => d.uuid == saved) ? saved : null;

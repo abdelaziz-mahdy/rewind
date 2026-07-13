@@ -96,65 +96,72 @@ class _ClipTileState extends State<ClipTile> {
               : Colors.transparent,
           border: Border(bottom: hairlineBorder(0.06)),
         ),
-        child: ListTile(
-          onTap: () => _open(clip.path),
-          leading: Container(
-            width: 64,
-            height: 44,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.fromBorderSide(hairlineBorder()),
+        // ListTile needs a Material ancestor it can paint ink on; the
+        // decorated AnimatedContainer above otherwise triggers Flutter's
+        // "ink splashes may be invisible" assertion on every tile.
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            onTap: () => _open(clip.path),
+            leading: Container(
+              width: 64,
+              height: 44,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.fromBorderSide(hairlineBorder()),
+              ),
+              child: Icon(Icons.play_arrow_rounded,
+                  color: theme.colorScheme.onSurfaceVariant),
             ),
-            child: Icon(Icons.play_arrow_rounded,
-                color: theme.colorScheme.onSurfaceVariant),
-          ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: accent.withValues(alpha: 0.5)),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: accent.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    eventBadge(clip.event),
+                    style: theme.textTheme.microLabel.copyWith(color: accent),
+                  ),
                 ),
-                child: Text(
-                  eventBadge(clip.event),
-                  style: theme.textTheme.microLabel.copyWith(color: accent),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    clip.gameId,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  clip.gameId,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          subtitle: Text(
-            '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          trailing: AnimatedOpacity(
-            duration: const Duration(milliseconds: 120),
-            opacity: _hovering ? 1 : 0.55,
-            child: PopupMenuButton<_ClipAction>(
-              onSelected: (action) => _onAction(context, action),
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: _ClipAction.reveal,
-                  child: Text(Platform.isMacOS
-                      ? 'Reveal in Finder'
-                      : 'Reveal in Explorer'),
-                ),
-                const PopupMenuItem(
-                    value: _ClipAction.delete, child: Text('Delete')),
               ],
+            ),
+            subtitle: Text(
+              '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            trailing: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: _hovering ? 1 : 0.55,
+              child: PopupMenuButton<_ClipAction>(
+                onSelected: (action) => _onAction(context, action),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: _ClipAction.reveal,
+                    child: Text(Platform.isMacOS
+                        ? 'Reveal in Finder'
+                        : 'Reveal in Explorer'),
+                  ),
+                  const PopupMenuItem(
+                      value: _ClipAction.delete, child: Text('Delete')),
+                ],
+              ),
             ),
           ),
         ),

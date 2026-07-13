@@ -42,4 +42,25 @@ void main() {
     expect(d.height, 768);
     expect(d.isMain, isFalse);
   });
+
+  group('validDisplayUuid', () {
+    const displays = [
+      DisplayInfo(uuid: 'a', width: 1, height: 1, isMain: true),
+      DisplayInfo(uuid: 'b', width: 2, height: 2, isMain: false),
+    ];
+    test('returns the uuid when the display is connected', () {
+      expect(validDisplayUuid('b', displays), 'b');
+    });
+    test('returns null for a stale uuid (unplugged monitor)', () {
+      expect(validDisplayUuid('gone', displays), isNull);
+    });
+    test('returns null for null input', () {
+      expect(validDisplayUuid(null, displays), isNull);
+    });
+    test('returns null when no displays are reported', () {
+      expect(validDisplayUuid('a', const []), isNull);
+    });
+  });
 }
+
+// validDisplayUuid appended by integrator alongside the stale-UUID guard.
