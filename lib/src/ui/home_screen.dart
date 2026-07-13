@@ -8,6 +8,7 @@ import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
+import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/game_filter_rail.dart';
 import 'widgets/status_strip.dart';
@@ -243,8 +244,10 @@ class _EmptyLibrary extends StatelessWidget {
   }
 }
 
-/// A hotkey rendered as a physical keyboard key: bordered cap with a
-/// slightly darker "bottom edge" shadow, tabular figures for any digits.
+/// A hotkey rendered as a physical keyboard key: bordered cap, tabular
+/// figures for any digits. No drop shadow — the redesign carries the "raised
+/// key" read via the border alone (see docs/superpowers/specs/
+/// 2026-07-13-game-centric-redesign.md §2: "elevation/shadows ... none").
 class _KeyCap extends StatelessWidget {
   final String label;
 
@@ -257,14 +260,8 @@ class _KeyCap extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusControl),
         border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Text(
         label,

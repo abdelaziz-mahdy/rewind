@@ -95,7 +95,7 @@ class _ClipTileState extends State<ClipTile> {
         duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(
           color: _hovering
-              ? Colors.white.withValues(alpha: 0.03)
+              ? context.rewindTokens.surfaceRaised
               : Colors.transparent,
           border: Border(bottom: hairlineBorder(0.06)),
         ),
@@ -111,7 +111,8 @@ class _ClipTileState extends State<ClipTile> {
               height: 44,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius:
+                    BorderRadius.circular(context.rewindTokens.radiusChip),
                 border: Border.fromBorderSide(hairlineBorder()),
               ),
               child: Icon(Icons.play_arrow_rounded,
@@ -125,12 +126,13 @@ class _ClipTileState extends State<ClipTile> {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius:
+                        BorderRadius.circular(context.rewindTokens.radiusChip),
                     border: Border.all(color: accent.withValues(alpha: 0.5)),
                   ),
                   child: Text(
                     eventBadge(clip.event),
-                    style: theme.textTheme.microLabel.copyWith(color: accent),
+                    style: theme.textTheme.micro.copyWith(color: accent),
                   ),
                 ),
                 const SizedBox(width: 8),

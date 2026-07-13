@@ -96,7 +96,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E1114),
+      // No hard-coded background: inherit rewindTheme's scaffoldBackgroundColor
+      // (RewindTokens.dark.bg) so this stays in step with the shared palette.
       body: KeyboardListener(
         focusNode: _focusNode,
         autofocus: true,

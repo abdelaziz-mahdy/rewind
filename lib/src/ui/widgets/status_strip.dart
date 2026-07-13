@@ -73,7 +73,7 @@ class StatusStrip extends StatelessWidget {
             captureError != null ? 'Capture unavailable' : 'Paused',
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: theme.textTheme.heroNumeral
+            style: theme.textTheme.numeral
                 .copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
@@ -88,7 +88,7 @@ class StatusStrip extends StatelessWidget {
           builder: (context, gameId, _) => _BufferQuickSet(
             label:
                 'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
-            style: theme.textTheme.heroNumeral,
+            style: theme.textTheme.numeral,
             onPick: (seconds) {
               // Mirrors exactly what `bufferSecondsFor` reads: with a game
               // active, `configFor` lazily creates (or reuses) that game's
@@ -151,7 +151,8 @@ class StatusStrip extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius:
+                  BorderRadius.circular(context.rewindTokens.radiusCard),
               border: Border.fromBorderSide(hairlineBorder()),
             ),
             child: Row(
@@ -242,7 +243,8 @@ class _BufferQuickSet extends StatelessWidget {
   }
 }
 
-/// Pill showing the active game (or "Desktop" when none is detected).
+/// Rectangular chip showing the active game (or "Desktop" when none is
+/// detected).
 class _GameChip extends StatelessWidget {
   final String label;
 
@@ -257,7 +259,7 @@ class _GameChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
           border: Border.fromBorderSide(hairlineBorder()),
         ),
         child: Row(
@@ -281,8 +283,8 @@ class _GameChip extends StatelessWidget {
   }
 }
 
-/// Pill showing the current capture source (a whole display, or a single
-/// app) — mirrors [_GameChip]'s shape. Tapping it opens a single unified
+/// Rectangular chip showing the current capture source (a whole display, or
+/// a single app) — mirrors [_GameChip]'s shape. Tapping it opens a single unified
 /// menu (displays, then a divider, then apps) to switch targets; the choice
 /// is written straight through [onSettingsChanged] via the same path
 /// Settings uses. This is the direct answer to "where is my recording coming
@@ -381,7 +383,8 @@ class _SourceChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius:
+                BorderRadius.circular(context.rewindTokens.radiusChip),
             border: Border.fromBorderSide(hairlineBorder()),
           ),
           child: Row(
@@ -429,7 +432,7 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const amber = Color(0xFFFFB74D);
+    final amber = context.rewindTokens.warn;
     // Only coach the user toward the permission pane when the failure is
     // actually about permission — the shim reports that case explicitly.
     // Any other error must stand on its own instead of misdirecting.
@@ -442,13 +445,13 @@ class _ErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: amber.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
         border: Border.all(color: amber),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: amber),
+          Icon(Icons.warning_amber_rounded, color: amber),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -490,8 +493,9 @@ class _IdleDot extends StatelessWidget {
   }
 }
 
-/// A small pulsing red dot (with a soft glow) signaling that the replay
-/// buffer is live.
+/// A small solid dot signaling that the replay buffer is live: a slow,
+/// subtle opacity pulse (0.45 → 1.0 over 1.2 s) earns it motion without any
+/// glow — no BoxShadow, per the redesign's "no halos anywhere" rule.
 class _PulseDot extends StatefulWidget {
   const _PulseDot();
 
@@ -501,11 +505,9 @@ class _PulseDot extends StatefulWidget {
 
 class _PulseDotState extends State<_PulseDot>
     with SingleTickerProviderStateMixin {
-  static const _red = Color(0xFFFF5470);
-
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 1200),
   )..repeat(reverse: true);
 
   @override
@@ -517,18 +519,11 @@ class _PulseDotState extends State<_PulseDot>
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween(begin: 0.35, end: 1.0).animate(_controller),
+      opacity: Tween(begin: 0.45, end: 1.0).animate(_controller),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: _red,
+          color: context.rewindTokens.rec,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: _red.withValues(alpha: 0.5),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
         ),
         child: const SizedBox(width: 10, height: 10),
       ),

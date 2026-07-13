@@ -315,7 +315,7 @@ class _Section extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
         border: Border.fromBorderSide(hairlineBorder()),
       ),
       child: Column(
@@ -323,7 +323,7 @@ class _Section extends StatelessWidget {
         children: [
           Text(
             title.toUpperCase(),
-            style: theme.textTheme.microLabel
+            style: theme.textTheme.micro
                 .copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 12),
@@ -464,15 +464,18 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
           },
           child: Material(
             color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius:
+                BorderRadius.circular(context.rewindTokens.radiusControl),
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius:
+                  BorderRadius.circular(context.rewindTokens.radiusControl),
               onTap: _startListening,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(context.rewindTokens.radiusControl),
                   border: Border.all(
                     color: _listening
                         ? theme.colorScheme.primary

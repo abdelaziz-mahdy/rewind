@@ -62,7 +62,7 @@ class GameFilterRail extends StatelessWidget {
   }
 }
 
-/// A single pill in the rail: label + count badge, accent-highlighted when
+/// A single rectangular chip in the rail: label + count badge, accent-highlighted when
 /// selected. Visual language matches [hairlineBorder]-bordered surfaces
 /// used throughout (see status_strip.dart's game chip).
 class _FilterChip extends StatelessWidget {
@@ -83,11 +83,12 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
+    final radius = context.rewindTokens.radiusChip;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(radius),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -95,7 +96,7 @@ class _FilterChip extends StatelessWidget {
             color: selected
                 ? accent.withValues(alpha: 0.16)
                 : theme.colorScheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.fromBorderSide(
                 selected ? BorderSide(color: accent) : hairlineBorder()),
           ),
@@ -116,7 +117,7 @@ class _FilterChip extends StatelessWidget {
                   color: selected
                       ? accent.withValues(alpha: 0.24)
                       : theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(radius),
                 ),
                 child: Text(
                   '$count',
