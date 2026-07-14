@@ -93,11 +93,12 @@ void main() {
       expect(gameIds.toSet().length, gameIds.length);
     });
 
-    // The capture-source chip's "remember this app" write (see
-    // `capture_app_match.dart`/`status_strip.dart`) generates GameConfigs of
-    // exactly this shape: `app:<slug>` ids for non-catalog apps, and a reuse
-    // of an existing catalog gameId for apps that match one. Both must flow
-    // through `buildSources` the same way Supported Games' Add flow does.
+    // The capture-source line's "remember this app" write (see
+    // `capture_app_match.dart`/`recorder_cluster.dart`) generates GameConfigs
+    // of exactly this shape: `app:<slug>` ids for non-catalog apps, and a
+    // reuse of an existing catalog gameId for apps that match one. Both must
+    // flow through `buildSources` the same way Supported Games' Add flow
+    // does.
     test(
         'a picked-app config for a non-catalog app (app:<slug> gameId) adds '
         'a matching ProcessWatcherSource', () {

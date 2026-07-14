@@ -171,12 +171,12 @@ Future<void> main() async {
     });
   }
 
-  // Live buffer state shared by the status strip and the tray toggle.
+  // Live buffer state shared by the recorder cluster and the tray toggle.
   final bufferActive =
       ValueNotifier<bool>(engine != null && captureError == null);
 
-  // Bumped at the end of every settings change (see StatusStrip's
-  // settingsRevision doc) so the capture-source chip and buffer readout
+  // Bumped at the end of every settings change (see RecorderCluster's
+  // settingsRevision doc) so the capture-source line and buffer readout
   // refresh immediately after the user picks something, rather than only on
   // the next unrelated rebuild.
   final settingsRevision = ValueNotifier<int>(0);

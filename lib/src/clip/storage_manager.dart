@@ -1,4 +1,3 @@
-
 import 'clip.dart';
 import 'clip_library.dart';
 
