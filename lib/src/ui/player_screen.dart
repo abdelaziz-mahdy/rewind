@@ -28,6 +28,17 @@ String formatDuration(Duration d) {
   return hours > 0 ? '$hours:$mm:$ss' : '$mm:$ss';
 }
 
+/// Which speaker glyph represents a media_kit [volume] (0-100, see
+/// `Player.state.volume`): muted at zero, a lower glyph below the halfway
+/// mark, full above it. Pure so the branch is testable without a real
+/// media_kit [Player] (player_screen_test.dart cannot build [PlayerScreen]
+/// itself — see that file's header comment).
+IconData volumeIcon(double volume) {
+  if (volume <= 0) return Icons.volume_off_rounded;
+  if (volume < 50) return Icons.volume_down_rounded;
+  return Icons.volume_up_rounded;
+}
+
 /// In-app playback view for a single clip. Owns a media_kit [Player] /
 /// [VideoController] pair for the lifetime of the screen and disposes them
 /// on pop. Trimming/clipping is out of scope here — this is playback only;
@@ -55,15 +66,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
+  // media_kit's PlayerState defaults volume to 100.0 (full); mirrored here
+  // so the mute toggle has a sane starting point before the first stream
+  // event arrives.
+  double _volume = 100;
+
+  /// Remembers the pre-mute volume so unmuting restores it rather than
+  /// jumping to a fixed value. Only ever holds a positive volume.
+  double _previousVolume = 100;
+
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<double>? _volumeSub;
 
   @override
   void initState() {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
+    // Subscribe to every property stream BEFORE calling open() — mpv's
+    // property observers are registered at Player() construction, and a
+    // late subscription can miss the first emissions (see CLAUDE.md's
+    // media_kit headless-Player gotchas).
     _playingSub = _player.stream.playing.listen((playing) {
       if (mounted) setState(() => _playing = playing);
     });
@@ -73,6 +98,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _durationSub = _player.stream.duration.listen((duration) {
       if (mounted) setState(() => _duration = duration);
     });
+    _volumeSub = _player.stream.volume.listen((volume) {
+      if (mounted) setState(() => _volume = volume);
+      if (volume > 0) _previousVolume = volume;
+    });
     _player.open(Media(widget.clip.path));
   }
 
@@ -81,6 +110,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playingSub?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
+    _volumeSub?.cancel();
     _focusNode.dispose();
     // Fire-and-forget: Player.dispose() is async (it tears down the native
     // player) but State.dispose() must be synchronous.
@@ -89,6 +119,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _togglePlay() => _player.playOrPause();
+
+  void _toggleMute() {
+    _player.setVolume(_volume > 0 ? 0 : _previousVolume);
+  }
 
   void _handleKey(KeyEvent event) {
     if (event is! KeyDownEvent) return;
@@ -112,14 +146,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
           children: [
             _Header(clip: widget.clip),
             Expanded(
-              child: Center(child: Video(controller: _controller)),
+              child: Center(
+                child: Video(
+                  controller: _controller,
+                  // media_kit's own control overlay would render alongside
+                  // ours otherwise (maintainer: "both render, ours win") —
+                  // NoVideoControls is media_kit_video's documented way to
+                  // opt out of it entirely (it's literally `null` under the
+                  // hood, not a special-cased builder).
+                  controls: NoVideoControls,
+                ),
+              ),
             ),
             _Controls(
               playing: _playing,
               position: _position,
               duration: _duration,
+              volume: _volume,
               onTogglePlay: _togglePlay,
               onSeek: (d) => _player.seek(d),
+              onToggleMute: _toggleMute,
             ),
           ],
         ),
@@ -166,20 +212,26 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// Play/pause, seek bar, and elapsed/total readout.
+/// Play/pause, seek bar, elapsed/total readout, and a mute/volume toggle —
+/// the app's own control bar, replacing media_kit's built-in overlay (see
+/// the `Video(controls: NoVideoControls)` call site above).
 class _Controls extends StatelessWidget {
   final bool playing;
   final Duration position;
   final Duration duration;
+  final double volume;
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+  final VoidCallback onToggleMute;
 
   const _Controls({
     required this.playing,
     required this.position,
     required this.duration,
+    required this.volume,
     required this.onTogglePlay,
     required this.onSeek,
+    required this.onToggleMute,
   });
 
   @override
@@ -214,6 +266,11 @@ class _Controls extends StatelessWidget {
             ),
           ),
           Text(formatDuration(duration), style: durationStyle),
+          IconButton(
+            icon: Icon(volumeIcon(volume)),
+            tooltip: volume <= 0 ? 'Unmute' : 'Mute',
+            onPressed: onToggleMute,
+          ),
         ],
       ),
     );

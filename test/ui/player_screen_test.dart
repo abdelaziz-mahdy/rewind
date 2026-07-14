@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/ui/player_screen.dart';
 
@@ -37,5 +38,25 @@ void main() {
 
   test('playerScreenRouteName is a stable, non-empty route name', () {
     expect(playerScreenRouteName, isNotEmpty);
+  });
+
+  group('volumeIcon', () {
+    test('zero is muted', () {
+      expect(volumeIcon(0), Icons.volume_off_rounded);
+    });
+
+    test('below the halfway mark is the low glyph', () {
+      expect(volumeIcon(1), Icons.volume_down_rounded);
+      expect(volumeIcon(49), Icons.volume_down_rounded);
+    });
+
+    test('at or above the halfway mark is the full glyph', () {
+      expect(volumeIcon(50), Icons.volume_up_rounded);
+      expect(volumeIcon(100), Icons.volume_up_rounded);
+    });
+
+    test('a negative volume (defensive) still reads as muted', () {
+      expect(volumeIcon(-1), Icons.volume_off_rounded);
+    });
   });
 }

@@ -7,7 +7,7 @@ import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
-import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
+import 'package:rewind/src/ui/widgets/clip_tile.dart' show ClipTile, formatSize;
 
 Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
@@ -95,9 +95,15 @@ void main() {
 
     expect(inList(find.text('PENTA KILL')), findsOneWidget);
     expect(inList(find.text('MANUAL')), findsOneWidget);
-    final pentaTop = t.getTopLeft(inList(find.text('PENTA KILL'))).dy;
-    final manualTop = t.getTopLeft(inList(find.text('MANUAL'))).dy;
-    expect(pentaTop, lessThan(manualTop));
+    // The grid can place same-row cards side by side, so vertical position
+    // no longer indicates order (unlike the old list) — newest-first is now
+    // index order: the first ClipTile GridView.builder constructs is the
+    // newest clip. GridView.builder's sliver keeps children in a
+    // SplayTreeMap keyed by index, so `find`'s element-tree walk (and thus
+    // `widgetList`) visits them in that same ascending index order.
+    final tiles = t.widgetList<ClipTile>(find.byType(ClipTile)).toList();
+    expect(tiles.first.clip.event, GameEventKind.pentaKill);
+    expect(tiles.last.clip.event, GameEventKind.manual);
   });
 
   testWidgets('library updates reactively when a clip is added', (t) async {

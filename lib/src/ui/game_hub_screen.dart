@@ -322,15 +322,25 @@ class _GameHubScreenState extends State<GameHubScreen> {
                   displayName: entry.displayName,
                   hotkeyLabel: widget.hotkeyLabel)
             else
-              ListView.builder(
+              GridView.builder(
                 key: const ValueKey('clipsList'),
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                  mainAxisSpacing: clipGridSpacing,
+                  crossAxisSpacing: clipGridSpacing,
+                  childAspectRatio: clipGridChildAspectRatio,
+                ),
                 itemCount: clips.length,
                 itemBuilder: (context, i) => ClipTile(
                   clip: clips[i],
                   library: widget.library,
                   thumbnails: widget.thumbnails,
+                  // Redundant here: the hub is already scoped to one game
+                  // (§ redesign spec change 1) — All Clips shows it instead.
+                  showGameName: false,
                 ),
               ),
           ],

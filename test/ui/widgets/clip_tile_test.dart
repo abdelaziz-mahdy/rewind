@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/thumbnail_cache.dart';
+import 'package:rewind/src/events/game_catalog.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/player_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
@@ -64,7 +66,7 @@ void main() {
     // the push happened without ever constructing PlayerScreen, which would
     // create a real media_kit Player and need native libmpv (unavailable in
     // the widget-test host process).
-    await t.tap(find.byType(ListTile));
+    await t.tap(find.byType(ClipTile));
 
     expect(observer.pushed, hasLength(1));
     expect(observer.pushed.single.settings.name, playerScreenRouteName);
@@ -135,6 +137,77 @@ void main() {
 
       expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
       expect(find.byType(Image), findsNothing);
+    });
+  });
+
+  group('card footer', () {
+    testWidgets('showGameName (default true) renders the game name', (t) async {
+      await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
+      expect(find.text(displayNameFor(clip.gameId)), findsOneWidget);
+    });
+
+    testWidgets('showGameName: false omits the game name (game hub use)',
+        (t) async {
+      await t.pumpWidget(
+          app(ClipTile(clip: clip, library: library, showGameName: false)));
+      expect(find.text(displayNameFor(clip.gameId)), findsNothing);
+      // The age/size line is unaffected either way.
+      expect(find.textContaining(formatSize(clip.sizeBytes)), findsOneWidget);
+    });
+  });
+
+  testWidgets(
+      'the overflow menu is dimmed at rest, then becomes fully opaque on hover',
+      (t) async {
+    await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
+
+    Finder overflowOpacity() => find.ancestor(
+        of: find.byWidgetPredicate((w) => w is PopupMenuButton),
+        matching: find.byType(AnimatedOpacity));
+
+    // Dimmed, not invisible: a fully hidden menu has zero affordance
+    // for anyone not already hovering the card.
+    expect(t.widget<AnimatedOpacity>(overflowOpacity()).opacity, 0.45);
+
+    final gesture = await t.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(t.getCenter(find.byType(ClipTile)));
+    await t.pump();
+
+    expect(t.widget<AnimatedOpacity>(overflowOpacity()).opacity, 1);
+  });
+
+  group('grid geometry (clipGridChildAspectRatio)', () {
+    testWidgets(
+        'a card fits the geometry the grid delegate assumes with no '
+        'overflow, at the delegate\'s maxCrossAxisExtent width', (t) async {
+      await t.pumpWidget(MaterialApp(
+        theme: rewindTheme(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: clipGridMaxCrossAxisExtent,
+              height: clipGridMaxCrossAxisExtent / clipGridChildAspectRatio,
+              child: ClipTile(clip: clip, library: library),
+            ),
+          ),
+        ),
+      ));
+      await t.pump();
+
+      // A RenderFlex overflow (or any other layout exception) throws during
+      // the pump above rather than surfacing as a failed expectation, so
+      // this only needs to confirm nothing was thrown.
+      expect(t.takeException(), isNull);
+
+      final size = t.getSize(find.byType(ClipTile));
+      expect(size.width, clipGridMaxCrossAxisExtent);
+      expect(
+        size.height,
+        closeTo(clipGridMaxCrossAxisExtent / clipGridChildAspectRatio, 0.5),
+      );
     });
   });
 }

@@ -66,9 +66,9 @@ Color _rotateAccent(Color accent, double hue) =>
     HSLColor.fromColor(accent).withHue(hue % 360).toColor();
 
 /// The event-kind badge chip: accent-tinted fill/border, uppercase micro-label
-/// text (see [eventBadge]/[eventColor]). Shared by [ClipTile]'s title row,
-/// [PlayerScreen]'s header, and the game hub's live-events slot so a clip's
-/// event reads identically everywhere it appears.
+/// text (see [eventBadge]/[eventColor]). Shared by [ClipTile]'s thumbnail
+/// overlay, [PlayerScreen]'s header, and the game hub's live-events slot so
+/// a clip's event reads identically everywhere it appears.
 class EventBadge extends StatelessWidget {
   final GameEventKind kind;
 
@@ -95,24 +95,53 @@ class EventBadge extends StatelessWidget {
 
 enum _ClipAction { openDefault, reveal, delete }
 
-/// One row in the clip library: thumbnail placeholder, event badge + game
-/// name, relative age + size, and a menu for reveal/delete. Tap opens the
-/// clip in the in-app [PlayerScreen]; the overflow menu still offers
-/// launching the OS default player for anyone who wants an external app.
-/// The trailing menu fades in on hover so the row stays clean at rest.
+/// Grid geometry for the clip card grid (maintainer: "instead of list, a
+/// grid will make more sense for the recording"). [clipGridMaxCrossAxisExtent]
+/// / [clipGridSpacing] feed `SliverGridDelegateWithMaxCrossAxisExtent`
+/// directly at both grid call sites (`all_clips_screen.dart`,
+/// `game_hub_screen.dart`). [clipGridChildAspectRatio] is derived from the
+/// card's own fixed geometry — a 16:9 thumbnail plus a [_footerHeight]
+/// footer — rather than guessed, so a card never overflows at any column
+/// count the delegate picks for a given viewport width (the delegate always
+/// assumes [clipGridMaxCrossAxisExtent] as the per-card width when applying
+/// this ratio). Verified with no layout overflow in clip_tile_test.dart via
+/// `tester.getSize`/`tester.takeException`.
+const double clipGridMaxCrossAxisExtent = 300;
+const double clipGridSpacing = 16;
+const double _footerHeight = 56;
+const double clipGridChildAspectRatio = clipGridMaxCrossAxisExtent /
+    (clipGridMaxCrossAxisExtent * 9 / 16 + _footerHeight);
+
+/// One card in the clip grid: a 16:9 thumbnail (the existing [ThumbnailCache]
+/// image, or a placeholder glyph while absent/pending) with a centered
+/// play-glyph overlay, the event badge pinned top-left over it, and a
+/// hover-revealed overflow (⋯) menu top-right offering the same actions as
+/// before (open in default player / reveal / delete). A footer row below the
+/// thumbnail shows relative age + size, plus the game name when
+/// [showGameName] is true — All Clips passes true (a cross-game list, where
+/// the game name is the only way to tell clips apart); each game hub passes
+/// false (its clip list is already scoped to one game, so repeating that
+/// game's name on every card would be redundant). Tap anywhere on the card
+/// opens the clip in the in-app [PlayerScreen] — same navigation contract as
+/// before (a route pushed under [playerScreenRouteName], never actually
+/// built in widget tests — see that constant's doc).
 class ClipTile extends StatefulWidget {
   final Clip clip;
   final ClipLibrary library;
 
-  /// Source of leading-tile thumbnails. Null (the default in every test that
-  /// doesn't care about thumbnails) always renders the placeholder — real
-  /// call sites thread a shared cache down from `main.dart`.
+  /// Source of thumbnails. Null (the default in every test that doesn't
+  /// care about thumbnails) always renders the placeholder — real call
+  /// sites thread a shared cache down from `main.dart`.
   final ThumbnailCache? thumbnails;
+
+  /// Whether the footer shows the clip's game name (see class doc).
+  final bool showGameName;
 
   const ClipTile({
     required this.clip,
     required this.library,
     this.thumbnails,
+    this.showGameName = true,
     super.key,
   });
 
@@ -122,66 +151,117 @@ class ClipTile extends StatefulWidget {
 
 class _ClipTileState extends State<ClipTile> {
   bool _hovering = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     final clip = widget.clip;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        decoration: BoxDecoration(
-          color: _hovering
-              ? context.rewindTokens.surfaceRaised
-              : Colors.transparent,
-          border: Border(bottom: hairlineBorder(0.06)),
-        ),
-        // ListTile needs a Material ancestor it can paint ink on; the
-        // decorated AnimatedContainer above otherwise triggers Flutter's
-        // "ink splashes may be invisible" assertion on every tile.
-        child: Material(
-          type: MaterialType.transparency,
-          child: ListTile(
-            onTap: () => _openInApp(context, clip),
-            leading: _ClipThumbnail(clip: clip, thumbnails: widget.thumbnails),
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                EventBadge(kind: clip.event),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    displayNameFor(clip.gameId),
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.body
-                        .copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
+      // InkWell needs a Material ancestor it can paint ink on; without one,
+      // Flutter's "ink splashes may be invisible" assertion fires (the same
+      // reason the old row layout wrapped its ListTile in one).
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () => _openInApp(context, clip),
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              color: _hovering ? tokens.surfaceRaised : tokens.surface,
+              borderRadius: BorderRadius.circular(tokens.radiusCard),
+              // Focus gets its own 1.5 px accent border (keyboard-only
+              // affordance — see docs/superpowers/specs/
+              // 2026-07-13-game-centric-redesign.md §2); hover only swaps
+              // the fill above, no border change.
+              border: Border.fromBorderSide(_focused
+                  ? BorderSide(color: tokens.accent, width: 1.5)
+                  : hairlineBorder()),
             ),
-            subtitle: Text(
-              '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}',
-              style: theme.textTheme.bodyMuted,
-            ),
-            trailing: AnimatedOpacity(
-              duration: const Duration(milliseconds: 120),
-              opacity: _hovering ? 1 : 0.55,
-              child: PopupMenuButton<_ClipAction>(
-                onSelected: (action) => _onAction(context, action),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                      value: _ClipAction.openDefault,
-                      child: Text('Open in default player')),
-                  PopupMenuItem(
-                    value: _ClipAction.reveal,
-                    child: Text(Platform.isMacOS
-                        ? 'Reveal in Finder'
-                        : 'Reveal in Explorer'),
+            // ClipRRect (not Container.clipBehavior) so the thumbnail
+            // image's corners round to match the card — `Container.
+            // clipBehavior` needs the `Clip` enum, which the app's own
+            // `Clip` model class (imported above) shadows in this file.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(tokens.radiusCard),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Expanded (not AspectRatio) deliberately: the grid
+                  // delegate's mainAxisExtent for a cell is derived from
+                  // [clipGridChildAspectRatio], which assumes a card exactly
+                  // [clipGridMaxCrossAxisExtent] wide — but
+                  // SliverGridDelegateWithMaxCrossAxisExtent can hand a cell
+                  // a narrower actual width (its column-count step function),
+                  // at which point a strict 16:9 AspectRatio plus this fixed-
+                  // height footer no longer summed to the height the grid
+                  // allocated, overflowing by a few px. Expanded instead
+                  // fills whatever height remains after the footer — exactly
+                  // 16:9 at the assumed width, a close approximation
+                  // elsewhere, and never overflows.
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _ClipThumbnail(
+                            clip: clip, thumbnails: widget.thumbnails),
+                        Positioned(
+                          left: 8,
+                          top: 8,
+                          child: EventBadge(kind: clip.event),
+                        ),
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 120),
+                            // Dimmed at rest, not invisible: a fully hidden
+                            // menu has zero affordance for anyone not
+                            // already hovering the card.
+                            opacity: _hovering ? 1 : 0.45,
+                            child: _OverflowMenu(
+                              onSelected: (action) =>
+                                  _onAction(context, action),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const PopupMenuItem(
-                      value: _ClipAction.delete, child: Text('Delete')),
+                  SizedBox(
+                    height: _footerHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (widget.showGameName) ...[
+                            Text(
+                              displayNameFor(clip.gameId),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: theme.textTheme.body
+                                  .copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          Text(
+                            '${relativeAge(clip.createdAt)} · '
+                            '${formatSize(clip.sizeBytes)}',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.bodyMuted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -254,12 +334,50 @@ class _ClipTileState extends State<ClipTile> {
   }
 }
 
-/// The tile's leading 64x44 slot: a real video-frame thumbnail once
-/// generated, with a small play-glyph overlay; the original bare play-glyph
+/// The hover-revealed overflow trigger pinned over the thumbnail: a dark
+/// scrim behind the icon so it stays legible over any video frame, since
+/// unlike the old row layout it now sits directly on top of image content
+/// rather than on the flat surface background.
+class _OverflowMenu extends StatelessWidget {
+  final ValueChanged<_ClipAction> onSelected;
+
+  const _OverflowMenu({required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
+      ),
+      child: PopupMenuButton<_ClipAction>(
+        padding: EdgeInsets.zero,
+        icon: const Icon(Icons.more_vert, size: 18, color: Colors.white),
+        onSelected: onSelected,
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+              value: _ClipAction.openDefault,
+              child: Text('Open in default player')),
+          PopupMenuItem(
+            value: _ClipAction.reveal,
+            child: Text(
+                Platform.isMacOS ? 'Reveal in Finder' : 'Reveal in Explorer'),
+          ),
+          const PopupMenuItem(value: _ClipAction.delete, child: Text('Delete')),
+        ],
+      ),
+    );
+  }
+}
+
+/// The card's 16:9 thumbnail area: a real video-frame image once generated,
+/// with a centered play-glyph overlay; the original bare play-glyph
 /// placeholder while absent (no [thumbnails] cache — most tests — or the
 /// frame hasn't been generated yet). [FutureBuilder] on [ThumbnailCache.ensure]
 /// is deliberate: it starts on the placeholder and swaps to the image the
 /// moment generation completes, with no extra listenable plumbing needed.
+/// Fills whatever space its parent [Expanded]/[Stack] gives it — sizing
+/// and corner-rounding are the card's job, not this widget's.
 class _ClipThumbnail extends StatelessWidget {
   final Clip clip;
   final ThumbnailCache? thumbnails;
@@ -270,49 +388,30 @@ class _ClipThumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cache = thumbnails;
-    final radius = BorderRadius.circular(context.rewindTokens.radiusChip);
-    return Container(
-      width: 64,
-      height: 44,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: radius,
-        border: Border.fromBorderSide(hairlineBorder()),
-      ),
-      // ClipRRect (not Container.clipBehavior) so the thumbnail image's
-      // corners round to match the border — `Container.clipBehavior` needs
-      // the `Clip` enum, which the app's own `Clip` model class (imported
-      // above) shadows in this file.
-      child: ClipRRect(
-        borderRadius: radius,
-        child: cache == null
-            ? _placeholder(theme)
-            : FutureBuilder<File?>(
-                future: cache.ensure(clip),
-                builder: (context, snapshot) {
-                  final file = snapshot.data;
-                  if (file == null) return _placeholder(theme);
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(file, fit: BoxFit.cover),
-                      Center(
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white.withValues(alpha: 0.85),
-                          size: 20,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-      ),
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: cache == null
+          ? _playGlyph(theme.colorScheme.onSurfaceVariant)
+          : FutureBuilder<File?>(
+              future: cache.ensure(clip),
+              builder: (context, snapshot) {
+                final file = snapshot.data;
+                if (file == null) {
+                  return _playGlyph(theme.colorScheme.onSurfaceVariant);
+                }
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(file, fit: BoxFit.cover),
+                    _playGlyph(Colors.white.withValues(alpha: 0.85)),
+                  ],
+                );
+              },
+            ),
     );
   }
 
-  Widget _placeholder(ThemeData theme) => Icon(
-        Icons.play_arrow_rounded,
-        color: theme.colorScheme.onSurfaceVariant,
+  Widget _playGlyph(Color color) => Center(
+        child: Icon(Icons.play_arrow_rounded, size: 36, color: color),
       );
 }

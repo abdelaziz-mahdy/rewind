@@ -8,7 +8,8 @@ import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
 
 /// The cross-game clip library (§3.3): header (title + count + size + open-
-/// folder), an event-kind filter row, and the clip list — newest first.
+/// folder), an event-kind filter row, and a clip grid — newest first (index
+/// order, i.e. the first [ClipTile] built is the newest clip).
 class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
@@ -127,8 +128,16 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       hotkeyLabel: widget.hotkeyLabel,
                       onOpenClipsFolder: widget.onOpenClipsFolder,
                     )
-                  : ListView.builder(
+                  : GridView.builder(
                       key: const ValueKey('clipsList'),
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                        mainAxisSpacing: clipGridSpacing,
+                        crossAxisSpacing: clipGridSpacing,
+                        childAspectRatio: clipGridChildAspectRatio,
+                      ),
                       itemCount: clips.length,
                       itemBuilder: (context, i) => ClipTile(
                         clip: clips[i],
