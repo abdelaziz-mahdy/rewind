@@ -65,6 +65,10 @@ class FakeCaptureEngine implements CaptureEngine {
     return true;
   }
 
+  /// Path returned by the most recent [saveClip] call — lets a test write
+  /// the file late itself (mux-lag simulation).
+  String? lastSavedPath;
+
   @override
   String? saveClip(String outDir) {
     calls.add('save');
@@ -75,6 +79,7 @@ class FakeCaptureEngine implements CaptureEngine {
         ..createSync(recursive: true)
         ..writeAsBytesSync(List.filled(16, 0));
     }
+    lastSavedPath = f.path;
     return f.path;
   }
 

@@ -202,6 +202,26 @@ void main() {
     expect(errorNotifications, 2);
   });
 
+  test('event-triggered saves are rate-limited; the manual hotkey is exempt',
+      () async {
+    // Defense in depth after the 2026-07-14 spam incident: a burst of
+    // events must not become a burst of 44 MB replay dumps — the buffer
+    // already contains the whole burst in one clip.
+    league.running = true;
+    await registry.tickNow();
+    await Future<void>.delayed(Duration.zero);
+
+    league.emit(GameEventKind.kill);
+    league.emit(GameEventKind.kill);
+    league.emit(GameEventKind.ace);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+
+    // An explicit ask always saves, cooldown or not.
+    await coordinator.onHotkey();
+    expect(engine.calls.where((c) => c == 'save'), hasLength(2));
+  });
+
   test('successful save persists the library index', () async {
     await coordinator.onHotkey();
     expect(File('${tmp.path}/clips.json').existsSync(), isTrue);
@@ -210,9 +230,37 @@ void main() {
   test('a reported path with no file on disk (stub mode) is not indexed',
       () async {
     engine.writeFile = false;
-    await coordinator.onHotkey();
+    final noGrace = ClipCoordinator(
+      registry: GameRegistry(sources: []),
+      library: library,
+      storage: StorageManager(library),
+      settings: settings,
+      outDir: tmp.path,
+      engine: engine,
+      // Zero grace: this test's missing file is deliberate, not mux lag —
+      // don't spend the real-time bounded wait on it.
+      indexFileGrace: Duration.zero,
+    )..start(supervise: false);
+    await noGrace.onHotkey();
     expect(library.all, isEmpty);
     expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
+  });
+
+  test(
+      'a file that lands shortly AFTER the save reports its path is still '
+      'indexed (mux lag)', () async {
+    // The 2026-07-14 incident: the shim reported paths before the mux
+    // helper finished writing; every clip was silently dropped from the
+    // library while its file appeared moments later.
+    engine.writeFile = false;
+    final pending = coordinator.onHotkey();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    // The file lands late, inside the grace window.
+    final path = engine.lastSavedPath!;
+    File(path).writeAsBytesSync(const [0, 1, 2]);
+    await pending;
+    expect(library.all, hasLength(1));
+    expect(library.all.single.path, path);
   });
 
   group('onClipIndexed hook', () {

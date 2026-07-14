@@ -76,6 +76,12 @@ class ClipCoordinator {
   /// deliberately does not touch. Null when no auto-switch is active.
   final ValueNotifier<String?> autoSwitchedAppName = ValueNotifier(null);
 
+  /// How long [_indexClip] waits for a save-reported file to appear on disk
+  /// before dropping it (the mux helper can lag the shim's path report
+  /// under load). Tests that deliberately report paths with no file (stub
+  /// mode) pass [Duration.zero] to skip the wait.
+  final Duration indexFileGrace;
+
   ClipCoordinator({
     required this.registry,
     required this.library,
@@ -84,6 +90,7 @@ class ClipCoordinator {
     required this.outDir,
     this.engine,
     this.onClipIndexed,
+    this.indexFileGrace = const Duration(seconds: 5),
   });
 
   /// Activation time per currently-active gameId — the session (match) key
@@ -91,6 +98,13 @@ class ClipCoordinator {
   /// [Clip.sessionAt]). Cleared on deactivation, so the next match gets a
   /// fresh key.
   final Map<String, DateTime> _sessionStartedAt = {};
+
+  /// Minimum spacing between event-triggered saves (manual hotkey/button
+  /// saves are exempt — an explicit ask always saves). Defense in depth
+  /// against ANY over-eager event source; the replay buffer's length means
+  /// closely-spaced events share one clip anyway.
+  static const _autoSaveCooldown = Duration(seconds: 10);
+  DateTime? _lastAutoSaveAt;
 
   void start({bool supervise = true}) {
     // Auto-detection: when a game becomes active, apply its buffer length.
@@ -117,10 +131,24 @@ class ClipCoordinator {
       }
     });
 
-    // Auto-clip: save when an enabled event fires for the active game.
+    // Auto-clip: save when an enabled event fires for the active game —
+    // rate-limited (see [_autoSaveCooldown]): a 44 MB replay dump per event
+    // with events possibly arriving every few seconds once filled a disk to
+    // 99% (the 2026-07-14 Arena incident). A skipped event is not lost
+    // footage — the buffer covers the last N seconds, so it's already
+    // inside the previous clip.
     registry.events.listen((e) {
       final cfg = settings.configFor(e.gameId);
-      if (cfg.autoClip && cfg.enabledEvents.contains(e.kind)) _save(e);
+      if (!(cfg.autoClip && cfg.enabledEvents.contains(e.kind))) return;
+      final now = DateTime.now();
+      final last = _lastAutoSaveAt;
+      if (last != null && now.difference(last) < _autoSaveCooldown) {
+        talker.info('Auto-clip skipped (cooldown, already in previous clip): '
+            '${e.kind.name}');
+        return;
+      }
+      _lastAutoSaveAt = now;
+      _save(e);
     });
 
     if (supervise) registry.startSupervising();
@@ -310,10 +338,19 @@ class ClipCoordinator {
   /// save error.
   Future<void> _indexClip(String path, GameEvent e) async {
     final file = File(path);
-    if (!await file.exists()) {
-      talker.warning('Clip save reported a path with no file on disk: '
-          '$path');
-      return;
+    // The shim's save can report the path slightly before the mux helper
+    // finishes writing the file, especially with the encoder under load —
+    // during the 2026-07-14 save-spam incident EVERY clip hit this window
+    // and silently vanished from the library. Give the file a bounded
+    // moment to land before declaring it missing.
+    final deadline = DateTime.now().add(indexFileGrace);
+    while (!await file.exists()) {
+      if (DateTime.now().isAfter(deadline)) {
+        talker.warning('Clip save reported a path with no file on disk: '
+            '$path');
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
     }
 
     final clip = Clip(
