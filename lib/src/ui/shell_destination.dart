@@ -17,9 +17,9 @@ class AllClipsDestination extends ShellDestination {
   int get hashCode => (AllClipsDestination).hashCode;
 }
 
-/// A single game's hub. Until the real Game Hub (T4) lands, the Shell renders
-/// this as the All Clips list pre-filtered to [gameId] — see the T3 task
-/// brief's "cheap interim" note.
+/// A single game's hub (`game_hub_screen.dart`, T4): header stats,
+/// integration status, inline per-game capture settings, and this game's
+/// scoped clip list.
 class GameDestination extends ShellDestination {
   final String gameId;
 

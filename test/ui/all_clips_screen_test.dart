@@ -32,14 +32,12 @@ void main() {
           sizeBytes: sizeBytes);
 
   AllClipsScreen screen({
-    String? gameId,
     VoidCallback? onOpenClipsFolder,
   }) =>
       AllClipsScreen(
         library: library,
         hotkeyLabel: 'Alt+F10',
         onOpenClipsFolder: onOpenClipsFolder ?? () {},
-        gameId: gameId,
       );
 
   Finder eventChip(String name) =>
@@ -169,32 +167,6 @@ void main() {
 
       // Filter reset to All: the remaining desktop clip is visible again.
       expect(inList(find.text('MANUAL')), findsOneWidget);
-    });
-  });
-
-  group('gameId scoping (interim per-game view)', () {
-    testWidgets('titles the header with the game\'s display name', (t) async {
-      library.add(
-          clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
-      library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
-          DateTime(2026, 7, 2)));
-      await t.pumpWidget(_app(screen(gameId: 'league_of_legends')));
-
-      final title = t.widget<Text>(find.byKey(const ValueKey('allClipsTitle')));
-      expect(title.data, 'League of Legends');
-      expect(find.text('All clips'), findsNothing);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsNothing);
-    });
-
-    testWidgets(
-        'an empty scope shows the empty state, not "no clips" from '
-        'other games', (t) async {
-      library.add(
-          clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
-      await t.pumpWidget(_app(screen(gameId: 'league_of_legends')));
-
-      expect(find.text('No clips yet'), findsOneWidget);
     });
   });
 }

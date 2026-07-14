@@ -9,6 +9,7 @@ import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import 'all_clips_screen.dart';
+import 'game_hub_screen.dart';
 import 'settings_screen.dart';
 import 'shell_destination.dart';
 import 'theme.dart';
@@ -123,12 +124,13 @@ class _ShellState extends State<Shell> {
           hotkeyLabel: widget.hotkeyLabel,
           onOpenClipsFolder: widget.onOpenClipsFolder,
         ),
-      GameDestination(gameId: final id) => AllClipsScreen(
-          key: ValueKey('gameClipsScreen:$id'),
-          library: widget.library,
-          hotkeyLabel: widget.hotkeyLabel,
-          onOpenClipsFolder: widget.onOpenClipsFolder,
+      GameDestination(gameId: final id) => GameHubScreen(
+          key: ValueKey('gameHubScreen:$id'),
           gameId: id,
+          library: widget.library,
+          coordinator: widget.coordinator,
+          hotkeyLabel: widget.hotkeyLabel,
+          onSettingsChanged: widget.onSettingsChanged,
         ),
       // Supported Games is built in T5; this is the explicit interim empty
       // pane the T3 brief allows for a not-yet-built destination.

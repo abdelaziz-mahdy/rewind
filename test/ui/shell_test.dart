@@ -16,6 +16,17 @@ import '../fakes/fake_capture_engine.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
+/// The League game hub's content (integration card, auto-clip switch, event
+/// matrix, clip list) is tall enough that the default test viewport leaves
+/// its clip list outside the lazy list's build extent — see
+/// `game_hub_screen_test.dart`'s identical helper for the full explanation.
+Future<void> _pumpTall(WidgetTester t, Widget child) async {
+  t.view.physicalSize = const Size(1200, 4000);
+  t.view.devicePixelRatio = 1.0;
+  addTearDown(t.view.reset);
+  await t.pumpWidget(child);
+}
+
 void main() {
   late Directory tmp;
   late ClipLibrary library;
@@ -206,7 +217,7 @@ void main() {
           clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
       library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
           DateTime(2026, 7, 2)));
-      await t.pumpWidget(_app(shell()));
+      await _pumpTall(t, _app(shell()));
 
       // All Clips (the default destination) shows both.
       expect(inList(find.text('MANUAL')), findsOneWidget);
