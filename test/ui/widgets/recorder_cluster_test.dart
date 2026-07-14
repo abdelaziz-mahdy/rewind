@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' show Directory;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/theme.dart';
-import 'package:rewind/src/ui/widgets/status_strip.dart';
+import 'package:rewind/src/ui/widgets/recorder_cluster.dart';
 
 import '../../fakes/fake_capture_engine.dart';
 
@@ -30,7 +30,7 @@ void main() {
   late ClipCoordinator Function(AppSettings settings) makeCoordinator;
 
   setUp(() {
-    tmp = Directory.systemTemp.createTempSync('rewind_status_strip');
+    tmp = Directory.systemTemp.createTempSync('rewind_recorder_cluster');
     makeCoordinator = (settings) {
       final library = ClipLibrary(clipsDir: tmp);
       return ClipCoordinator(
@@ -45,23 +45,32 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
+  // Sized to the real 220 px rail so text-overflow/ellipsis behavior in
+  // manual testing matches, though none of these assertions depend on it.
   Widget app(Widget child) => MaterialApp(
         theme: rewindTheme(),
-        home: Scaffold(body: child),
+        home: Scaffold(body: SizedBox(width: 220, child: child)),
       );
 
-  // The status strip's pulsing "recording" dot runs an
-  // AnimationController.repeat() that never settles on its own — unlike
-  // pushing a full route (which pauses tickers behind it via TickerMode),
-  // a popup menu doesn't stop it — so `pumpAndSettle` would hang forever
-  // waiting for a frame that's never the last one. Bounded pumps step
-  // through the popup menu's (finite) open/close transition instead.
+  // The cluster's pulsing "recording" dot runs an AnimationController.
+  // repeat() that never settles on its own — unlike pushing a full route
+  // (which pauses tickers behind it via TickerMode), a popup menu doesn't
+  // stop it — so `pumpAndSettle` would hang forever waiting for a frame
+  // that's never the last one. Bounded pumps step through the popup menu's
+  // (finite) open/close transition instead.
   Future<void> settleMenu(WidgetTester t) async {
     await t.pump();
     await t.pump(const Duration(milliseconds: 300));
   }
 
-  StatusStrip strip({
+  // Scopes a label assertion/tap to the source line itself, not any popup
+  // menu item — a picked app's name (e.g. "App Two") reads identically on
+  // both, and briefly coexists mid-close-animation.
+  Finder sourceLine(String text) => find.descendant(
+      of: find.byKey(const ValueKey('recorderSourceLine')),
+      matching: find.text(text));
+
+  RecorderCluster cluster({
     required AppSettings settings,
     List<DisplayInfo> displays = _displays,
     List<AppInfo> capturableApps = const [],
@@ -72,7 +81,7 @@ void main() {
     // autoSwitchedAppName ahead of time.
     ClipCoordinator? coordinatorOverride,
   }) =>
-      StatusStrip(
+      RecorderCluster(
         coordinator: coordinatorOverride ?? makeCoordinator(settings),
         captureError: captureError,
         displays: displays,
@@ -82,25 +91,26 @@ void main() {
         settingsRevision: settingsRevision,
       );
 
-  group('capture-source chip', () {
+  group('capture-source line', () {
     testWidgets('shows the current source: main display by default', (t) async {
-      await t.pumpWidget(app(strip(settings: AppSettings())));
-      expect(find.textContaining('Capturing: Display 1'), findsOneWidget);
+      await t.pumpWidget(app(cluster(settings: AppSettings())));
+      expect(sourceLine('Display 1'), findsOneWidget);
     });
 
     testWidgets('shows the app name when an app target is set', (t) async {
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: AppSettings(captureAppBundleId: 'com.example.two'),
         capturableApps: _apps,
       )));
-      expect(find.textContaining('Capturing: App Two'), findsOneWidget);
+      expect(sourceLine('App Two'), findsOneWidget);
     });
 
     testWidgets('hidden entirely when there are no displays to pick between',
         (t) async {
-      await t
-          .pumpWidget(app(strip(settings: AppSettings(), displays: const [])));
-      expect(find.textContaining('Capturing:'), findsNothing);
+      await t.pumpWidget(
+          app(cluster(settings: AppSettings(), displays: const [])));
+      expect(find.byIcon(Icons.desktop_windows_outlined), findsNothing);
+      expect(find.byIcon(Icons.apps_outlined), findsNothing);
     });
 
     testWidgets(
@@ -108,13 +118,13 @@ void main() {
         'fires onSettingsChanged', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
 
-      await t.tap(find.textContaining('Capturing: Display 1'));
+      await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
       await t.tap(find.text('App Two').last);
       await settleMenu(t);
@@ -130,13 +140,13 @@ void main() {
       final settings = AppSettings();
       const catalogApp =
           AppInfo(bundleId: 'com.valve.cs2', name: 'Counter-Strike 2', pid: 3);
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: const [..._apps, catalogApp],
         onSettingsChanged: (s) async => calls.add(s),
       )));
 
-      await t.tap(find.textContaining('Capturing: Display 1'));
+      await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
       await t.tap(find.text('Counter-Strike 2').last);
       await settleMenu(t);
@@ -152,13 +162,13 @@ void main() {
         (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
 
-      await t.tap(find.textContaining('Capturing: Display 1'));
+      await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
       await t.tap(find.text('App Two').last);
       await settleMenu(t);
@@ -175,13 +185,13 @@ void main() {
         'captureAppBundleId', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings(captureAppBundleId: 'com.example.one');
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
 
-      await t.tap(find.textContaining('Capturing: App One'));
+      await t.tap(sourceLine('App One'));
       await settleMenu(t);
       await t.tap(find.text('Entire Display 2 — 2560×1440').last);
       await settleMenu(t);
@@ -198,7 +208,7 @@ void main() {
         'onSettingsChanged', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         onSettingsChanged: (s) async => calls.add(s),
       )));
@@ -221,7 +231,7 @@ void main() {
       final settings = AppSettings();
       final coordinator = makeCoordinator(settings);
       coordinator.activeGame.value = 'league_of_legends';
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         coordinatorOverride: coordinator,
         onSettingsChanged: (s) async => calls.add(s),
@@ -241,25 +251,25 @@ void main() {
 
   group('settings changes refresh labels immediately (settingsRevision)', () {
     testWidgets(
-        'picking a source updates the chip label without waiting '
+        'picking a source updates the line label without waiting '
         'for an unrelated rebuild', (t) async {
       final settings = AppSettings();
       final revision = ValueNotifier<int>(0);
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: _apps,
         settingsRevision: revision,
         onSettingsChanged: (s) async => revision.value++,
       )));
 
-      expect(find.textContaining('Capturing: Display 1'), findsOneWidget);
-      await t.tap(find.textContaining('Capturing: Display 1'));
+      expect(sourceLine('Display 1'), findsOneWidget);
+      await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
       await t.tap(find.text('App Two').last);
       await settleMenu(t);
 
-      expect(find.textContaining('Capturing: App Two'), findsOneWidget);
-      expect(find.textContaining('Capturing: Display 1'), findsNothing);
+      expect(sourceLine('App Two'), findsOneWidget);
+      expect(sourceLine('Display 1'), findsNothing);
     });
 
     testWidgets(
@@ -267,7 +277,7 @@ void main() {
         'waiting for an unrelated rebuild', (t) async {
       final settings = AppSettings();
       final revision = ValueNotifier<int>(0);
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         settingsRevision: revision,
         onSettingsChanged: (s) async => revision.value++,
@@ -283,7 +293,7 @@ void main() {
     });
   });
 
-  group('auto-switch chip', () {
+  group('auto-switch line', () {
     testWidgets(
         'shows the auto-switched app name (with "(auto)") ahead of the '
         'persisted source while the coordinator is following a game',
@@ -291,21 +301,23 @@ void main() {
       final settings = AppSettings(captureAppBundleId: 'com.example.one');
       final coordinator = makeCoordinator(settings);
       coordinator.autoSwitchedAppName.value = 'Stub App One';
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: settings,
         capturableApps: _apps,
         coordinatorOverride: coordinator,
       )));
 
-      expect(find.textContaining('Capturing: Stub App One (auto)'),
-          findsOneWidget);
-      expect(find.textContaining('Capturing: App One'), findsNothing);
+      expect(find.text('Stub App One (auto)'), findsOneWidget);
+      // Exact match: the persisted "App One" is a substring of the
+      // auto-switched label, so this only proves the *plain* (non-auto)
+      // label isn't also rendered somewhere.
+      expect(find.text('App One'), findsNothing);
     });
   });
 
   group('record button', () {
     testWidgets('idle state shows an outlined "Record" button', (t) async {
-      await t.pumpWidget(app(strip(settings: AppSettings())));
+      await t.pumpWidget(app(cluster(settings: AppSettings())));
       expect(find.text('Record'), findsOneWidget);
       final btn =
           t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
@@ -316,7 +328,7 @@ void main() {
         'tapping starts a recording, flipping to the filled elapsed state',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
@@ -338,7 +350,7 @@ void main() {
     testWidgets('the elapsed readout ticks once a second while recording',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
@@ -359,7 +371,7 @@ void main() {
         'tapping again while recording stops it and saves a recording clip',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(strip(
+      await t.pumpWidget(app(cluster(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
@@ -376,31 +388,10 @@ void main() {
 
     testWidgets('disabled when there is a capture error', (t) async {
       await t.pumpWidget(
-          app(strip(settings: AppSettings(), captureError: 'boom')));
+          app(cluster(settings: AppSettings(), captureError: 'boom')));
       final btn =
           t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
       expect(btn.onPressed, isNull);
-    });
-  });
-
-  group('permission banner button', () {
-    testWidgets('present for a permission-related capture error', (t) async {
-      await t.pumpWidget(app(strip(
-        settings: AppSettings(),
-        captureError: 'Screen recording permission denied',
-      )));
-      expect(
-        find.text('Open Screen Recording Settings'),
-        Platform.isMacOS ? findsOneWidget : findsNothing,
-      );
-    });
-
-    testWidgets('absent for a non-permission capture error', (t) async {
-      await t.pumpWidget(app(strip(
-        settings: AppSettings(),
-        captureError: 'libobs init failed',
-      )));
-      expect(find.text('Open Screen Recording Settings'), findsNothing);
     });
   });
 }

@@ -36,7 +36,12 @@ class EventFilterChips extends StatelessWidget {
     if (kinds.length < 2) return const SizedBox.shrink();
 
     return SizedBox(
-      height: 40,
+      // Lane must clear the ListView's own vertical padding (8 top + 12
+      // bottom = 20) plus a chip's actual rendered height (~34: 16 px
+      // vertical padding + a ~16 px label line) — 40 left only a 20 px lane,
+      // clipping every chip to a dash. See docs/superpowers/specs/
+      // 2026-07-13-game-centric-redesign.md §3.3/§3.4.
+      height: 56,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),

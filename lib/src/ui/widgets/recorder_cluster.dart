@@ -1,67 +1,62 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../coordinator/clip_coordinator.dart';
-import '../../events/game_catalog.dart';
 import '../../obs/app_info.dart';
 import '../../obs/display_info.dart';
 import '../../settings/app_settings.dart';
 import '../capture_app_match.dart';
 import '../theme.dart';
 
-/// Shared sizing for the deck's right-hand control group (game chip,
-/// capture-source chip, Save clip) so the three read as one row of equal-
-/// height controls instead of the mismatched heights/icon sizes the bar
-/// used to have (see docs/superpowers/specs/2026-07-13-game-centric-
-/// redesign.md §3.2).
-const double _controlHeight = 32;
+/// Shared sizing for the cluster's full-width controls, mirroring the old
+/// deck's `_controlHeight`/`_controlIconSize` (see docs/superpowers/specs/
+/// 2026-07-13-game-centric-redesign.md §3.2).
+const double _controlHeight = 36;
 const double _controlIconSize = 14;
-const double _controlGap = 8;
 const double _controlPaddingH = 12;
 
-/// The persistent "recorder deck": a single 48 px row — buffering indicator,
-/// active-game chip, the capture-source chip, the "Save clip" action — pinned
-/// above the content area on every Shell destination (see docs/superpowers/
-/// specs/2026-07-13-game-centric-redesign.md §3.2). When capture failed to
-/// start, an [_ErrorBanner] renders as a second row underneath. This is the
-/// visual anchor of the whole app — the one place a glance should tell you
-/// "is it recording, what game, and from where."
-class StatusStrip extends StatelessWidget {
+/// The Discord-style recorder cluster pinned to the BOTTOM of the left rail
+/// (`NavRail`), replacing the old full-width top deck the maintainer called
+/// "redundant" — the rail's own selection highlight and each hub's header
+/// already say which game is live, so this cluster drops the old deck's
+/// active-game chip entirely and keeps only what it can't say: is the
+/// buffer running, and where is it capturing from.
+///
+/// Top to bottom: a primary "Save clip" button, the Record toggle below it,
+/// then a compact two-line status readout — REC/idle dot + the buffering
+/// quick-set, and the capture-source line — both tappable for the same
+/// popups the old deck's chips offered. All existing props
+/// (`settingsRevision`, `bufferActive`, `onSettingsChanged`,
+/// `onOpenSettings`) keep their contracts from the old `StatusStrip`.
+class RecorderCluster extends StatelessWidget {
   final ClipCoordinator coordinator;
   final String? captureError;
 
   /// Live buffer state; null means "running iff no capture error".
   final ValueListenable<bool>? bufferActive;
 
-  /// Connected displays the capture-source chip can switch between. The chip
-  /// is hidden entirely when this is empty (e.g. capture failed to start).
+  /// Connected displays the source line can switch between. The line is
+  /// hidden entirely when this is empty (e.g. capture failed to start).
   final List<DisplayInfo> displays;
 
-  /// Applications the capture-source chip can switch to, alongside displays.
+  /// Applications the source line can switch to, alongside displays.
   final List<AppInfo> capturableApps;
 
-  /// Called (mirroring [coordinator.settings], mutated in place) whenever the
-  /// capture-source chip or the buffer quick-set changes a setting.
+  /// Called (mirroring [coordinator.settings], mutated in place) whenever
+  /// the source line or the buffer quick-set changes a setting.
   final Future<void> Function(AppSettings) onSettingsChanged;
 
   /// Opens the full Settings screen — used by the buffer quick-set's
   /// "Custom…" entry, which needs the free-text field Settings has.
   final VoidCallback onOpenSettings;
 
-  /// Bumped by the caller at the end of every [onSettingsChanged] call.
-  /// `StatusStrip` is otherwise stateless, and the capture-source chip /
-  /// buffer quick-set mutate `coordinator.settings` in place rather than
-  /// replacing it — without something to listen to, the settings-derived
-  /// labels (the buffer readout, the source chip) would only refresh on the
-  /// next unrelated rebuild (e.g. `activeGame` changing), not immediately
-  /// after the user's own pick. Optional: existing callers/tests that don't
-  /// exercise the chip/quick-set don't need to wire it.
+  /// Bumped by the caller at the end of every [onSettingsChanged] call —
+  /// see the identical doc on the old `StatusStrip.settingsRevision`.
   final ValueListenable<int>? settingsRevision;
 
-  const StatusStrip({
+  const RecorderCluster({
     required this.coordinator,
     this.captureError,
     this.bufferActive,
@@ -73,10 +68,10 @@ class StatusStrip extends StatelessWidget {
     super.key,
   });
 
-  /// Pulsing "Buffering · N s" while running; grey dot + reason otherwise.
-  /// The label is [Flexible] + single-line ellipsis so a narrow window or a
-  /// long localized string truncates instead of overflowing the hero row.
-  Widget _indicator(BuildContext context, bool running) {
+  /// Pulsing dot + "Buffering · N s" while running; grey dot + reason
+  /// otherwise. [Flexible] + single-line ellipsis so a long localized string
+  /// truncates instead of overflowing the 220 px rail.
+  Widget _statusLine(BuildContext context, bool running) {
     final theme = Theme.of(context);
     if (!running) {
       return Row(children: [
@@ -87,7 +82,7 @@ class StatusStrip extends StatelessWidget {
             captureError != null ? 'Capture unavailable' : 'Paused',
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: theme.textTheme.title
+            style: theme.textTheme.body
                 .copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
@@ -102,7 +97,7 @@ class StatusStrip extends StatelessWidget {
           builder: (context, gameId, _) => _BufferQuickSet(
             label:
                 'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
-            style: theme.textTheme.title,
+            style: theme.textTheme.body,
             onPick: (seconds) {
               // Mirrors exactly what `bufferSecondsFor` reads: with a game
               // active, `configFor` lazily creates (or reuses) that game's
@@ -127,14 +122,14 @@ class StatusStrip extends StatelessWidget {
     ]);
   }
 
-  Widget _liveIndicator(BuildContext context) {
+  Widget _liveStatusLine(BuildContext context) {
     if (bufferActive case final active?) {
       return ValueListenableBuilder<bool>(
         valueListenable: active,
-        builder: (context, running, _) => _indicator(context, running),
+        builder: (context, running, _) => _statusLine(context, running),
       );
     }
-    return _indicator(context, captureError == null);
+    return _statusLine(context, captureError == null);
   }
 
   @override
@@ -151,77 +146,50 @@ class StatusStrip extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(bottom: hairlineBorder()),
-          ),
-          child: Row(
-            children: [
-              Expanded(child: _liveIndicator(context)),
-              const SizedBox(width: _controlGap),
-              Flexible(
-                child: ValueListenableBuilder<String?>(
-                  valueListenable: coordinator.activeGame,
-                  builder: (context, gameId, _) => _GameChip(
-                    key: const ValueKey('activeGameChip'),
-                    label: displayNameFor(gameId),
-                  ),
-                ),
+    return Container(
+      key: const ValueKey('recorderCluster'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        border: Border(top: hairlineBorder()),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: _controlHeight,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: _controlPaddingH),
               ),
-              if (displays.isNotEmpty) ...[
-                const SizedBox(width: _controlGap),
-                Flexible(
-                  child: ValueListenableBuilder<String?>(
-                    valueListenable: coordinator.autoSwitchedAppName,
-                    builder: (context, autoName, _) => _SourceChip(
-                      displays: displays,
-                      capturableApps: capturableApps,
-                      settings: coordinator.settings,
-                      onSettingsChanged: onSettingsChanged,
-                      autoSwitchedAppName: autoName,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(width: _controlGap),
-              _RecordButton(
-                coordinator: coordinator,
-                disabled: captureError != null,
-              ),
-              const SizedBox(width: _controlGap),
-              SizedBox(
-                height: _controlHeight,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: _controlPaddingH),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: captureError == null
-                      ? () => coordinator.onHotkey()
-                      : null,
-                  icon: const Icon(Icons.videocam_outlined,
-                      size: _controlIconSize),
-                  label: const Text('Save clip'),
-                ),
-              ),
-            ],
+              onPressed:
+                  captureError == null ? () => coordinator.onHotkey() : null,
+              icon: const Icon(Icons.videocam_outlined, size: _controlIconSize),
+              label: const Text('Save clip'),
+            ),
           ),
-        ),
-        if (captureError != null)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: _ErrorBanner(message: captureError!),
+          const SizedBox(height: 8),
+          _RecordButton(
+            coordinator: coordinator,
+            disabled: captureError != null,
           ),
-      ],
+          const SizedBox(height: 12),
+          _liveStatusLine(context),
+          if (displays.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ValueListenableBuilder<String?>(
+              valueListenable: coordinator.autoSwitchedAppName,
+              builder: (context, autoName, _) => _SourceLine(
+                displays: displays,
+                capturableApps: capturableApps,
+                settings: coordinator.settings,
+                onSettingsChanged: onSettingsChanged,
+                autoSwitchedAppName: autoName,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -271,56 +239,13 @@ class _BufferQuickSet extends StatelessWidget {
   }
 }
 
-/// Rectangular chip showing the active game (or "Desktop" when none is
-/// detected).
-class _GameChip extends StatelessWidget {
-  final String label;
-
-  const _GameChip({required this.label, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 180),
-      child: Container(
-        height: _controlHeight,
-        padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
-          border: Border.fromBorderSide(hairlineBorder()),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.sports_esports_outlined,
-                size: _controlIconSize,
-                color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: theme.textTheme.label,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Rectangular chip showing the current capture source (a whole display, or
-/// a single app) — mirrors [_GameChip]'s shape. Tapping it opens a single unified
-/// menu (displays, then a divider, then apps) to switch targets; the choice
-/// is written straight through [onSettingsChanged] via the same path
-/// Settings uses. This is the direct answer to "where is my recording coming
-/// from" without a trip to Settings.
-class _SourceChip extends StatelessWidget {
+/// The cluster's second status line: capture source (a whole display, or a
+/// single app) — an icon + label row, no chip/pill decoration (§2: shape
+/// language is rectangular controls only, not badges for plain status text).
+/// Tapping it opens the same unified menu (displays, then a divider, then
+/// apps) the old `_SourceChip` used, writing the choice straight through
+/// [onSettingsChanged] via the same path Settings uses.
+class _SourceLine extends StatelessWidget {
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
   final AppSettings settings;
@@ -328,12 +253,12 @@ class _SourceChip extends StatelessWidget {
 
   /// [ClipCoordinator.autoSwitchedAppName]'s current value: non-null while a
   /// "follow the game" auto-switch is live, in which case it takes priority
-  /// over the persisted source — the chip should show what's actually being
+  /// over the persisted source — the line should show what's actually being
   /// captured right now, not the preference auto-switch is temporarily
   /// overriding.
   final String? autoSwitchedAppName;
 
-  const _SourceChip({
+  const _SourceLine({
     required this.displays,
     required this.capturableApps,
     required this.settings,
@@ -341,7 +266,7 @@ class _SourceChip extends StatelessWidget {
     this.autoSwitchedAppName,
   });
 
-  /// Index into [displays] the chip should describe: the explicit saved
+  /// Index into [displays] the line should describe: the explicit saved
   /// choice if it still identifies a connected display, else whichever
   /// display is main, else the first one.
   int _displayIndex() {
@@ -395,11 +320,16 @@ class _SourceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     final icon =
         autoSwitchedAppName != null || settings.captureAppBundleId != null
             ? Icons.apps_outlined
             : Icons.desktop_windows_outlined;
     return PopupMenuButton<Object>(
+      // Scopes tests past the ambiguity of a picked app's name also
+      // appearing (briefly, mid-close-animation) as a popup menu item with
+      // the same text — see recorder_cluster_test.dart.
+      key: const ValueKey('recorderSourceLine'),
       tooltip: '',
       padding: EdgeInsets.zero,
       onSelected: (value) {
@@ -420,51 +350,33 @@ class _SourceChip extends StatelessWidget {
         for (final app in capturableApps)
           PopupMenuItem(value: app, child: Text(app.name)),
       ],
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 200),
-        child: Container(
-          height: _controlHeight,
-          padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius:
-                BorderRadius.circular(context.rewindTokens.radiusChip),
-            border: Border.fromBorderSide(hairlineBorder()),
+      child: Row(
+        children: [
+          Icon(icon, size: _controlIconSize, color: tokens.textMuted),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              _label,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: theme.textTheme.body
+                  .copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: _controlIconSize,
-                  color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  'Capturing: $_label',
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: theme.textTheme.label,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(Icons.expand_more,
-                  size: _controlIconSize,
-                  color: theme.colorScheme.onSurfaceVariant),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
 }
 
-/// The deck's manual-recording toggle: idle it's an outlined "Record" button
-/// with a dot icon; while [ClipCoordinator.isRecording] is true it becomes a
-/// filled, `rec`-red "■ 0:42" button with a 1 s-ticking elapsed readout
-/// (tabular numerals) computed from [ClipCoordinator.recordingStartedAt].
-/// Clicking either state calls [ClipCoordinator.toggleRecording] — starting,
-/// then stopping, the same session.
+/// The cluster's manual-recording toggle: idle it's an outlined "Record"
+/// button with a dot icon; while [ClipCoordinator.isRecording] is true it
+/// becomes a filled, `rec`-red "■ 0:42" button with a 1 s-ticking elapsed
+/// readout (tabular numerals) computed from
+/// [ClipCoordinator.recordingStartedAt]. Clicking either state calls
+/// [ClipCoordinator.toggleRecording] — starting, then stopping, the same
+/// session. Full rail-width via the parent Column's `CrossAxisAlignment.
+/// stretch`, same logic as the old deck's `_RecordButton`.
 class _RecordButton extends StatefulWidget {
   final ClipCoordinator coordinator;
 
@@ -550,8 +462,6 @@ class _RecordButtonState extends State<_RecordButton> {
             backgroundColor: context.rewindTokens.rec,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           onPressed: onPressed,
           icon: const Icon(Icons.stop_rounded, size: _controlIconSize),
@@ -571,78 +481,10 @@ class _RecordButtonState extends State<_RecordButton> {
         key: const ValueKey('recordButton'),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: onPressed,
         icon: const Icon(Icons.fiber_manual_record, size: _controlIconSize),
         label: const Text('Record'),
-      ),
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  final String message;
-
-  const _ErrorBanner({required this.message});
-
-  bool get _isPermissionError =>
-      Platform.isMacOS && message.toLowerCase().contains('permission');
-
-  static Future<void> _openScreenRecordingSettings() async {
-    try {
-      await Process.run('open', [
-        'x-apple.systempreferences:com.apple.preference.security'
-            '?Privacy_ScreenCapture'
-      ]);
-    } catch (_) {
-      // Best-effort: no OS handler available is not fatal.
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final amber = context.rewindTokens.warn;
-    // Only coach the user toward the permission pane when the failure is
-    // actually about permission — the shim reports that case explicitly.
-    // Any other error must stand on its own instead of misdirecting.
-    final text = Platform.isMacOS &&
-            message.toLowerCase().contains('permission') &&
-            !message.contains('System Settings')
-        ? '$message\nSystem Settings → Privacy & Security → Screen Recording'
-        : message;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: amber.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
-        border: Border.all(color: amber),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.warning_amber_rounded, color: amber),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, style: Theme.of(context).textTheme.body),
-                if (_isPermissionError) ...[
-                  const SizedBox(height: 8),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton(
-                      onPressed: _openScreenRecordingSettings,
-                      child: Text('Open Screen Recording Settings'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

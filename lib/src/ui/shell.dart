@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -19,13 +21,16 @@ import 'supported_games_screen.dart';
 import 'theme.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
-import 'widgets/status_strip.dart';
 
-/// The app's persistent scaffold (§3.1): a 220 px left rail + the recorder
-/// deck (`StatusStrip`) pinned above a content area that swaps on a sealed
-/// [ShellDestination] — plain `StatefulWidget` navigation, no router package.
-/// Owns the save-error SnackBar listener (moved here from the old
-/// `HomeScreen` so it fires on every destination, not just All Clips).
+/// The app's persistent scaffold (§3.1): a 220 px left rail — ending in the
+/// `RecorderCluster`, a Discord-style Save/Record/status block pinned to its
+/// bottom — beside a content area that swaps on a sealed [ShellDestination]
+/// — plain `StatefulWidget` navigation, no router package. The old full-
+/// width top deck (`StatusStrip`) is gone per maintainer feedback ("feels
+/// redundant"); its permission [_ErrorBanner] now renders at the top of the
+/// content area instead. Owns the save-error SnackBar listener (moved here
+/// from the old `HomeScreen` so it fires on every destination, not just All
+/// Clips).
 class Shell extends StatefulWidget {
   final ClipCoordinator coordinator;
   final ClipLibrary library;
@@ -54,9 +59,10 @@ class Shell extends StatefulWidget {
   /// header button and its empty-state button.
   final VoidCallback onOpenClipsFolder;
 
-  /// Forwarded to [StatusStrip.settingsRevision] and [NavRail] (the rail's
-  /// game list must refresh after an in-place settings mutation too, e.g. a
-  /// per-game buffer edit). Optional — see [StatusStrip]'s doc.
+  /// Forwarded to [NavRail] — both its game list and its embedded
+  /// `RecorderCluster` must refresh after an in-place settings mutation,
+  /// e.g. a per-game buffer edit. Optional — see `RecorderCluster.
+  /// settingsRevision`'s doc.
   final ValueListenable<int>? settingsRevision;
 
   /// Forwarded to the embedded Settings destination's hotkey recorder.
@@ -215,21 +221,22 @@ class _ShellState extends State<Shell> {
             selected: _destination,
             onSelect: _select,
             onOpenLogs: _openLogs,
+            captureError: widget.captureError,
+            bufferActive: widget.bufferActive,
+            displays: widget.displays,
+            capturableApps: widget.capturableApps,
+            onSettingsChanged: widget.onSettingsChanged,
+            onOpenSettings: () => _select(const SettingsDestination()),
           ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                StatusStrip(
-                  coordinator: widget.coordinator,
-                  captureError: widget.captureError,
-                  bufferActive: widget.bufferActive,
-                  displays: widget.displays,
-                  capturableApps: widget.capturableApps,
-                  onSettingsChanged: widget.onSettingsChanged,
-                  onOpenSettings: () => _select(const SettingsDestination()),
-                  settingsRevision: widget.settingsRevision,
-                ),
+                if (widget.captureError != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: _ErrorBanner(message: widget.captureError!),
+                  ),
                 _DetectedGameBanners(
                   coordinator: widget.coordinator,
                   capturableApps: widget.capturableApps,
@@ -383,6 +390,76 @@ class _DetectedGameBanner extends StatelessWidget {
             icon: const Icon(Icons.close, size: 16),
             color: tokens.textMuted,
             onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The permission/capture-error banner, moved here (verbatim) from the old
+/// `StatusStrip` deck: it now renders at the top of the content area,
+/// full width, above the detected-game banners, instead of as a second row
+/// under the old top deck.
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _ErrorBanner({required this.message});
+
+  bool get _isPermissionError =>
+      Platform.isMacOS && message.toLowerCase().contains('permission');
+
+  static Future<void> _openScreenRecordingSettings() async {
+    try {
+      await Process.run('open', [
+        'x-apple.systempreferences:com.apple.preference.security'
+            '?Privacy_ScreenCapture'
+      ]);
+    } catch (_) {
+      // Best-effort: no OS handler available is not fatal.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final amber = context.rewindTokens.warn;
+    // Only coach the user toward the permission pane when the failure is
+    // actually about permission — the shim reports that case explicitly.
+    // Any other error must stand on its own instead of misdirecting.
+    final text = Platform.isMacOS &&
+            message.toLowerCase().contains('permission') &&
+            !message.contains('System Settings')
+        ? '$message\nSystem Settings → Privacy & Security → Screen Recording'
+        : message;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
+        border: Border.all(color: amber),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(text, style: Theme.of(context).textTheme.body),
+                if (_isPermissionError) ...[
+                  const SizedBox(height: 8),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton(
+                      onPressed: _openScreenRecordingSettings,
+                      child: Text('Open Screen Recording Settings'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),

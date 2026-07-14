@@ -59,9 +59,10 @@ void main() {
         coordinator: coordinator,
         library: library,
         captureError: error,
-        // Idle by default: an un-paused buffer keeps the recorder deck's
+        // Idle by default: an un-paused buffer keeps the recorder cluster's
         // pulsing dot ticking forever, which would hang `pumpAndSettle`
-        // (matches status_strip_test.dart's own note on the same widget).
+        // (matches recorder_cluster_test.dart's own note on the same
+        // widget).
         bufferActive: bufferActive ?? ValueNotifier<bool>(false),
         hotkeyLabel: 'Alt+F10',
         capturableApps: capturableApps,
@@ -120,17 +121,24 @@ void main() {
     expect(btn.onPressed, isNull);
   });
 
-  testWidgets('active game chip follows coordinator.activeGame', (t) async {
-    // Scoped to the chip's key: the rail's pinned "desktop" pseudo-game row
-    // shows the same "Desktop" label at rest, which would otherwise collide.
-    Finder gameChip() => find.descendant(
-        of: find.byKey(const ValueKey('activeGameChip')),
-        matching: find.byType(Text));
-    await t.pumpWidget(_app(shell()));
-    expect(t.widget<Text>(gameChip()).data, 'Desktop');
-    coordinator.activeGame.value = 'league_of_legends';
-    await t.pump();
-    expect(t.widget<Text>(gameChip()).data, 'League of Legends');
+  group('permission banner button', () {
+    // Migrated from the old status_strip_test.dart: the permission banner
+    // (`_ErrorBanner`) moved from the deck to the top of the content area
+    // (see shell.dart), but its "coach the user to System Settings" button
+    // is unchanged.
+    testWidgets('present for a permission-related capture error', (t) async {
+      await t
+          .pumpWidget(_app(shell(error: 'Screen recording permission denied')));
+      expect(
+        find.text('Open Screen Recording Settings'),
+        Platform.isMacOS ? findsOneWidget : findsNothing,
+      );
+    });
+
+    testWidgets('absent for a non-permission capture error', (t) async {
+      await t.pumpWidget(_app(shell(error: 'libobs init failed')));
+      expect(find.text('Open Screen Recording Settings'), findsNothing);
+    });
   });
 
   testWidgets('a save error shows a SnackBar with the message', (t) async {

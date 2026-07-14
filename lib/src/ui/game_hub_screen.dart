@@ -303,8 +303,13 @@ class _GameHubScreenState extends State<GameHubScreen> {
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
               child: _captureSettingsDisclosure(context),
             ),
+            // Top inset tuned against the disclosure's own trailing padding
+            // (12 collapsed / 4 expanded, see `_captureSettingsDisclosure`
+            // and `_captureSettingsBody`) so the combined gap lands at a
+            // normal 16-24 px rhythm either way, instead of stacking to ~36
+            // px collapsed — probed empirically in game_hub_screen_test.dart.
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 4),
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
               child: Text('Clips', style: Theme.of(context).textTheme.title),
             ),
             EventFilterChips(
