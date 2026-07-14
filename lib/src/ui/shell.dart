@@ -51,6 +51,11 @@ class Shell extends StatefulWidget {
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
 
+  /// Live app enumeration, forwarded to the rail's recorder cluster so the
+  /// capture-source menu re-lists on every open (see `RecorderCluster.
+  /// listApps`).
+  final List<AppInfo> Function()? listApps;
+
   /// Persists a settings change (mutated in place) — used by the
   /// capture-source chip, the buffer quick-set, and embedded Settings.
   final Future<void> Function(AppSettings) onSettingsChanged;
@@ -85,6 +90,7 @@ class Shell extends StatefulWidget {
     required this.hotkeyLabel,
     this.displays = const [],
     this.capturableApps = const [],
+    this.listApps,
     required this.onSettingsChanged,
     required this.onOpenClipsFolder,
     this.settingsRevision,
@@ -225,6 +231,7 @@ class _ShellState extends State<Shell> {
             bufferActive: widget.bufferActive,
             displays: widget.displays,
             capturableApps: widget.capturableApps,
+            listApps: widget.listApps,
             onSettingsChanged: widget.onSettingsChanged,
             onOpenSettings: () => _select(const SettingsDestination()),
           ),

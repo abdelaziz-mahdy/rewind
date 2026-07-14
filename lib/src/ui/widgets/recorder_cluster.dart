@@ -42,8 +42,13 @@ class RecorderCluster extends StatelessWidget {
   /// hidden entirely when this is empty (e.g. capture failed to start).
   final List<DisplayInfo> displays;
 
-  /// Applications the source line can switch to, alongside displays.
+  /// Applications the source line can switch to, alongside displays — the
+  /// startup snapshot, used when [listApps] is absent (tests, stub engine).
   final List<AppInfo> capturableApps;
+
+  /// Live app enumeration, called each time the source menu opens so a game
+  /// launched AFTER Rewind still shows up (the snapshot above never would).
+  final List<AppInfo> Function()? listApps;
 
   /// Called (mirroring [coordinator.settings], mutated in place) whenever
   /// the source line or the buffer quick-set changes a setting.
@@ -63,6 +68,7 @@ class RecorderCluster extends StatelessWidget {
     this.bufferActive,
     this.displays = const [],
     this.capturableApps = const [],
+    this.listApps,
     required this.onSettingsChanged,
     required this.onOpenSettings,
     this.settingsRevision,
@@ -162,6 +168,7 @@ class RecorderCluster extends StatelessWidget {
               builder: (context, autoName, _) => _SourceLine(
                 displays: displays,
                 capturableApps: capturableApps,
+                listApps: listApps,
                 settings: coordinator.settings,
                 onSettingsChanged: onSettingsChanged,
                 autoSwitchedAppName: autoName,
@@ -251,6 +258,7 @@ class _BufferQuickSet extends StatelessWidget {
 class _SourceLine extends StatelessWidget {
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
+  final List<AppInfo> Function()? listApps;
   final AppSettings settings;
   final Future<void> Function(AppSettings) onSettingsChanged;
 
@@ -264,6 +272,7 @@ class _SourceLine extends StatelessWidget {
   const _SourceLine({
     required this.displays,
     required this.capturableApps,
+    this.listApps,
     required this.settings,
     required this.onSettingsChanged,
     this.autoSwitchedAppName,
@@ -286,6 +295,10 @@ class _SourceLine extends StatelessWidget {
     if (autoSwitchedAppName case final auto?) return '$auto (auto)';
     final appId = settings.captureAppBundleId;
     if (appId != null) {
+      // The stored name wins: a bundle-id lookup is ambiguous for Wine apps
+      // (every CrossOver program shares the translator's bundle id, so
+      // `capturableApps.first` could be any of them).
+      if (settings.captureAppName case final name?) return name;
       final match = capturableApps.where((a) => a.bundleId == appId);
       return match.isNotEmpty ? match.first.name : appId;
     }
@@ -300,6 +313,7 @@ class _SourceLine extends StatelessWidget {
   void _pickDisplay(DisplayInfo d) {
     settings.captureDisplayUuid = d.uuid;
     settings.captureAppBundleId = null;
+    settings.captureAppName = null;
     onSettingsChanged(settings);
   }
 
@@ -313,9 +327,15 @@ class _SourceLine extends StatelessWidget {
   /// overwrites an already-set `processMatch` on an existing config.
   void _pickApp(AppInfo a) {
     settings.captureAppBundleId = a.bundleId;
+    settings.captureAppName = a.name;
     final gameId = gameIdForApp(a);
     final cfg = settings.configFor(gameId);
     cfg.processMatch ??= a.name;
+    // Only for freshly-minted app:<slug> entries: catalog gameIds carry
+    // their own (curated) displayName, which must not be shadowed.
+    if (gameId.startsWith('app:') && matchingCatalogGame(a) == null) {
+      cfg.displayName ??= a.name;
+    }
     settings.setConfig(cfg);
     onSettingsChanged(settings);
   }
@@ -342,17 +362,21 @@ class _SourceLine extends StatelessWidget {
           _pickApp(value);
         }
       },
-      itemBuilder: (context) => [
-        for (var i = 0; i < displays.length; i++)
-          PopupMenuItem(
-            value: displays[i],
-            child: Text(_displayMenuLabel(i, displays[i])),
-          ),
-        if (displays.isNotEmpty && capturableApps.isNotEmpty)
-          const PopupMenuDivider(),
-        for (final app in capturableApps)
-          PopupMenuItem(value: app, child: Text(app.name)),
-      ],
+      itemBuilder: (context) {
+        // Fresh enumeration on open: a game launched after Rewind must
+        // still appear (the startup snapshot alone never shows it).
+        final apps = listApps?.call() ?? capturableApps;
+        return [
+          for (var i = 0; i < displays.length; i++)
+            PopupMenuItem(
+              value: displays[i],
+              child: Text(_displayMenuLabel(i, displays[i])),
+            ),
+          if (displays.isNotEmpty && apps.isNotEmpty) const PopupMenuDivider(),
+          for (final app in apps)
+            PopupMenuItem(value: app, child: Text(app.name)),
+        ];
+      },
       child: Container(
         height: _controlHeight,
         padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),

@@ -12,6 +12,7 @@ import 'src/clip/storage_manager.dart';
 import 'src/clip/thumbnail_cache.dart';
 import 'src/clip/thumbnail_generator.dart';
 import 'src/coordinator/clip_coordinator.dart';
+import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/hotkey/hotkey_service.dart';
@@ -30,6 +31,13 @@ import 'src/ui/theme.dart';
 /// AppBar/empty-state buttons and the tray's "Open clips folder" item.
 /// Best-effort: no OS handler available (or an unsupported platform) is not
 /// fatal, mirroring `ClipTile`'s own `_open`/`_reveal` helpers.
+/// gameId → user-facing name for every config carrying a custom
+/// [GameConfig.displayName] (apps picked via the capture-source menu).
+Map<String, String> _customDisplayNamesOf(AppSettings s) => {
+      for (final cfg in s.allConfigs)
+        if (cfg.displayName case final name?) cfg.gameId: name,
+    };
+
 Future<void> _openClipsFolder(String path) async {
   try {
     if (Platform.isMacOS) {
@@ -214,6 +222,11 @@ Future<void> main() async {
   coordinator.isRecording
       .addListener(() => tray.setRecordingState(coordinator.isRecording.value));
 
+  // Make user-picked app names (GameConfig.displayName) resolvable by
+  // displayNameFor everywhere gameIds are shown; refreshed on every
+  // settings change below.
+  registerCustomDisplayNames(_customDisplayNamesOf(settings));
+
   runApp(RewindApp(
     coordinator: coordinator,
     library: library,
@@ -222,6 +235,9 @@ Future<void> main() async {
     bufferActive: bufferActive,
     displays: displays,
     capturableApps: capturableApps,
+    // `engine` (not the startup snapshot): fresh enumeration every time the
+    // source menu opens, so a game launched after Rewind still appears.
+    listApps: () => engine?.listCapturableApps() ?? const <AppInfo>[],
     thumbnails: thumbnailCache,
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     settingsRevision: settingsRevision,
@@ -240,6 +256,7 @@ Future<void> main() async {
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
       await bindBothHotkeys();
+      registerCustomDisplayNames(_customDisplayNamesOf(s));
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
@@ -274,6 +291,7 @@ class RewindApp extends StatelessWidget {
   final ValueNotifier<bool> bufferActive;
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
+  final List<AppInfo> Function()? listApps;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final Future<void> Function(bool recording) onHotkeyRecording;
   final VoidCallback onOpenClipsFolder;
@@ -289,6 +307,7 @@ class RewindApp extends StatelessWidget {
     required this.bufferActive,
     required this.displays,
     required this.capturableApps,
+    this.listApps,
     required this.onSettingsChanged,
     required this.onHotkeyRecording,
     required this.onOpenClipsFolder,
@@ -311,6 +330,7 @@ class RewindApp extends StatelessWidget {
         hotkeyLabel: settings.hotkey,
         displays: displays,
         capturableApps: capturableApps,
+        listApps: listApps,
         onSettingsChanged: onSettingsChanged,
         onOpenClipsFolder: onOpenClipsFolder,
         settingsRevision: settingsRevision,

@@ -51,6 +51,7 @@ const char *rewind_last_error(void) {
 #ifdef __APPLE__
 #include <ApplicationServices/ApplicationServices.h>
 #include <libproc.h>
+#include <strings.h> /* strcasecmp */
 #endif
 
 static obs_source_t  *g_capture   = NULL;
@@ -383,10 +384,28 @@ static void json_escape_append(const char *in, char *out, size_t out_size) {
     out[oi] = '\0';
 }
 
+/* True if `name` ends in ".exe" (case-insensitive) — a Windows program
+ * running under a translation layer (CrossOver/Wine/Whisky). Wine sets both
+ * the process comm and kCGWindowOwnerName to the Windows executable's name,
+ * which is the only place the actual game's identity survives: proc_pidpath
+ * resolves every Wine pid to the SAME wineloader inside CrossOver.app, so
+ * bundle-derived names would collapse Steam, the game, and CrossOver itself
+ * into one "CrossOver" entry (observed live, 2026-07-14). */
+static int is_windows_exe_name(const char *name) {
+    size_t len = strlen(name);
+    return len > 4 && strcasecmp(name + len - 4, ".exe") == 0;
+}
+
 /* Enumerate on-screen windows' owning applications into a compact JSON
- * array, deduplicated by bundle id. Returns 0 on success, non-zero (with
- * set_error) if enumeration fails or `json_out` is too small to hold the
- * result. */
+ * array, deduplicated by bundle id — except Windows-exe (Wine) processes,
+ * which share their host translator's bundle id and are instead named after
+ * their exe (minus ".exe") and deduplicated by bundle id + name, so each
+ * Windows program is its own entry. The emitted bundle id stays the host's:
+ * it's what mac-capture's application filter matches, and capturing "the
+ * CrossOver app" is the closest ScreenCaptureKit gets to capturing one Wine
+ * program (its windows dominate the filter in practice). Returns 0 on
+ * success, non-zero (with set_error) if enumeration fails or `json_out` is
+ * too small to hold the result. */
 static int list_capturable_apps_json(char *json_out, int json_cap) {
     if (!json_out || json_cap <= 0) return fail("invalid buffer");
 
@@ -395,13 +414,14 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
     if (!windows) return fail("CGWindowListCopyWindowInfo failed");
 
     pid_t self_pid = getpid();
-    /* Bundle ids already emitted, for dedup. 256 apps comfortably covers
-     * any real desktop's on-screen window set; beyond that, further
-     * duplicates of an already-seen id just aren't caught against this
-     * table (soft limit — the entry was already emitted once, so no
-     * incorrect output, just a missed dedup in a scenario that shouldn't
-     * occur in practice). */
-    char seen[256][128];
+    /* Dedup keys already emitted: "<bundle id>" for normal apps,
+     * "<bundle id>\n<name>" for Wine exes (see doc above). 256 apps
+     * comfortably covers any real desktop's on-screen window set; beyond
+     * that, further duplicates of an already-seen key just aren't caught
+     * against this table (soft limit — the entry was already emitted once,
+     * so no incorrect output, just a missed dedup in a scenario that
+     * shouldn't occur in practice). */
+    char seen[256][384];
     int seen_count = 0;
 
     size_t pos = 0;
@@ -427,12 +447,32 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
         if (!bundle_info_for_pid(pid, bundle_id, sizeof(bundle_id), name, sizeof(name))) continue;
         if (!bundle_id[0]) continue;
 
+        /* Wine exe: the window owner's name (the Windows program) beats the
+         * bundle name (the translator hosting it). */
+        char owner[256] = "";
+        CFStringRef owner_ref = (CFStringRef)CFDictionaryGetValue(entry, kCGWindowOwnerName);
+        if (owner_ref) {
+            if (!CFStringGetCString(owner_ref, owner, sizeof(owner), kCFStringEncodingUTF8))
+                owner[0] = '\0';
+        }
+        int wine_exe = is_windows_exe_name(owner);
+        if (wine_exe) {
+            snprintf(name, sizeof(name), "%s", owner);
+            name[strlen(name) - 4] = '\0'; /* drop ".exe" */
+        }
+
+        char key[384];
+        if (wine_exe) {
+            snprintf(key, sizeof(key), "%s\n%s", bundle_id, name);
+        } else {
+            snprintf(key, sizeof(key), "%s", bundle_id);
+        }
         int dup = 0;
         for (int s = 0; s < seen_count; s++) {
-            if (strcmp(seen[s], bundle_id) == 0) { dup = 1; break; }
+            if (strcmp(seen[s], key) == 0) { dup = 1; break; }
         }
         if (dup) continue;
-        if (seen_count < 256) snprintf(seen[seen_count++], sizeof(seen[0]), "%s", bundle_id);
+        if (seen_count < 256) snprintf(seen[seen_count++], sizeof(seen[0]), "%s", key);
 
         char escaped_id[256] = "";
         char escaped_name[512] = "";

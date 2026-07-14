@@ -119,6 +119,28 @@ void main() {
     expect(loaded.configFor('g').processMatch, isNull);
   });
 
+  test('captureAppName round-trips through toJson/fromJson', () {
+    final s = AppSettings(
+        captureAppBundleId: 'com.codeweavers.CrossOver',
+        captureAppName: 'PenguinHotel-Win64-Shipping');
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.captureAppName, 'PenguinHotel-Win64-Shipping');
+  });
+
+  test('null captureAppName round-trips as null', () {
+    expect(AppSettings.fromJson(AppSettings().toJson()).captureAppName, isNull);
+  });
+
+  test('GameConfig.displayName round-trips through toJson/fromJson', () {
+    final s = AppSettings();
+    s.setConfig(GameConfig(
+        gameId: 'app:penguinhotel_win64_shipping',
+        displayName: 'PenguinHotel-Win64-Shipping'));
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.configFor('app:penguinhotel_win64_shipping').displayName,
+        'PenguinHotel-Win64-Shipping');
+  });
+
   test('corrupt file is backed up and defaults returned', () async {
     final store = SettingsStore(tmp);
     store.file.writeAsStringSync('{not json');

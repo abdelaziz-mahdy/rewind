@@ -65,5 +65,25 @@ void main() {
     test('unknown ids fall back to underscore title-casing', () {
       expect(displayNameFor('my_cool_game'), 'My Cool Game');
     });
+
+    test('registered custom names beat title-casing but never the catalog', () {
+      addTearDown(() => registerCustomDisplayNames({}));
+      registerCustomDisplayNames({
+        // A picked Wine app whose real casing the slug loses.
+        'app:penguinhotel_win64_shipping': 'PenguinHotel-Win64-Shipping',
+        // A hostile/nonsense override of a catalog id must not win.
+        'app:cs2': 'Bogus Name',
+      });
+      expect(displayNameFor('app:penguinhotel_win64_shipping'),
+          'PenguinHotel-Win64-Shipping');
+      expect(displayNameFor('app:cs2'), 'Counter-Strike 2');
+    });
+
+    test('registerCustomDisplayNames replaces (not merges) the table', () {
+      addTearDown(() => registerCustomDisplayNames({}));
+      registerCustomDisplayNames({'app:gone_game': 'Gone Game!'});
+      registerCustomDisplayNames({});
+      expect(displayNameFor('app:gone_game'), 'App:gone Game');
+    });
   });
 }

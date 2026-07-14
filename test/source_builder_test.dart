@@ -57,6 +57,29 @@ void main() {
       expect(sources.length, 1 + popularGamesCatalog.length + 1);
     });
 
+    test('a user config source uses its displayName when set, gameId when not',
+        () {
+      final settings = AppSettings()
+        ..setConfig(GameConfig(
+          gameId: 'app:penguinhotel_win64_shipping',
+          processMatch: 'PenguinHotel-Win64-Shipping',
+          displayName: 'PenguinHotel-Win64-Shipping',
+        ))
+        ..setConfig(GameConfig(
+          gameId: 'app:nameless',
+          processMatch: 'nameless',
+        ));
+
+      final byId = {
+        for (final s
+            in buildSources(settings).whereType<ProcessWatcherSource>())
+          s.gameId: s
+      };
+      expect(byId['app:penguinhotel_win64_shipping']!.displayName,
+          'PenguinHotel-Win64-Shipping');
+      expect(byId['app:nameless']!.displayName, 'app:nameless');
+    });
+
     test(
         'ignores a per-game config with no processMatch (null = no '
         'auto-detection)', () {

@@ -41,6 +41,7 @@ class NavRail extends StatelessWidget {
   final ValueListenable<bool>? bufferActive;
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
+  final List<AppInfo> Function()? listApps;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final VoidCallback onOpenSettings;
 
@@ -55,6 +56,7 @@ class NavRail extends StatelessWidget {
     this.bufferActive,
     this.displays = const [],
     this.capturableApps = const [],
+    this.listApps,
     required this.onSettingsChanged,
     required this.onOpenSettings,
     super.key,
@@ -160,6 +162,7 @@ class NavRail extends StatelessWidget {
             bufferActive: bufferActive,
             displays: displays,
             capturableApps: capturableApps,
+            listApps: listApps,
             onSettingsChanged: onSettingsChanged,
             onOpenSettings: onOpenSettings,
             settingsRevision: settingsRevision,

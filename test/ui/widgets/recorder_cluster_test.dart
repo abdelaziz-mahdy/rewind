@@ -193,6 +193,75 @@ void main() {
           settings.allConfigs.where((c) => c.gameId == 'app:app_two').toList();
       expect(cfg, hasLength(1));
       expect(cfg.single.processMatch, 'App Two');
+      // The picked app's real casing survives: as the persisted source
+      // label, and as the fresh config's display name (the app:<slug>
+      // gameId alone would render as "App:app Two").
+      expect(settings.captureAppName, 'App Two');
+      expect(cfg.single.displayName, 'App Two');
+    });
+
+    testWidgets(
+        'the label prefers the stored captureAppName over a bundle-id '
+        'lookup (ambiguous for Wine apps sharing one bundle id)', (t) async {
+      // Two entries share CrossOver's bundle id: the translator itself and
+      // a Windows game running under it. A bundle-id lookup would show
+      // whichever is listed first ("CrossOver") — not what the user picked.
+      const crossover = AppInfo(
+          bundleId: 'com.codeweavers.CrossOver', name: 'CrossOver', pid: 10);
+      const wineGame = AppInfo(
+          bundleId: 'com.codeweavers.CrossOver',
+          name: 'PenguinHotel-Win64-Shipping',
+          pid: 11);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(
+          captureAppBundleId: 'com.codeweavers.CrossOver',
+          captureAppName: 'PenguinHotel-Win64-Shipping',
+        ),
+        capturableApps: const [crossover, wineGame],
+      )));
+      expect(sourceLine('PenguinHotel-Win64-Shipping'), findsOneWidget);
+      expect(sourceLine('CrossOver'), findsNothing);
+    });
+
+    testWidgets('picking a display clears the stored captureAppName',
+        (t) async {
+      final settings = AppSettings(
+          captureAppBundleId: 'com.example.two', captureAppName: 'App Two');
+      await t.pumpWidget(app(cluster(
+        settings: settings,
+        capturableApps: _apps,
+      )));
+
+      await t.tap(sourceLine('App Two'));
+      await settleMenu(t);
+      await t.tap(find.textContaining('Entire Display 1'));
+      await settleMenu(t);
+
+      expect(settings.captureAppBundleId, isNull);
+      expect(settings.captureAppName, isNull);
+    });
+
+    testWidgets(
+        'the menu re-enumerates via listApps on open, so an app launched '
+        'after startup appears', (t) async {
+      // Static snapshot has only App One; the live lister also knows the
+      // game that launched later.
+      const lateGame = AppInfo(
+          bundleId: 'com.codeweavers.CrossOver',
+          name: 'PenguinHotel-Win64-Shipping',
+          pid: 99);
+      await t.pumpWidget(app(RecorderCluster(
+        coordinator: makeCoordinator(AppSettings()),
+        displays: _displays,
+        capturableApps: [_apps[0]],
+        listApps: () => [_apps[0], lateGame],
+        onSettingsChanged: (_) async {},
+        onOpenSettings: () {},
+      )));
+
+      await t.tap(sourceLine('Display 1'));
+      await settleMenu(t);
+      expect(find.text('PenguinHotel-Win64-Shipping'), findsOneWidget);
     });
 
     testWidgets(

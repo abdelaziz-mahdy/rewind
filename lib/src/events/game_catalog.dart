@@ -116,17 +116,34 @@ const List<CatalogGame> popularGamesCatalog = [
   ),
 ];
 
+/// User-created display names (from `GameConfig.displayName` — apps picked
+/// via the capture-source menu, whose real casing the `app:<slug>` gameId
+/// loses). Module state rather than a parameter because [displayNameFor]'s
+/// call sites (clip tiles, the player, the rail) mostly have no settings
+/// access; `main.dart` refreshes it at startup and on every settings change.
+final Map<String, String> _customDisplayNames = {};
+
+/// Replace the custom-name table with [names] (gameId → display name).
+void registerCustomDisplayNames(Map<String, String> names) {
+  _customDisplayNames
+    ..clear()
+    ..addAll(names);
+}
+
 /// Human-friendly label for a gameId, used everywhere a gameId is shown to
 /// the user (status strip, clip rows, the filter rail, per-game settings).
 /// Resolution order: a [popularGamesCatalog] hit (covers process-detected
-/// `app:<slug>` ids) first, then the null/`'desktop'` sentinel, then generic
-/// title-casing on underscores — with a small known-name map fixing cases
-/// naive title-casing gets wrong (the lowercase "of" in League of Legends).
+/// `app:<slug>` ids) first, then the null/`'desktop'` sentinel, then a
+/// [registerCustomDisplayNames] entry, then generic title-casing on
+/// underscores — with a small known-name map fixing cases naive
+/// title-casing gets wrong (the lowercase "of" in League of Legends).
 String displayNameFor(String? gameId) {
   if (gameId == null || gameId == 'desktop') return 'Desktop';
   for (final game in popularGamesCatalog) {
     if (game.gameId == gameId) return game.displayName;
   }
+  final custom = _customDisplayNames[gameId];
+  if (custom != null) return custom;
   const known = {'league_of_legends': 'League of Legends'};
   final name = known[gameId];
   if (name != null) return name;

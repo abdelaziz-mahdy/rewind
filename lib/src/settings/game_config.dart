@@ -18,10 +18,17 @@ class GameConfig {
   /// auto-detecting this entry (see `ProcessWatcherSource.processMatch`).
   /// Null means no auto-detection: this config is only ever applied when
   /// some other source (a vendor-API watcher, or a catalog entry sharing
-  /// this [gameId]) reports the game active. Not set by any UI yet — this
-  /// is the data-model half of per-app auto-detection; see
-  /// `lib/src/events/source_builder.dart`.
+  /// this [gameId]) reports the game active. Set by the capture-source
+  /// picker when the user picks an app (see `recorder_cluster.dart`'s
+  /// `_pickApp` and `lib/src/events/source_builder.dart`).
   String? processMatch;
+
+  /// Human-readable name for this entry when [gameId] isn't a catalog id —
+  /// e.g. the picked app's real name ("PenguinHotel-Win64-Shipping") whose
+  /// casing the `app:<slug>` gameId loses. Null for catalog games (the
+  /// catalog carries its own displayName). Consulted by
+  /// `displayNameFor` via `registerCustomDisplayNames`.
+  String? displayName;
 
   GameConfig({
     required this.gameId,
@@ -29,6 +36,7 @@ class GameConfig {
     this.autoClip = true,
     Set<GameEventKind>? enabledEvents,
     this.processMatch,
+    this.displayName,
   }) : enabledEvents = enabledEvents ??
             {
               GameEventKind.manual,
@@ -46,6 +54,7 @@ class GameConfig {
         'autoClip': autoClip,
         'enabledEvents': enabledEvents.map((e) => e.name).toList(),
         'processMatch': processMatch,
+        'displayName': displayName,
       };
 
   factory GameConfig.fromJson(Map<String, dynamic> j) => GameConfig(
@@ -57,5 +66,6 @@ class GameConfig {
                 orElse: () => GameEventKind.other))
             .toSet(),
         processMatch: j['processMatch'] as String?,
+        displayName: j['displayName'] as String?,
       );
 }

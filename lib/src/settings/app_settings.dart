@@ -25,6 +25,14 @@ class AppSettings {
   /// revert.
   String? captureAppBundleId;
 
+  /// Display name of the picked capture app, stored alongside
+  /// [captureAppBundleId] because a bundle id alone can be ambiguous:
+  /// every Windows program running under CrossOver/Wine shares the
+  /// translator's bundle id, so a bundle-id lookup against the app list
+  /// can't tell "PenguinHotel-Win64-Shipping" from "CrossOver". Purely a
+  /// label — the engine still targets [captureAppBundleId].
+  String? captureAppName;
+
   /// Whether detecting a game becoming active should temporarily switch the
   /// capture target to that game's running app/window (reverting to
   /// [captureAppBundleId] — the persisted choice — when the game exits).
@@ -40,6 +48,7 @@ class AppSettings {
     this.recordHotkey = 'Alt+F9',
     this.captureDisplayUuid,
     this.captureAppBundleId,
+    this.captureAppName,
     this.autoSwitchCapture = true,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
@@ -69,6 +78,7 @@ class AppSettings {
         'recordHotkey': recordHotkey,
         'captureDisplayUuid': captureDisplayUuid,
         'captureAppBundleId': captureAppBundleId,
+        'captureAppName': captureAppName,
         'autoSwitchCapture': autoSwitchCapture,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
@@ -79,6 +89,7 @@ class AppSettings {
         recordHotkey: j['recordHotkey'] as String? ?? 'Alt+F9',
         captureDisplayUuid: j['captureDisplayUuid'] as String?,
         captureAppBundleId: j['captureAppBundleId'] as String?,
+        captureAppName: j['captureAppName'] as String?,
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,

@@ -42,12 +42,9 @@ List<GameEventSource> buildSources(AppSettings settings) {
     final match = cfg.processMatch;
     if (match == null) continue;
     if (!seenGameIds.add(cfg.gameId)) continue;
-    // GameConfig has no separate display-name field (the Per-game settings
-    // list itself just shows the gameId, see settings_screen.dart) — the
-    // gameId doubles as the display name here for the same reason.
     sources.add(ProcessWatcherSource(
       gameId: cfg.gameId,
-      displayName: cfg.gameId,
+      displayName: cfg.displayName ?? cfg.gameId,
       processMatch: match,
       lister: lister,
     ));
