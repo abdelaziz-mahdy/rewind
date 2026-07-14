@@ -4,7 +4,10 @@
 
 Rewind keeps a rolling buffer of your last N seconds of gameplay in memory and saves a clip the moment something worth keeping happens — either when you press a hotkey, or automatically when your game reports an in-game event (a kill, an ace, a dragon steal). It's the ShadowPlay / Medal-style experience that Windows has always had, brought to macOS too, in a single app.
 
-> Status: **early scaffold / pre-alpha.** The architecture and docs are in place; the capture engine and event integrations are being built. See [ROADMAP.md](ROADMAP.md).
+> Status: **alpha.** Real capture works on macOS (replay buffer, hotkey and
+> in-app saves, per-display/per-app targeting, auto-follow of detected games,
+> game-centric library UI). League event auto-clipping is next (v0.2); Windows
+> builds in stub-capture mode pending native bring-up. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -35,15 +38,17 @@ When a game event fires (or you hit the hotkey), Dart calls `rewind_save_clip()`
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
-## Features (planned)
+## Features
 
-- Rolling replay buffer (RAM-backed) on Windows and macOS
-- **Manual hotkey clip** ("clip that") that saves the last **30s / 60s / custom** — configurable **per game**
-- **Automatic game detection** — Rewind notices which game is running and applies that game's settings
-- **Automatic event-based clipping** — starting with League of Legends via the local Live Client Data API (kills, multikills, aces, dragon/baron, turrets)
-- Clip library with tagging by event type
-- Hardware-accelerated encoding (NVENC / AMF / Apple VideoToolbox via libobs)
-- Menu-bar / tray background operation
+- Rolling replay buffer (RAM-backed) — **working on macOS**, Windows native bring-up pending
+- **Manual hotkey clip** ("clip that") saving the last **15s / 30s / 60s / custom** — configurable **per game**, hotkey set by pressing it
+- **Automatic game detection** (process catalog + per-app watchers) with **auto-follow capture**: start a game and recording switches to it
+- **Game-centric library**: each game is a destination — its clips, event filters, detection status, and settings in one hub
+- Capture a **specific display or application**, switchable from the main screen
+- **In-app playback** (media_kit) and event-type badges on every clip
+- **Automatic event-based clipping** — League of Legends via the local Live Client Data API (kills, multikills, aces, objectives) — *lands in v0.2; the UI slot is already built*
+- Hardware-accelerated encoding (Apple VideoToolbox today; NVENC / AMF with the Windows bring-up)
+- Menu-bar / tray background operation, in-app logs, precise permission diagnostics
 
 ## Supported games (event auto-clipping)
 
