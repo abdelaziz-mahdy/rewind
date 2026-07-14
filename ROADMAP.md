@@ -36,6 +36,12 @@ These shape every milestone:
 - [ ] **Game auto-detection**: supervisor detects the running game and applies its per-game config automatically
 - [ ] Second test target (mech action game) in manual-hotkey mode; validate cross-game switching
 
+> The game-centric UI redesign (see CHANGELOG "Unreleased") already has a slot
+> waiting for this: the League hub's integration card renders a "LIVE EVENTS"
+> feed of the last ~20 `GameEvent`s the moment the watcher above starts
+> emitting them (`game_hub_screen.dart`) — no further UI work needed once the
+> watcher lands.
+
 ## v0.3 — "It manages storage" (storage-aware)
 
 - [ ] `StorageManager`: configurable disk budget + retention policy

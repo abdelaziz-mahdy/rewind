@@ -633,22 +633,11 @@ class _LiveEventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    final accent = eventColor(context, event.kind);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(tokens.radiusChip),
-              border: Border.all(color: accent.withValues(alpha: 0.5)),
-            ),
-            child: Text(eventBadge(event.kind),
-                style: theme.textTheme.micro.copyWith(color: accent)),
-          ),
+          EventBadge(kind: event.kind),
           const SizedBox(width: 8),
           Text(relativeAge(event.time), style: theme.textTheme.bodyMuted),
         ],

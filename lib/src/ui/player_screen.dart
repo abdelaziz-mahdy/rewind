@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../clip/clip.dart';
+import '../events/game_catalog.dart';
 import 'theme.dart';
+import 'widgets/clip_tile.dart';
 
 /// Route name used when pushing [PlayerScreen] — lets tests assert a push
 /// happened (via a [NavigatorObserver]) without ever building the screen,
@@ -30,11 +33,14 @@ String formatDuration(Duration d) {
 /// on pop. Trimming/clipping is out of scope here — this is playback only;
 /// the OS default player is still reachable from the clip tile's overflow
 /// menu for anyone who wants an external app.
+///
+/// Takes the whole [Clip] (rather than a bare path/title pair) so the header
+/// can show [displayNameFor]'s game name, the clip's event badge, and its
+/// relative age (§3.7) instead of the raw gameId string.
 class PlayerScreen extends StatefulWidget {
-  final String path;
-  final String title;
+  final Clip clip;
 
-  const PlayerScreen({required this.path, required this.title, super.key});
+  const PlayerScreen({required this.clip, super.key});
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -67,7 +73,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _durationSub = _player.stream.duration.listen((duration) {
       if (mounted) setState(() => _duration = duration);
     });
-    _player.open(Media(widget.path));
+    _player.open(Media(widget.clip.path));
   }
 
   @override
@@ -104,7 +110,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onKeyEvent: _handleKey,
         child: Column(
           children: [
-            _Header(title: widget.title),
+            _Header(clip: widget.clip),
             Expanded(
               child: Center(child: Video(controller: _controller)),
             ),
@@ -122,10 +128,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
+/// Close button, event badge, game name, and relative age (§3.7) — replaces
+/// the raw gameId string the header used to show.
 class _Header extends StatelessWidget {
-  final String title;
+  final Clip clip;
 
-  const _Header({required this.title});
+  const _Header({required this.clip});
 
   @override
   Widget build(BuildContext context) {
@@ -141,14 +149,17 @@ class _Header extends StatelessWidget {
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           const SizedBox(width: 4),
+          EventBadge(kind: clip.event),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
-              title,
+              displayNameFor(clip.gameId),
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.title,
             ),
           ),
+          const SizedBox(width: 8),
+          Text(relativeAge(clip.createdAt), style: theme.textTheme.bodyMuted),
         ],
       ),
     );
@@ -174,6 +185,10 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Tabular figures so the elapsed/total readout doesn't jitter width as
+    // its digits change every second (§2's numeral treatment for durations).
+    final durationStyle = theme.textTheme.bodyMuted
+        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     final totalMs = duration.inMilliseconds;
     final positionMs =
         position.inMilliseconds.clamp(0, totalMs > 0 ? totalMs : 0);
@@ -188,7 +203,7 @@ class _Controls extends StatelessWidget {
             tooltip: playing ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
           ),
-          Text(formatDuration(position), style: theme.textTheme.bodySmall),
+          Text(formatDuration(position), style: durationStyle),
           Expanded(
             child: Slider(
               value: positionMs.toDouble(),
@@ -198,7 +213,7 @@ class _Controls extends StatelessWidget {
                   : null,
             ),
           ),
-          Text(formatDuration(duration), style: theme.textTheme.bodySmall),
+          Text(formatDuration(duration), style: durationStyle),
         ],
       ),
     );

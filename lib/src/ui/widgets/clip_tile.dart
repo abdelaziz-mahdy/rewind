@@ -63,6 +63,34 @@ Color eventColor(BuildContext context, GameEventKind kind) {
 Color _rotateAccent(Color accent, double hue) =>
     HSLColor.fromColor(accent).withHue(hue % 360).toColor();
 
+/// The event-kind badge chip: accent-tinted fill/border, uppercase micro-label
+/// text (see [eventBadge]/[eventColor]). Shared by [ClipTile]'s title row,
+/// [PlayerScreen]'s header, and the game hub's live-events slot so a clip's
+/// event reads identically everywhere it appears.
+class EventBadge extends StatelessWidget {
+  final GameEventKind kind;
+
+  const EventBadge({required this.kind, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = eventColor(context, kind);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
+        border: Border.all(color: accent.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        eventBadge(kind),
+        style: theme.textTheme.micro.copyWith(color: accent),
+      ),
+    );
+  }
+}
+
 enum _ClipAction { openDefault, reveal, delete }
 
 /// One row in the clip library: thumbnail placeholder, event badge + game
@@ -87,7 +115,6 @@ class _ClipTileState extends State<ClipTile> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final clip = widget.clip;
-    final accent = eventColor(context, clip.event);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -121,35 +148,21 @@ class _ClipTileState extends State<ClipTile> {
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.14),
-                    borderRadius:
-                        BorderRadius.circular(context.rewindTokens.radiusChip),
-                    border: Border.all(color: accent.withValues(alpha: 0.5)),
-                  ),
-                  child: Text(
-                    eventBadge(clip.event),
-                    style: theme.textTheme.micro.copyWith(color: accent),
-                  ),
-                ),
+                EventBadge(kind: clip.event),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     displayNameFor(clip.gameId),
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.body
+                        .copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
             ),
             subtitle: Text(
               '${relativeAge(clip.createdAt)} · ${formatSize(clip.sizeBytes)}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMuted,
             ),
             trailing: AnimatedOpacity(
               duration: const Duration(milliseconds: 120),
@@ -208,7 +221,7 @@ class _ClipTileState extends State<ClipTile> {
   static void _openInApp(BuildContext context, Clip clip) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       settings: const RouteSettings(name: playerScreenRouteName),
-      builder: (_) => PlayerScreen(path: clip.path, title: clip.gameId),
+      builder: (_) => PlayerScreen(clip: clip),
     ));
   }
 

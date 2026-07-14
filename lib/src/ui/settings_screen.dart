@@ -173,8 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Default buffer',
-                    style: Theme.of(context).textTheme.bodyMedium),
+                Text('Default buffer', style: Theme.of(context).textTheme.body),
                 const SizedBox(height: 8),
                 SegmentedButton<String>(
                   segments: const [
@@ -205,7 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (widget.displays.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Text('Capture display',
-                      style: Theme.of(context).textTheme.bodyMedium),
+                      style: Theme.of(context).textTheme.body),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedDisplayUuid(),
@@ -222,7 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (widget.capturableApps.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Text('Capture application',
-                      style: Theme.of(context).textTheme.bodyMedium),
+                      style: Theme.of(context).textTheme.body),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String?>(
                     initialValue: _selectedAppBundleId(),
@@ -247,12 +246,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Follow the game',
-                              style: Theme.of(context).textTheme.bodyMedium),
+                              style: Theme.of(context).textTheme.body),
                           const SizedBox(height: 2),
                           Text(
                             "Switch capture to a game's window when it "
                             'launches',
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: Theme.of(context).textTheme.bodyMuted,
                           ),
                         ],
                       ),
@@ -466,7 +465,7 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
                   border: Border.all(
                     color: _listening
                         ? theme.colorScheme.primary
-                        : Colors.white.withValues(alpha: 0.08),
+                        : context.rewindTokens.hairline,
                     width: _listening ? 1.5 : 1,
                   ),
                 ),
@@ -475,7 +474,7 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
                     Expanded(
                       child: Text(
                         display,
-                        style: TextStyle(
+                        style: theme.textTheme.body.copyWith(
                             color: textColor, fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -494,7 +493,8 @@ class _HotkeyRecorderFieldState extends State<_HotkeyRecorderField> {
         if (_hint != null) ...[
           const SizedBox(height: 6),
           Text(_hint!,
-              style: TextStyle(color: theme.colorScheme.error, fontSize: 12)),
+              style: theme.textTheme.label
+                  .copyWith(color: theme.colorScheme.error)),
         ],
       ],
     );

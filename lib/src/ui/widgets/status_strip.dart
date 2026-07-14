@@ -277,7 +277,7 @@ class _GameChip extends StatelessWidget {
                 label,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
-                style: theme.textTheme.labelMedium,
+                style: theme.textTheme.label,
               ),
             ),
           ],
@@ -401,7 +401,7 @@ class _SourceChip extends StatelessWidget {
                   'Capturing: $_label',
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
-                  style: theme.textTheme.labelMedium,
+                  style: theme.textTheme.label,
                 ),
               ),
               const SizedBox(width: 2),
@@ -461,7 +461,7 @@ class _ErrorBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(text),
+                Text(text, style: Theme.of(context).textTheme.body),
                 if (_isPermissionError) ...[
                   const SizedBox(height: 8),
                   const Align(
@@ -489,7 +489,7 @@ class _IdleDot extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.outline,
+        color: context.rewindTokens.textMuted,
         shape: BoxShape.circle,
       ),
       child: const SizedBox(width: 10, height: 10),

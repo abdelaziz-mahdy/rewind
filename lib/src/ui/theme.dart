@@ -77,6 +77,25 @@ ThemeData rewindTheme() {
             WidgetStatePropertyAll(tokens.accentPressed.withValues(alpha: 0.3)),
       ),
     ),
+    // Material 3's default shape for these is a full StadiumBorder (a pill) —
+    // exactly what the redesign bans (§2: "kill every ... pill"). Without
+    // this override every OutlinedButton/TextButton in the app (Add game,
+    // the permission-banner deep-link, dialog/empty-state actions) would
+    // still render pill-shaped despite filledButtonTheme's radiusControl.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+      ),
+    ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         foregroundColor: tokens.textMuted,
