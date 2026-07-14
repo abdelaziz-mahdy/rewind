@@ -41,8 +41,12 @@ ThemeData rewindTheme() {
     canvasColor: tokens.bg,
     dividerColor: tokens.hairline,
     focusColor: tokens.accent.withValues(alpha: 0.4),
-    hoverColor: tokens.surfaceRaised.withValues(alpha: 0.6),
-    highlightColor: tokens.accentPressed.withValues(alpha: 0.18),
+    // Hover/press must LIGHTEN on a dark UI: the previous surfaceRaised-based
+    // hover was dark-on-dark — mathematically present, visually invisible
+    // (menu items showed no tint at all on hover). Low-alpha white reads on
+    // every surface in the app.
+    hoverColor: Colors.white.withValues(alpha: 0.06),
+    highlightColor: Colors.white.withValues(alpha: 0.10),
     splashColor: Colors.transparent,
     cardTheme: CardThemeData(
       color: tokens.surfaceRaised,

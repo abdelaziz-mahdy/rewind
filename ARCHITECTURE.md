@@ -14,7 +14,13 @@ This document describes how Rewind is put together and why.
 
 Owns everything the user sees and most of the logic:
 
-- **UI** (`lib/src/ui/`) — menu-bar/tray presence, settings, clip library.
+- **UI** (`lib/src/ui/`) — a game-centric shell: a persistent left rail
+  (games as first-class destinations, built by `game_directory.dart`), a
+  recorder deck (buffer state, capture-source picker, save), per-game hub
+  screens (clips, event filters, detection status, inline settings), a
+  supported-games catalog, in-app player (media_kit), and tray presence.
+  Design system: `RewindTokens` in `theme.dart`; full spec in
+  `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`.
 - **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. First implementation: `LeagueEventWatcher`, which polls the League **Live Client Data API** at `https://127.0.0.1:2999/liveclientdata/eventdata`.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
 - **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,
