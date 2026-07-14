@@ -49,4 +49,21 @@ void main() {
       }
     });
   });
+
+  group('displayNameFor', () {
+    test('resolves catalog ids to their display names', () {
+      expect(displayNameFor('app:cs2'), 'Counter-Strike 2');
+      expect(displayNameFor('app:league_of_legends'), 'League of Legends');
+    });
+    test('null and desktop resolve to Desktop', () {
+      expect(displayNameFor(null), 'Desktop');
+      expect(displayNameFor('desktop'), 'Desktop');
+    });
+    test('known vendor id resolves without the app: prefix', () {
+      expect(displayNameFor('league_of_legends'), 'League of Legends');
+    });
+    test('unknown ids fall back to underscore title-casing', () {
+      expect(displayNameFor('my_cool_game'), 'My Cool Game');
+    });
+  });
 }
