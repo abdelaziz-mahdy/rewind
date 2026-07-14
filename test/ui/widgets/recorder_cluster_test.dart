@@ -97,6 +97,21 @@ void main() {
       expect(sourceLine('Display 1'), findsOneWidget);
     });
 
+    testWidgets('sits ABOVE the Save clip and Record buttons', (t) async {
+      // The picker decides what those buttons capture (source → actions),
+      // and as a naked text line at the cluster's bottom it was
+      // undiscoverable — the maintainer couldn't find it.
+      await t.pumpWidget(app(cluster(settings: AppSettings())));
+      final pickerBottom =
+          t.getBottomLeft(find.byKey(const ValueKey('recorderSourceLine'))).dy;
+      final saveTop =
+          t.getTopLeft(find.widgetWithText(FilledButton, 'Save clip')).dy;
+      final recordTop =
+          t.getTopLeft(find.byKey(const ValueKey('recordButton'))).dy;
+      expect(pickerBottom, lessThanOrEqualTo(saveTop));
+      expect(saveTop, lessThan(recordTop));
+    });
+
     testWidgets('shows the app name when an app target is set', (t) async {
       await t.pumpWidget(app(cluster(
         settings: AppSettings(captureAppBundleId: 'com.example.two'),

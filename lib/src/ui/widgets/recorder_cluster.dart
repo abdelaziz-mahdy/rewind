@@ -24,11 +24,12 @@ const double _controlPaddingH = 12;
 /// active-game chip entirely and keeps only what it can't say: is the
 /// buffer running, and where is it capturing from.
 ///
-/// Top to bottom: a primary "Save clip" button, the Record toggle below it,
-/// then a compact two-line status readout — REC/idle dot + the buffering
-/// quick-set, and the capture-source line — both tappable for the same
-/// popups the old deck's chips offered. All existing props
-/// (`settingsRevision`, `bufferActive`, `onSettingsChanged`,
+/// Top to bottom: the capture-source picker (a bordered control — it decides
+/// what the buttons below it will capture, so it reads source → actions),
+/// then the primary "Save clip" button, the Record toggle, and a compact
+/// status readout — REC/idle dot + the buffering quick-set. The picker and
+/// the quick-set open the same popups the old deck's chips offered. All
+/// existing props (`settingsRevision`, `bufferActive`, `onSettingsChanged`,
 /// `onOpenSettings`) keep their contracts from the old `StatusStrip`.
 class RecorderCluster extends StatelessWidget {
   final ClipCoordinator coordinator;
@@ -155,6 +156,19 @@ class RecorderCluster extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (displays.isNotEmpty) ...[
+            ValueListenableBuilder<String?>(
+              valueListenable: coordinator.autoSwitchedAppName,
+              builder: (context, autoName, _) => _SourceLine(
+                displays: displays,
+                capturableApps: capturableApps,
+                settings: coordinator.settings,
+                onSettingsChanged: onSettingsChanged,
+                autoSwitchedAppName: autoName,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           SizedBox(
             height: _controlHeight,
             child: FilledButton.icon(
@@ -175,19 +189,6 @@ class RecorderCluster extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _liveStatusLine(context),
-          if (displays.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            ValueListenableBuilder<String?>(
-              valueListenable: coordinator.autoSwitchedAppName,
-              builder: (context, autoName, _) => _SourceLine(
-                displays: displays,
-                capturableApps: capturableApps,
-                settings: coordinator.settings,
-                onSettingsChanged: onSettingsChanged,
-                autoSwitchedAppName: autoName,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -239,12 +240,14 @@ class _BufferQuickSet extends StatelessWidget {
   }
 }
 
-/// The cluster's second status line: capture source (a whole display, or a
-/// single app) — an icon + label row, no chip/pill decoration (§2: shape
-/// language is rectangular controls only, not badges for plain status text).
-/// Tapping it opens the same unified menu (displays, then a divider, then
-/// apps) the old `_SourceChip` used, writing the choice straight through
-/// [onSettingsChanged] via the same path Settings uses.
+/// The cluster's capture-source picker, at the TOP of the cluster: what a
+/// save/record will capture (a whole display, or a single app). Styled as a
+/// bordered rectangular control with a trailing chevron (§2 shape language)
+/// — it used to be a naked icon + text line at the cluster's bottom and the
+/// maintainer couldn't find it. Tapping it opens the same unified menu
+/// (displays, then a divider, then apps) the old `_SourceChip` used, writing
+/// the choice straight through [onSettingsChanged] via the same path
+/// Settings uses.
 class _SourceLine extends StatelessWidget {
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
@@ -350,20 +353,31 @@ class _SourceLine extends StatelessWidget {
         for (final app in capturableApps)
           PopupMenuItem(value: app, child: Text(app.name)),
       ],
-      child: Row(
-        children: [
-          Icon(icon, size: _controlIconSize, color: tokens.textMuted),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              _label,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-              style: theme.textTheme.body
-                  .copyWith(color: theme.colorScheme.onSurfaceVariant),
+      child: Container(
+        height: _controlHeight,
+        padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+        decoration: BoxDecoration(
+          border: Border.fromBorderSide(hairlineBorder()),
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: _controlIconSize, color: tokens.textMuted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _label,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: theme.textTheme.body
+                    .copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Icon(Icons.expand_more,
+                size: _controlIconSize, color: tokens.textMuted),
+          ],
+        ),
       ),
     );
   }
