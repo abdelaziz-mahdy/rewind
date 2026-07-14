@@ -902,7 +902,15 @@ int rewind_set_buffer_seconds(int seconds) {
 int rewind_obs_shutdown(void) {
     if (!g_initialized) return 0;
     if (g_replay && obs_output_active(g_replay)) obs_output_stop(g_replay);
-    if (g_recording && obs_output_active(g_recording)) obs_output_stop(g_recording);
+    if (g_recording && obs_output_active(g_recording)) {
+        obs_output_stop(g_recording);
+        /* Unlike the replay buffer (whose stop writes nothing), the
+         * recording output is mid-file: the ffmpeg muxer must flush its
+         * trailer/moov atom or the mp4 is corrupt and unplayable. Wait it
+         * out, same bounded poll as rewind_stop_recording(). */
+        for (int i = 0; i < 100 && obs_output_active(g_recording); i++)
+            os_sleep_ms(50);
+    }
     obs_output_release(g_replay);     g_replay = NULL;
     obs_output_release(g_recording);  g_recording = NULL;
     obs_encoder_release(g_venc);    g_venc = NULL;

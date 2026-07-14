@@ -196,6 +196,22 @@ class ClipCoordinator {
     final capture = engine;
     if (capture == null) return; // dev mode: no capture backend wired up
 
+    // Re-entrancy guard: stopRecording is a synchronous FFI call that can
+    // block the isolate for a moment; a tap queued during that block would
+    // otherwise land after isRecording flipped and spuriously START a new
+    // recording ("double-tap to stop" ends up recording again).
+    if (_togglingRecording) return;
+    _togglingRecording = true;
+    try {
+      await _toggleRecordingInner(capture);
+    } finally {
+      _togglingRecording = false;
+    }
+  }
+
+  bool _togglingRecording = false;
+
+  Future<void> _toggleRecordingInner(CaptureEngine capture) async {
     if (!isRecording.value) {
       try {
         if (!capture.startRecording(outDir)) {
