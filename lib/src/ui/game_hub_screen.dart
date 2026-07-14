@@ -49,16 +49,24 @@ const _objectiveEvents = [
 ];
 const _matchEvents = [GameEventKind.victory, GameEventKind.defeat];
 
-/// The Game Hub (§3.4) — the centerpiece of the game-as-entry-point IA: a
-/// header with derived stats, an integration-status card (what Rewind knows
-/// about this game and, for League, the v0.2 live-events feed slot), an
-/// inline per-game capture-settings card, and this game's scoped clip list.
+/// The Game Hub (§3.4) — the centerpiece of the game-as-entry-point IA.
+///
+/// Progressive disclosure (maintainer review, "best UI/UX is not show all
+/// info"): the hub used to front-load a standalone integration-status card
+/// before clips — but that card's headline (e.g. "MANUAL CAPTURE") just
+/// repeated the header's status pill, and the settings card pushed clips
+/// below the fold. Now: header (avatar/name/status pill/stats + one muted
+/// detail line folded in from the old card) → a collapsed-by-default
+/// "Capture settings" disclosure (buffer/auto-clip/events, expands inline on
+/// tap) → the clip list, immediately visible. The v0.2 live-events feed slot
+/// keeps its own card (it's dynamic, session-scoped content, not a static
+/// repeat of the header) and stays hidden until data arrives, unchanged.
 ///
 /// [gameId] rather than a precomputed [GameEntry] is deliberate: the header
-/// stats, the active dot, and the integration card all need to react live to
-/// clip/activity changes (a new clip landing, a match starting) exactly like
-/// the rail does — see `widgets/nav_rail.dart`'s identical
-/// `buildGameDirectory` re-derivation under a `ListenableBuilder`.
+/// stats and the active dot all need to react live to clip/activity changes
+/// (a new clip landing, a match starting) exactly like the rail does — see
+/// `widgets/nav_rail.dart`'s identical `buildGameDirectory` re-derivation
+/// under a `ListenableBuilder`.
 class GameHubScreen extends StatefulWidget {
   final String gameId;
   final ClipLibrary library;
@@ -92,6 +100,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
 
   /// Selected event-kind filter for the clip list below; null means "All".
   GameEventKind? _filterKind;
+
+  /// Whether the "Capture settings" disclosure is open. Collapsed by
+  /// default (§ progressive disclosure) and deliberately not persisted —
+  /// reopening it every visit is a fine YAGNI tradeoff for a rarely-touched
+  /// per-game section.
+  bool _settingsExpanded = false;
 
   /// Only League's vendor integration ever emits `GameEvent`s (see
   /// `docs/COMPLIANCE.md` — process-watched catalog games have no sanctioned
@@ -272,13 +286,19 @@ class _GameHubScreenState extends State<GameHubScreen> {
           padding: EdgeInsets.zero,
           children: [
             _header(context, entry),
+            if (_isLeague && _liveEvents.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: _liveEventsCard(context),
+              ),
+            // Collapsed by default and placed right under the header, not
+            // at the bottom: the clip list can grow unbounded, and burying
+            // settings behind it would hurt discoverability far more than a
+            // single ~40px closed disclosure row costs the "clips first"
+            // goal (see the class doc).
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: _integrationCard(context, entry),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: _captureSettingsCard(context, entry),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: _captureSettingsDisclosure(context),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 4),
@@ -336,10 +356,20 @@ class _GameHubScreenState extends State<GameHubScreen> {
               _StatusPill(entry: entry),
             ],
           ),
+          const SizedBox(height: 8),
+          // The one useful line from the old standalone integration card
+          // (§ progressive disclosure): everything else that card said
+          // (the detection-method name) is already the status pill above,
+          // so only the dynamic status detail is worth a second line.
+          Text(
+            _detailLine(entry),
+            key: const ValueKey('gameHubDetailLine'),
+            style: theme.textTheme.bodyMuted,
+          ),
           // No fake stats: the fact row only appears once this game has a
           // clip (§3.4 — "omit facts when zero clips").
           if (entry.clipCount > 0) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(_factLine(entry), style: theme.textTheme.bodyMuted),
           ],
         ],
@@ -354,175 +384,172 @@ class _GameHubScreenState extends State<GameHubScreen> {
     return last == null ? base : '$base · last clip ${relativeAge(last)}';
   }
 
-  Widget _integrationCard(BuildContext context, GameEntry entry) {
+  /// The single line folded in from the old integration-status card: for
+  /// League, its live/waiting-for-match status; for a catalog game, whether
+  /// its process is currently seen running; for `desktop`, the hotkey hint.
+  /// Static explanatory notes the card also used to show (e.g. "no event
+  /// API for this game") are intentionally dropped here — one line only.
+  String _detailLine(GameEntry entry) {
+    if (entry.detection.contains(DetectionMethod.liveClientApi)) {
+      return entry.active
+          ? 'In match — connected to 127.0.0.1:2999'
+          : 'Waiting for a match. Detection is automatic — start a game '
+              'and Rewind connects.';
+    }
+    if (entry.detection.contains(DetectionMethod.processWatch)) {
+      return entry.active
+          ? 'Running now'
+          : 'Watching for ${entry.processMatch}';
+    }
+    return 'Clips saved with ${widget.hotkeyLabel} while no game is detected.';
+  }
+
+  Widget _liveEventsCard(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     return _Card(
-      key: const ValueKey('integrationCard'),
+      key: const ValueKey('liveEventsSlot'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ..._integrationBody(context, entry),
-          if (_isLeague && _liveEvents.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Column(
-              key: const ValueKey('liveEventsSlot'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('LIVE EVENTS',
-                    style: theme.textTheme.micro
-                        .copyWith(color: tokens.textMuted)),
-                const SizedBox(height: 8),
-                for (final e in _liveEvents) _LiveEventRow(event: e),
-              ],
-            ),
-          ],
+          Text('LIVE EVENTS',
+              style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
+          const SizedBox(height: 8),
+          for (final e in _liveEvents) _LiveEventRow(event: e),
         ],
       ),
     );
   }
 
-  List<Widget> _integrationBody(BuildContext context, GameEntry entry) {
+  /// The collapsed-by-default "Capture settings" disclosure (§ progressive
+  /// disclosure): a compact header row (uppercase micro-label + chevron,
+  /// hairline top border acting as a section divider rather than a full
+  /// card) that reveals the buffer/auto-clip/event-matrix controls inline.
+  /// The content is only built into the tree once expanded — not merely
+  /// hidden — so it (and its controls) aren't findable/interactable while
+  /// collapsed.
+  Widget _captureSettingsDisclosure(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-
-    // League's merged row (§3.5 merge rule, extended to the hub): the vendor
-    // Live Client API is the primary status; when the catalog's generic
-    // process-detection also contributed to this row, note it as a second,
-    // muted line rather than showing two competing "primary" statuses.
-    if (entry.detection.contains(DetectionMethod.liveClientApi)) {
-      final active = entry.active;
-      return [
-        Text('LIVE CLIENT API',
-            style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-        const SizedBox(height: 8),
-        _StatusRow(
-          active: active,
-          text: active
-              ? 'In match — connected to 127.0.0.1:2999'
-              : 'Waiting for a match. Detection is automatic — start a '
-                  'game and Rewind connects.',
-        ),
-        if (entry.detection.contains(DetectionMethod.processWatch) &&
-            entry.processMatch != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Also detected via process — watching for ${entry.processMatch} '
-            'when the League client is open.',
-            style: theme.textTheme.bodyMuted,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            key: const ValueKey('captureSettingsToggle'),
+            onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: tokens.hairline)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('CAPTURE SETTINGS',
+                        style: theme.textTheme.micro
+                            .copyWith(color: tokens.textMuted)),
+                  ),
+                  AnimatedRotation(
+                    turns: _settingsExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(Icons.expand_more,
+                        size: 18, color: tokens.textMuted),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ];
-    }
-
-    if (entry.detection.contains(DetectionMethod.processWatch)) {
-      return [
-        Text('PROCESS DETECTION',
-            style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-        const SizedBox(height: 8),
-        _StatusRow(
-          active: entry.active,
-          text: entry.active
-              ? 'Running now'
-              : 'Watching for ${entry.processMatch}',
         ),
-        const SizedBox(height: 8),
-        Text(
-          'No event API for this game — clips are hotkey-only.',
-          style: theme.textTheme.bodyMuted,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: _settingsExpanded
+              ? Padding(
+                  key: const ValueKey('captureSettingsBody'),
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: _captureSettingsBody(context),
+                )
+              : const SizedBox(width: double.infinity),
         ),
-      ];
-    }
-
-    return [
-      Text('MANUAL CAPTURE',
-          style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-      const SizedBox(height: 8),
-      Text(
-        'Clips saved with ${widget.hotkeyLabel} while no game is detected.',
-        style: theme.textTheme.body,
-      ),
-    ];
+      ],
+    );
   }
 
-  Widget _captureSettingsCard(BuildContext context, GameEntry entry) {
+  Widget _captureSettingsBody(BuildContext context) {
     final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('CAPTURE SETTINGS',
-              style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-          const SizedBox(height: 12),
-          Text('Buffer length', style: theme.textTheme.body),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Buffer length', style: theme.textTheme.body),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: '15', label: Text('15 s')),
+            ButtonSegment(value: '30', label: Text('30 s')),
+            ButtonSegment(value: '60', label: Text('60 s')),
+            ButtonSegment(value: 'custom', label: Text('Custom')),
+          ],
+          selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
+          onSelectionChanged: (selection) {
+            final value = selection.first;
+            if (value == 'custom') {
+              setState(() => _customBuffer = true);
+            } else {
+              _commitBuffer(int.parse(value));
+            }
+          },
+        ),
+        if (_customBuffer) ...[
           const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: '15', label: Text('15 s')),
-              ButtonSegment(value: '30', label: Text('30 s')),
-              ButtonSegment(value: '60', label: Text('60 s')),
-              ButtonSegment(value: 'custom', label: Text('Custom')),
-            ],
-            selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
-            onSelectionChanged: (selection) {
-              final value = selection.first;
-              if (value == 'custom') {
-                setState(() => _customBuffer = true);
-              } else {
-                _commitBuffer(int.parse(value));
-              }
-            },
+          SizedBox(
+            width: 160,
+            child: TextField(
+              key: const ValueKey('gameHubBufferField'),
+              controller: _bufferController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Seconds (5-300)'),
+              onChanged: _handleCustomBufferChanged,
+            ),
           ),
-          if (_customBuffer) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 160,
-              child: TextField(
-                key: const ValueKey('gameHubBufferField'),
-                controller: _bufferController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Seconds (5-300)'),
-                onChanged: _handleCustomBufferChanged,
-              ),
-            ),
-          ],
-          // Only League emits events (§3.4 — "the only source that emits
-          // events"): catalog/desktop games get buffer-only settings, with
-          // the event UI hidden entirely rather than shown-and-disabled.
-          if (_isLeague) ...[
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(child: Text('Auto-clip', style: theme.textTheme.body)),
-                Switch(
-                  key: const ValueKey('gameHubAutoClipSwitch'),
-                  value: _autoClip,
-                  onChanged: _setAutoClip,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Opacity(
-              opacity: _autoClip ? 1 : 0.4,
-              child: IgnorePointer(
-                ignoring: !_autoClip,
-                child: Column(
-                  key: const ValueKey('gameHubEventMatrix'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _eventGroup(context, 'COMBAT', _combatEvents),
-                    const SizedBox(height: 12),
-                    _eventGroup(context, 'OBJECTIVES', _objectiveEvents),
-                    const SizedBox(height: 12),
-                    _eventGroup(context, 'MATCH', _matchEvents),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ],
-      ),
+        // Only League emits events (§3.4 — "the only source that emits
+        // events"): catalog/desktop games get buffer-only settings, with
+        // the event UI hidden entirely rather than shown-and-disabled.
+        if (_isLeague) ...[
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(child: Text('Auto-clip', style: theme.textTheme.body)),
+              Switch(
+                key: const ValueKey('gameHubAutoClipSwitch'),
+                value: _autoClip,
+                onChanged: _setAutoClip,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Opacity(
+            opacity: _autoClip ? 1 : 0.4,
+            child: IgnorePointer(
+              ignoring: !_autoClip,
+              child: Column(
+                key: const ValueKey('gameHubEventMatrix'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _eventGroup(context, 'COMBAT', _combatEvents),
+                  const SizedBox(height: 12),
+                  _eventGroup(context, 'OBJECTIVES', _objectiveEvents),
+                  const SizedBox(height: 12),
+                  _eventGroup(context, 'MATCH', _matchEvents),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -599,37 +626,6 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// A dot + status line, shared by the League and process-watch integration
-/// bodies — mint when [active], muted otherwise (no pulse: only the
-/// recorder deck's REC dot earns motion, per §2).
-class _StatusRow extends StatelessWidget {
-  final bool active;
-  final String text;
-
-  const _StatusRow({required this.active, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    final color = active ? tokens.accent : tokens.textMuted;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: DecoratedBox(
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: const SizedBox(width: 8, height: 8),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: theme.textTheme.body)),
-      ],
-    );
-  }
-}
-
 /// One row in the v0.2 live-events feed slot: badge + relative age, styled
 /// like `ClipTile`'s own event badge.
 class _LiveEventRow extends StatelessWidget {
@@ -697,9 +693,10 @@ class _EventToggleChip extends StatelessWidget {
   }
 }
 
-/// A hairline-bordered card — the hub's unit of structure (integration
-/// status, capture settings), matching `_Section`'s treatment in the
-/// (embedded) Settings destination.
+/// A hairline-bordered card — used for the live-events feed slot, the one
+/// remaining card in the hub (capture settings and integration status moved
+/// to a disclosure/header line, § progressive disclosure). Matches
+/// `_Section`'s treatment in the (embedded) Settings destination.
 class _Card extends StatelessWidget {
   final Widget child;
 

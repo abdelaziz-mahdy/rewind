@@ -19,13 +19,15 @@ import '../fakes/fake_game_source.dart';
 Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
 
-/// The hub's content is a single scrollable page (header, integration card,
-/// capture settings card, clip list) — League's version, with the auto-clip
-/// switch and event matrix, is tall enough that the default test viewport
-/// leaves the clip list and lower matrix groups outside the sliver's build
-/// extent (a lazily-built list never realizes off-screen children, test or
-/// not). Widening the test surface, rather than scrolling per-assertion,
-/// keeps every test able to just `find` what it needs.
+/// The hub's content is a single scrollable page (header with a folded-in
+/// status detail line, an optional live-events card, the collapsed-by-
+/// default "Capture settings" disclosure, then the clip list) — League's
+/// version, with the disclosure expanded and its auto-clip switch/event
+/// matrix showing, is tall enough that the default test viewport leaves the
+/// clip list and lower matrix groups outside the sliver's build extent (a
+/// lazily-built list never realizes off-screen children, test or not).
+/// Widening the test surface, rather than scrolling per-assertion, keeps
+/// every test able to just `find` what it needs.
 Future<void> _pump(WidgetTester t, Widget child) async {
   t.view.physicalSize = const Size(1200, 4000);
   t.view.devicePixelRatio = 1.0;
@@ -77,15 +79,17 @@ void main() {
   Finder inList(Finder f) =>
       find.descendant(of: find.byKey(const ValueKey('clipsList')), matching: f);
 
-  // The header's status pill and the integration card both name the
-  // detection method (e.g. "LIVE CLIENT API") — a compact glance vs. the
-  // full explanation — so scope method-label assertions to the card to
-  // avoid ambiguous matches against the pill.
-  Finder inCard(Finder f) => find.descendant(
-      of: find.byKey(const ValueKey('integrationCard')), matching: f);
-
   Finder inLiveEvents(Finder f) => find.descendant(
       of: find.byKey(const ValueKey('liveEventsSlot')), matching: f);
+
+  Finder detailLine() => find.byKey(const ValueKey('gameHubDetailLine'));
+  Finder settingsToggle() =>
+      find.byKey(const ValueKey('captureSettingsToggle'));
+
+  Future<void> expandSettings(WidgetTester t) async {
+    await t.tap(settingsToggle());
+    await t.pumpAndSettle();
+  }
 
   group('header stats', () {
     testWidgets('omits the fact row when the game has no clips', (t) async {
@@ -108,21 +112,18 @@ void main() {
     });
   });
 
-  group('integration status card per detection method', () {
+  group('header detail line (folded in from the old integration-status card)',
+      () {
     testWidgets(
-        'League merged row shows both the vendor API and process detection',
-        (t) async {
+        'League merged row: the status pill names the detection method, '
+        'the detail line gives the live-match status', (t) async {
       coordinator.settings.setConfig(GameConfig(gameId: 'league_of_legends'));
       coordinator.activeGameIds.value = {'app:league_of_legends'};
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(inCard(find.text('LIVE CLIENT API')), findsOneWidget);
-      expect(inCard(find.text('In match — connected to 127.0.0.1:2999')),
-          findsOneWidget);
-      expect(
-          inCard(find.textContaining(
-              'Also detected via process — watching for LeagueClientUx')),
-          findsOneWidget);
+      expect(find.text('LIVE CLIENT API'), findsOneWidget); // the header pill
+      expect(t.widget<Text>(detailLine()).data,
+          'In match — connected to 127.0.0.1:2999');
     });
 
     testWidgets('League shows the waiting state when inactive', (t) async {
@@ -130,20 +131,17 @@ void main() {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
       expect(
-          inCard(find.textContaining('Waiting for a match')), findsOneWidget);
+          t.widget<Text>(detailLine()).data,
+          'Waiting for a match. Detection is automatic — start a game and '
+          'Rewind connects.');
     });
 
-    testWidgets('catalog game shows its processMatch and a hotkey-only note',
-        (t) async {
+    testWidgets('catalog game shows its processMatch when inactive', (t) async {
       coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(inCard(find.text('PROCESS DETECTION')), findsOneWidget);
-      expect(inCard(find.text('Watching for cs2')), findsOneWidget);
-      expect(
-          inCard(
-              find.text('No event API for this game — clips are hotkey-only.')),
-          findsOneWidget);
+      expect(find.text('PROCESS DETECTION'), findsOneWidget);
+      expect(t.widget<Text>(detailLine()).data, 'Watching for cs2');
     });
 
     testWidgets('catalog game shows "Running now" while active', (t) async {
@@ -151,22 +149,41 @@ void main() {
       coordinator.activeGameIds.value = {'app:cs2'};
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(inCard(find.text('Running now')), findsOneWidget);
+      expect(t.widget<Text>(detailLine()).data, 'Running now');
     });
 
-    testWidgets('desktop shows manual capture with the hotkey label',
-        (t) async {
+    testWidgets('desktop shows manual capture with the hotkey hint', (t) async {
       await _pump(t, _app(hub(gameId: 'desktop')));
 
-      expect(inCard(find.text('MANUAL CAPTURE')), findsOneWidget);
-      expect(
-          inCard(
-              find.text('Clips saved with Alt+F10 while no game is detected.')),
-          findsOneWidget);
+      expect(find.text('MANUAL CAPTURE'), findsOneWidget); // the header pill
+      expect(t.widget<Text>(detailLine()).data,
+          'Clips saved with Alt+F10 while no game is detected.');
+    });
+
+    testWidgets('the old standalone integration card is gone', (t) async {
+      await _pump(t, _app(hub(gameId: 'desktop')));
+      expect(find.byKey(const ValueKey('integrationCard')), findsNothing);
     });
   });
 
-  group('capture settings', () {
+  group('capture settings disclosure', () {
+    testWidgets(
+        'collapsed by default: buffer/auto-clip/matrix controls are not '
+        'found until the disclosure is expanded', (t) async {
+      await _pump(t, _app(hub(gameId: 'league_of_legends')));
+
+      expect(find.text('Buffer length'), findsNothing);
+      expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
+      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
+
+      await expandSettings(t);
+
+      expect(find.text('Buffer length'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsOneWidget);
+      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsOneWidget);
+    });
+
     testWidgets('a per-game buffer edit fires onSettingsChanged', (t) async {
       final calls = <AppSettings>[];
       await _pump(
@@ -175,6 +192,7 @@ void main() {
             gameId: 'app:cs2',
             onSettingsChanged: (s) async => calls.add(s),
           )));
+      await expandSettings(t);
 
       await t.tap(find.text('60 s'));
       await t.pump();
@@ -186,6 +204,8 @@ void main() {
     testWidgets('the event matrix and auto-clip switch appear only for League',
         (t) async {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
+      await expandSettings(t);
+
       expect(
           find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsOneWidget);
       expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsOneWidget);
@@ -200,10 +220,12 @@ void main() {
     testWidgets('no event matrix or auto-clip switch for catalog/desktop games',
         (t) async {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
+      await expandSettings(t);
       expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
       expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
 
       await _pump(t, _app(hub(gameId: 'desktop')));
+      await expandSettings(t);
       expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
       expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
     });
@@ -217,6 +239,7 @@ void main() {
             gameId: 'league_of_legends',
             onSettingsChanged: (s) async => calls.add(s),
           )));
+      await expandSettings(t);
 
       // `ace` is enabled by GameConfig's own defaults; toggle it off.
       await t.tap(find.byKey(const ValueKey('eventToggle:ace')));
