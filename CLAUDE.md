@@ -105,6 +105,23 @@ rewind/
   treats `AppInfo.bundleId == ''` as "capture the display instead" (picker
   and auto-switch revert to display — never pass `''` to `setCaptureApp`).
 
+**League Live Client Data API gotchas (each verified against a live match,
+2026-07-14 — see `LeagueEventWatcher` and its hermetic tests):**
+- **Riot's cert is self-signed** (their own root, not in the system trust
+  store). A stock HTTP client fails the TLS handshake on every request —
+  the watcher looks permanently "waiting for a match" while `curl -k`
+  answers fine. Trust must be scoped to exactly 127.0.0.1:2999.
+- **`eventdata` is match-global**: it reports EVERY player's kills (16 in
+  Arena) and returns the FULL log since match start. Unfiltered, this
+  auto-clipped a 44 MB replay every ~5 s until the disk hit 99%. Always
+  (a) seed past existing history on the first poll of a session, and
+  (b) filter events to `/liveclientdata/activeplayername` (fail CLOSED if
+  the name can't be resolved).
+- The coordinator also rate-limits event saves (10 s cooldown, manual
+  saves exempt) and gives the mux helper a bounded grace to finish writing
+  before indexing — under save load the shim reports the path before the
+  file exists, and clips silently vanish from the library without it.
+
 **media_kit headless-Player gotchas (cost hours diagnosing thumbnail
 generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
 - **`Player.screenshot()` returns null with no VideoController attached.**
