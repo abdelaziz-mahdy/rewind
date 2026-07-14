@@ -94,6 +94,16 @@ rewind/
   `display_uuid` (ALWAYS required, even for app capture), `application`
   (bundle id). Verified against the vendored source in
   `native/third_party/work/obs-studio/plugins/mac-capture/`.
+- **CrossOver/Wine games have NO bundle id** — SCK application capture can
+  never target them. Verified live (2026-07-14): `proc_pidpath()` for a
+  Wine pid fails or returns a deleted `winetemp-*` stub (no `.app`
+  ancestor), and `NSRunningApplication.bundleIdentifier` is nil. What DOES
+  survive is the Windows exe name: Wine writes it to both the process comm
+  (`ps -axo comm=` shows `C:\...\Game.exe`, so process detection works
+  unmodified) and `kCGWindowOwnerName`. The shim names `*.exe`-owned
+  windows after the exe and emits them with an EMPTY bundle id; Dart
+  treats `AppInfo.bundleId == ''` as "capture the display instead" (picker
+  and auto-switch revert to display — never pass `''` to `setCaptureApp`).
 
 **media_kit headless-Player gotchas (cost hours diagnosing thumbnail
 generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
