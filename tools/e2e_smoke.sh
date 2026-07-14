@@ -45,7 +45,23 @@ echo "==> Triggering a save via the debug file trigger"
 touch "$CLIPS_DIR/.save-now"
 sleep 12   # save is async; generous bound
 
+echo "==> Recording leg: start, wait, stop via the debug toggle"
+REC_BEFORE=$(ls "$CLIPS_DIR"/rewind-rec-*.mp4 2>/dev/null | wc -l | tr -d ' ')
+touch "$CLIPS_DIR/.record-toggle"
+sleep 6
+touch "$CLIPS_DIR/.record-toggle"
+sleep 8   # stop + muxer finalize + index
+
 pkill -x rewind 2>/dev/null || true
+
+REC_AFTER=$(ls "$CLIPS_DIR"/rewind-rec-*.mp4 2>/dev/null | wc -l | tr -d ' ')
+[[ "$REC_AFTER" -gt "$REC_BEFORE" ]] || fail "manual recording produced no rewind-rec-*.mp4 (see $LOG)"
+REC=$(ls -t "$CLIPS_DIR"/rewind-rec-*.mp4 | head -1)
+if command -v ffprobe >/dev/null 2>&1; then
+  RDUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$REC")
+  awk -v d="$RDUR" 'BEGIN { exit !(d > 2) }' || fail "recording too short (${RDUR}s)"
+  echo "==> Recording leg passed ($REC, ${RDUR}s)"
+fi
 
 # --- Assertions -----------------------------------------------------------
 if grep -q "Failed to create process pipe" "$LOG"; then
