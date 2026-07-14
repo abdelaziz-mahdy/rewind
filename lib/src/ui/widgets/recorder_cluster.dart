@@ -8,7 +8,9 @@ import '../../obs/app_info.dart';
 import '../../obs/display_info.dart';
 import '../../settings/app_settings.dart';
 import '../capture_app_match.dart';
+import '../icns.dart';
 import '../theme.dart';
+import 'game_tile_avatar.dart';
 
 /// Shared sizing for the cluster's full-width controls, mirroring the old
 /// deck's `_controlHeight`/`_controlIconSize` (see docs/superpowers/specs/
@@ -16,6 +18,9 @@ import '../theme.dart';
 const double _controlHeight = 36;
 const double _controlIconSize = 14;
 const double _controlPaddingH = 12;
+
+/// Square size of the real-app-icon / monogram leading a source-menu row.
+const double _menuIconSize = 20;
 
 /// The Discord-style recorder cluster pinned to the BOTTOM of the left rail
 /// (`NavRail`), replacing the old full-width top deck the maintainer called
@@ -171,6 +176,8 @@ class RecorderCluster extends StatelessWidget {
                 listApps: listApps,
                 settings: coordinator.settings,
                 onSettingsChanged: onSettingsChanged,
+                onWinePick: (app, gameId) =>
+                    coordinator.captureWineAppWindow(app, gameId: gameId),
                 autoSwitchedAppName: autoName,
               ),
             ),
@@ -199,6 +206,65 @@ class RecorderCluster extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// A source-menu row: a fixed-size leading icon + single-line label.
+class _MenuRow extends StatelessWidget {
+  final Widget icon;
+  final String label;
+
+  const _MenuRow({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      SizedBox(
+        width: _menuIconSize,
+        height: _menuIconSize,
+        child: Center(child: icon),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
+      ),
+    ]);
+  }
+}
+
+/// An application row in the source menu: the app's REAL icon (extracted
+/// from its bundle's .icns — see `icns.dart`) when available, else the same
+/// FNV-monogram tile the rail uses (`GameTileAvatar`) — which is also the
+/// deliberate look for Wine games, whose processes have no bundle to pull
+/// an icon from.
+class _AppMenuRow extends StatelessWidget {
+  final AppInfo app;
+
+  const _AppMenuRow({required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget icon;
+    final png = app.iconPath != null ? loadAppIconPng(app.iconPath!) : null;
+    if (png != null) {
+      icon = ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.memory(
+          png,
+          width: _menuIconSize,
+          height: _menuIconSize,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    } else {
+      icon = GameTileAvatar(
+        gameId: gameIdForApp(app),
+        displayName: app.name,
+        size: _menuIconSize,
+      );
+    }
+    return _MenuRow(icon: icon, label: app.name);
   }
 }
 
@@ -262,6 +328,11 @@ class _SourceLine extends StatelessWidget {
   final AppSettings settings;
   final Future<void> Function(AppSettings) onSettingsChanged;
 
+  /// Invoked after picking a Wine app (empty bundleId, live window id) —
+  /// wired to [ClipCoordinator.captureWineAppWindow] so the game's window
+  /// gets captured immediately.
+  final void Function(AppInfo app, String gameId)? onWinePick;
+
   /// [ClipCoordinator.autoSwitchedAppName]'s current value: non-null while a
   /// "follow the game" auto-switch is live, in which case it takes priority
   /// over the persisted source — the line should show what's actually being
@@ -275,6 +346,7 @@ class _SourceLine extends StatelessWidget {
     this.listApps,
     required this.settings,
     required this.onSettingsChanged,
+    this.onWinePick,
     this.autoSwitchedAppName,
   });
 
@@ -326,18 +398,19 @@ class _SourceLine extends StatelessWidget {
   /// duplicate row for a game the catalog already knows) and never
   /// overwrites an already-set `processMatch` on an existing config.
   void _pickApp(AppInfo a) {
+    final gameId = gameIdForApp(a);
     if (a.bundleId.isEmpty) {
       // Wine/CrossOver program (see AppInfo.bundleId): ScreenCaptureKit has
-      // no bundle id to app-capture it by, so the pick reverts capture to
-      // the display (which shows the game — they run fullscreen) while
-      // still registering the game below for detection/rail/clip filing.
+      // no bundle id to app-capture it by. The persisted preference stays
+      // the display, and the ephemeral window capture starts immediately
+      // below (after onSettingsChanged, whose engine.setCaptureApp call
+      // would otherwise clobber the window target).
       settings.captureAppBundleId = null;
       settings.captureAppName = null;
     } else {
       settings.captureAppBundleId = a.bundleId;
       settings.captureAppName = a.name;
     }
-    final gameId = gameIdForApp(a);
     final cfg = settings.configFor(gameId);
     cfg.processMatch ??= a.name;
     // Only for freshly-minted app:<slug> entries: catalog gameIds carry
@@ -346,7 +419,10 @@ class _SourceLine extends StatelessWidget {
       cfg.displayName ??= a.name;
     }
     settings.setConfig(cfg);
-    onSettingsChanged(settings);
+    final persisted = onSettingsChanged(settings);
+    if (a.bundleId.isEmpty && a.windowId != 0) {
+      persisted.whenComplete(() => onWinePick?.call(a, gameId));
+    }
   }
 
   @override
@@ -375,15 +451,41 @@ class _SourceLine extends StatelessWidget {
         // Fresh enumeration on open: a game launched after Rewind must
         // still appear (the startup snapshot alone never shows it).
         final apps = listApps?.call() ?? capturableApps;
+        final grouped = partitionCapturableApps(apps);
+        final theme = Theme.of(context);
+        final tokens = context.rewindTokens;
+        PopupMenuItem<Object> header(String label) => PopupMenuItem(
+              enabled: false,
+              height: 26,
+              child: Text(label,
+                  style:
+                      theme.textTheme.micro.copyWith(color: tokens.textMuted)),
+            );
         return [
           for (var i = 0; i < displays.length; i++)
             PopupMenuItem(
               value: displays[i],
-              child: Text(_displayMenuLabel(i, displays[i])),
+              height: 36,
+              child: _MenuRow(
+                icon: const Icon(Icons.desktop_windows_outlined,
+                    size: _menuIconSize),
+                label: _displayMenuLabel(i, displays[i]),
+              ),
             ),
-          if (displays.isNotEmpty && apps.isNotEmpty) const PopupMenuDivider(),
-          for (final app in apps)
-            PopupMenuItem(value: app, child: Text(app.name)),
+          if (grouped.games.isNotEmpty) ...[
+            const PopupMenuDivider(),
+            header('DETECTED GAMES'),
+            for (final app in grouped.games)
+              PopupMenuItem(
+                  value: app, height: 36, child: _AppMenuRow(app: app)),
+          ],
+          if (grouped.others.isNotEmpty) ...[
+            const PopupMenuDivider(),
+            header('APPLICATIONS'),
+            for (final app in grouped.others)
+              PopupMenuItem(
+                  value: app, height: 36, child: _AppMenuRow(app: app)),
+          ],
         ];
       },
       child: Container(

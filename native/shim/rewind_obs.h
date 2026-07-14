@@ -9,6 +9,8 @@
 #ifndef REWIND_OBS_H
 #define REWIND_OBS_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -73,11 +75,16 @@ int rewind_list_displays(char *json_out, int json_cap);
 int rewind_set_capture_display(const char *display_uuid);
 
 /* Enumerate applications that currently have at least one capturable
- * on-screen window, as a compact JSON array written into `json_out` (a
- * caller-owned buffer of `json_cap` bytes), e.g.
- *   [{"bundle_id":"com.apple.Safari","name":"Safari","pid":1234}, ...]
- * Deduplicated by bundle id; apps whose bundle id can't be resolved and
- * this process itself are omitted. Returns 0 on success, non-zero if
+ * on-screen window (normal layer, ≥64px), as a compact JSON array written
+ * into `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
+ *   [{"bundle_id":"com.apple.Safari","name":"Safari","pid":1234,
+ *     "icon":"/Applications/Safari.app/Contents/Resources/AppIcon.icns",
+ *     "window_id":42}, ...]
+ * Deduplicated by bundle id; this process itself is omitted. Windows-exe
+ * (Wine/CrossOver) processes are emitted with an EMPTY bundle_id and their
+ * exe name (see rewind_set_capture_window for how to capture those);
+ * "icon" is "" when the bundle declares no .icns file; "window_id" is the
+ * app's frontmost window (0 if unknown). Returns 0 on success, non-zero if
  * enumeration failed or the buffer was too small (see rewind_last_error).
  * Safe to call before rewind_obs_init. */
 int rewind_list_capturable_apps(char *json_out, int json_cap);
@@ -91,6 +98,16 @@ int rewind_list_capturable_apps(char *json_out, int json_cap);
  * display target if both are set); if the capture source already exists,
  * it is reconfigured immediately. Returns 0 on success. */
 int rewind_set_capture_app(const char *bundle_id);
+
+/* Select a specific window to capture, identified by the "window_id"
+ * (CGWindowID) from rewind_list_capturable_apps. The ONLY way to capture a
+ * CrossOver/Wine game specifically — those processes have no bundle id for
+ * rewind_set_capture_app to match. Window ids are EPHEMERAL (they die with
+ * their window): persist the app's NAME and re-resolve a fresh id from
+ * enumeration instead of storing one. Passing 0 reverts to the remaining
+ * app/display preference; any later rewind_set_capture_app call also
+ * clears the window target. Returns 0 on success. */
+int rewind_set_capture_window(uint32_t window_id);
 
 #ifdef __cplusplus
 }

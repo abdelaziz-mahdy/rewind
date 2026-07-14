@@ -151,12 +151,33 @@ class ClipCoordinator {
     }
 
     // Wine games enumerate with an empty bundle id (no SCK app-capture
-    // target exists — see AppInfo.bundleId); null reverts the engine to
-    // display capture, which is what shows a fullscreen Wine game.
-    capture.setCaptureApp(match.bundleId.isEmpty ? null : match.bundleId);
+    // target exists — see AppInfo.bundleId) but a real window id: capture
+    // the game's WINDOW. A display shared with Discord etc. must not leak
+    // into game clips.
+    if (match.bundleId.isEmpty && match.windowId != 0) {
+      capture.setCaptureWindow(match.windowId);
+    } else {
+      capture.setCaptureApp(match.bundleId.isEmpty ? null : match.bundleId);
+    }
     _autoSwitchedGameId = a.gameId;
     autoSwitchedAppName.value = match.name;
     talker.info('Auto-switched capture to ${match.name}');
+  }
+
+  /// The capture-source picker's path for a Wine app (empty
+  /// [AppInfo.bundleId]): start capturing [app]'s window NOW, booked
+  /// exactly like an auto-switch for [gameId] — the source line shows
+  /// "<name> (auto)" and the game's exit reverts to the persisted
+  /// app/display preference via [_revertAutoSwitchFor]. Nothing about the
+  /// window is persisted (ids die with the process); the next session's
+  /// auto-switch re-resolves a fresh one.
+  void captureWineAppWindow(AppInfo app, {required String gameId}) {
+    final capture = engine;
+    if (capture == null || app.windowId == 0) return;
+    capture.setCaptureWindow(app.windowId);
+    _autoSwitchedGameId = gameId;
+    autoSwitchedAppName.value = app.name;
+    talker.info('Capturing ${app.name} (window ${app.windowId})');
   }
 
   /// Reverts an auto-switch made by [_autoSwitchCaptureFor], but only when

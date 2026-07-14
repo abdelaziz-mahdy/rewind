@@ -48,6 +48,9 @@ external int _listCapturableApps(Pointer<Utf8> jsonOut, int jsonCap);
 @Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_set_capture_app')
 external int _setCaptureApp(Pointer<Utf8> bundleId);
 
+@Native<Int32 Function(Uint32)>(symbol: 'rewind_set_capture_window')
+external int _setCaptureWindow(int windowId);
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
@@ -56,9 +59,9 @@ const int _kDisplayListBufferSize = 4096;
 
 /// Size of the buffer allocated for `rewind_list_capturable_apps`'s JSON
 /// out-param. Larger than [_kDisplayListBufferSize]: a busy desktop can
-/// easily have a few dozen apps with on-screen windows, each entry wider
-/// than a display entry (bundle id + name strings vs. a uuid + two ints).
-const int _kAppListBufferSize = 16384;
+/// easily have a few dozen apps with on-screen windows, and each entry now
+/// carries an absolute .icns icon path on top of the bundle id + name.
+const int _kAppListBufferSize = 65536;
 
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
@@ -163,4 +166,8 @@ class RewindObs {
       malloc.free(p);
     }
   }
+
+  /// Selects a specific window (CGWindowID) to capture; 0 reverts to the
+  /// remaining app/display preference.
+  int setCaptureWindow(int windowId) => _setCaptureWindow(windowId);
 }

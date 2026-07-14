@@ -95,4 +95,27 @@ void main() {
       expect(gameIdForApp(app), 'app:com_example_app42');
     });
   });
+
+  group('partitionCapturableApps', () {
+    test('games = catalog matches + Wine exes (empty bundleId), sorted', () {
+      const apps = [
+        AppInfo(bundleId: 'com.apple.Terminal', name: 'Terminal', pid: 1),
+        AppInfo(bundleId: '', name: 'PenguinHotel-Win64-Shipping', pid: 2),
+        AppInfo(bundleId: 'com.valve.cs2', name: 'Counter-Strike 2', pid: 3),
+        AppInfo(bundleId: 'com.hnc.Discord', name: 'Discord', pid: 4),
+        AppInfo(bundleId: '', name: 'anotherwine', pid: 5),
+      ];
+      final grouped = partitionCapturableApps(apps);
+      expect(grouped.games.map((a) => a.name).toList(),
+          ['anotherwine', 'Counter-Strike 2', 'PenguinHotel-Win64-Shipping']);
+      expect(
+          grouped.others.map((a) => a.name).toList(), ['Discord', 'Terminal']);
+    });
+
+    test('empty input yields two empty groups', () {
+      final grouped = partitionCapturableApps(const []);
+      expect(grouped.games, isEmpty);
+      expect(grouped.others, isEmpty);
+    });
+  });
 }

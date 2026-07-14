@@ -471,6 +471,57 @@ void main() {
           coordinator.autoSwitchedAppName.value, 'PenguinHotel-Win64-Shipping');
     });
 
+    test(
+        'a Wine game WITH a window id auto-switches to WINDOW capture, and '
+        'its exit reverts via the normal setCaptureApp path', () async {
+      engine.apps = [
+        ...engine.apps,
+        const AppInfo(
+            bundleId: '', name: 'WindowedWine', pid: 11, windowId: 4242),
+      ];
+      final wineLister = FakeProcessLister()..names = [r'C:\WindowedWine.exe'];
+      registry.addNewSources([
+        ProcessWatcherSource(
+          gameId: 'app:windowedwine',
+          displayName: 'WindowedWine',
+          processMatch: 'WindowedWine',
+          lister: wineLister,
+        ),
+      ]);
+
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureWindowCalls, [4242]);
+      expect(engine.captureAppCalls, isEmpty,
+          reason: 'window capture — the display must not leak into clips');
+      expect(coordinator.autoSwitchedAppName.value, 'WindowedWine');
+
+      // Exit reverts through setCaptureApp(persisted) — which the shim
+      // defines as also clearing the window target.
+      wineLister.names = [];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.captureAppCalls, [null]);
+      expect(coordinator.autoSwitchedAppName.value, isNull);
+    });
+
+    test(
+        'captureWineAppWindow starts window capture booked like an '
+        'auto-switch (label set)', () {
+      coordinator.captureWineAppWindow(
+        const AppInfo(
+            bundleId: '',
+            name: 'PenguinHotel-Win64-Shipping',
+            pid: 9,
+            windowId: 777),
+        gameId: 'app:penguinhotel_win64_shipping',
+      );
+      expect(engine.captureWindowCalls, [777]);
+      expect(
+          coordinator.autoSwitchedAppName.value, 'PenguinHotel-Win64-Shipping');
+    });
+
     test('autoSwitchCapture=false makes activation not switch capture',
         () async {
       settings.autoSwitchCapture = false;

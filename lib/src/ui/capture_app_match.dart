@@ -59,3 +59,26 @@ String gameIdForApp(AppInfo app,
   final slug = nameSlug.isNotEmpty ? nameSlug : slugify(app.bundleId);
   return 'app:$slug';
 }
+
+/// Splits the capture-source menu's app list into probable games and
+/// everything else, each alphabetized case-insensitively. "Game" means a
+/// [popularGamesCatalog] process match, or a Windows exe under
+/// CrossOver/Wine (empty bundle id — overwhelmingly games in practice, and
+/// exactly the entries a user opens this menu hunting for).
+({List<AppInfo> games, List<AppInfo> others}) partitionCapturableApps(
+  List<AppInfo> apps, [
+  List<CatalogGame> catalog = popularGamesCatalog,
+]) {
+  int byName(AppInfo a, AppInfo b) =>
+      a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  final games = <AppInfo>[];
+  final others = <AppInfo>[];
+  for (final app in apps) {
+    final isGame =
+        app.bundleId.isEmpty || matchingCatalogGame(app, catalog) != null;
+    (isGame ? games : others).add(app);
+  }
+  games.sort(byName);
+  others.sort(byName);
+  return (games: games, others: others);
+}

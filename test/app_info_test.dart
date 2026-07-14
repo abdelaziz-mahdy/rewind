@@ -40,6 +40,38 @@ void main() {
     expect(a.pid, 42);
   });
 
+  test('icon and window_id parse when present, default when absent', () {
+    final full = AppInfo.fromJson(const {
+      'bundle_id': 'com.example.app',
+      'name': 'Example',
+      'pid': 42,
+      'icon': '/Applications/Example.app/Contents/Resources/Ex.icns',
+      'window_id': 4242,
+    });
+    expect(
+        full.iconPath, '/Applications/Example.app/Contents/Resources/Ex.icns');
+    expect(full.windowId, 4242);
+
+    // Older shims / stub mode omit both; an empty icon means "none".
+    final bare = AppInfo.fromJson(const {
+      'bundle_id': 'com.example.app',
+      'name': 'Example',
+      'pid': 42,
+      'icon': '',
+    });
+    expect(bare.iconPath, isNull);
+    expect(bare.windowId, 0);
+  });
+
+  test('a Wine entry parses with its empty bundle id intact', () {
+    const json = '[{"bundle_id":"","name":"PenguinHotel-Win64-Shipping",'
+        '"pid":7,"icon":"","window_id":99}]';
+    final a = AppInfo.listFromJson(json).single;
+    expect(a.bundleId, isEmpty);
+    expect(a.name, 'PenguinHotel-Win64-Shipping');
+    expect(a.windowId, 99);
+  });
+
   test('parses a name containing escaped quotes/backslashes', () {
     const json = r'[{"bundle_id":"com.example.app",'
         r'"name":"Weird \"Name\" \\ App","pid":7}]';

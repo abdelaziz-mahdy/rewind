@@ -67,6 +67,15 @@ abstract class CaptureEngine {
   /// Returns false on failure.
   bool setCaptureApp(String? bundleId);
 
+  /// Select a specific window to capture, identified by an
+  /// [AppInfo.windowId] from [listCapturableApps] — the only way to capture
+  /// a CrossOver/Wine game (no bundle id exists for [setCaptureApp] to
+  /// match). Window ids are EPHEMERAL: never persist one; re-resolve from a
+  /// fresh [listCapturableApps] instead. Passing 0 — or any later
+  /// [setCaptureApp] call — reverts to the app/display preference. Returns
+  /// false on failure.
+  bool setCaptureWindow(int windowId);
+
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;

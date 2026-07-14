@@ -66,4 +66,7 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setCaptureApp(String? bundleId) => _obs.setCaptureApp(bundleId) == 0;
+
+  @override
+  bool setCaptureWindow(int windowId) => _obs.setCaptureWindow(windowId) == 0;
 }

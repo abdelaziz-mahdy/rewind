@@ -18,17 +18,36 @@ class AppInfo {
   /// [bundleId] should be persisted/compared.
   final int pid;
 
+  /// Absolute path of the app bundle's `.icns` icon, when the bundle
+  /// declares one. Null for Wine apps (no bundle), asset-catalog-only apps,
+  /// and older enumerations; the file may also simply not exist — callers
+  /// must fall back to a placeholder (see `GameTileAvatar`) either way.
+  final String? iconPath;
+
+  /// CGWindowID of the app's frontmost window at enumeration time (0 if
+  /// unknown). As ephemeral as [pid] — never persist it. The capture target
+  /// for Wine apps: pass to [CaptureEngine.setCaptureWindow], since an
+  /// empty [bundleId] gives [CaptureEngine.setCaptureApp] nothing to match.
+  final int windowId;
+
   const AppInfo({
     required this.bundleId,
     required this.name,
     required this.pid,
+    this.iconPath,
+    this.windowId = 0,
   });
 
-  factory AppInfo.fromJson(Map<String, dynamic> j) => AppInfo(
-        bundleId: j['bundle_id'] as String,
-        name: j['name'] as String,
-        pid: j['pid'] as int,
-      );
+  factory AppInfo.fromJson(Map<String, dynamic> j) {
+    final icon = j['icon'] as String?;
+    return AppInfo(
+      bundleId: j['bundle_id'] as String,
+      name: j['name'] as String,
+      pid: j['pid'] as int,
+      iconPath: (icon == null || icon.isEmpty) ? null : icon,
+      windowId: j['window_id'] as int? ?? 0,
+    );
+  }
 
   /// Parses the compact JSON array emitted by `rewind_list_capturable_apps`.
   static List<AppInfo> listFromJson(String json) => (jsonDecode(json) as List)

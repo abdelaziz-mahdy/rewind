@@ -224,18 +224,27 @@ void main() {
     });
 
     testWidgets(
-        'picking a Wine app (empty bundleId) reverts capture to the display '
-        'but still registers the game', (t) async {
+        'picking a Wine app (empty bundleId) clears the persisted app '
+        'target, registers the game, and starts WINDOW capture of it',
+        (t) async {
       // Wine programs enumerate with an empty bundle id (see
-      // AppInfo.bundleId): there is nothing SCK app capture could target,
-      // so the pick must clear any app target — never store "" — while the
-      // game still gets its config (detection, rail row, clip filing).
-      const wineGame =
-          AppInfo(bundleId: '', name: 'PenguinHotel-Win64-Shipping', pid: 99);
+      // AppInfo.bundleId): SCK app capture can't target them, so the pick
+      // must clear any app target — never store "" — register the game
+      // (detection, rail row, clip filing), and capture the game's WINDOW
+      // via the coordinator so a shared display's Discord etc. never leaks
+      // into clips.
+      const wineGame = AppInfo(
+          bundleId: '',
+          name: 'PenguinHotel-Win64-Shipping',
+          pid: 99,
+          windowId: 4242);
       final settings = AppSettings(
           captureAppBundleId: 'com.example.two', captureAppName: 'App Two');
+      final coordinator = makeCoordinator(settings);
+      final engine = coordinator.engine as FakeCaptureEngine;
       await t.pumpWidget(app(cluster(
         settings: settings,
+        coordinatorOverride: coordinator,
         capturableApps: [..._apps, wineGame],
       )));
 
@@ -252,6 +261,9 @@ void main() {
       expect(cfg, hasLength(1));
       expect(cfg.single.processMatch, 'PenguinHotel-Win64-Shipping');
       expect(cfg.single.displayName, 'PenguinHotel-Win64-Shipping');
+      expect(engine.captureWindowCalls, [4242]);
+      expect(
+          coordinator.autoSwitchedAppName.value, 'PenguinHotel-Win64-Shipping');
     });
 
     testWidgets('picking a display clears the stored captureAppName',

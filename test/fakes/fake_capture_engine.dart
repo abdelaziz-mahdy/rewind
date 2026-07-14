@@ -30,6 +30,9 @@ class FakeCaptureEngine implements CaptureEngine {
   /// record a revert-to-display call).
   final List<String?> captureAppCalls = [];
 
+  /// Every window id passed to [setCaptureWindow], in call order.
+  final List<int> captureWindowCalls = [];
+
   /// When false, [saveClip] reports a path but writes no file — mimics the
   /// C shim's stub mode, which the coordinator must not index.
   bool writeFile = true;
@@ -132,6 +135,13 @@ class FakeCaptureEngine implements CaptureEngine {
   bool setCaptureApp(String? bundleId) {
     calls.add('setCaptureApp:${bundleId ?? 'null'}');
     captureAppCalls.add(bundleId);
+    return true;
+  }
+
+  @override
+  bool setCaptureWindow(int windowId) {
+    calls.add('setCaptureWindow:$windowId');
+    captureWindowCalls.add(windowId);
     return true;
   }
 }

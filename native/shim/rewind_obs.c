@@ -82,6 +82,16 @@ static char g_display_uuid[128] = "";
  * exists, applied immediately via obs_source_update(). */
 static char g_app_bundle_id[256] = "";
 
+/* Specific window to capture (a CGWindowID from the app enumeration's
+ * "window_id" field; see rewind_set_capture_window). 0 means "no window
+ * override". Ephemeral by design — window ids die with their process, so
+ * callers re-resolve via enumeration rather than persisting one. Takes
+ * precedence over g_app_bundle_id, which itself beats plain display
+ * capture. The ONLY way to capture a CrossOver/Wine game specifically:
+ * those processes have no bundle id for application capture (see the
+ * enumeration doc), but their windows are ordinary CGWindows. */
+static uint32_t g_window_id = 0;
+
 static int fail(const char *msg) { set_error(msg); return 1; }
 
 /* ---- SDK / module path discovery -----------------------------------
@@ -318,12 +328,16 @@ static int find_app_bundle_path(const char *exe_path, char *out, size_t out_size
 }
 
 /* Resolves `pid`'s bundle id + display name via its executable's containing
- * .app bundle. Returns 1 on success (bundle id resolved); `name_out` falls
- * back to the bundle directory's own name (minus ".app") if the bundle has
- * no CFBundleName in its Info.plist. All CF objects created here are
- * released before returning, on every path. */
+ * .app bundle, plus (best-effort) the absolute path of the bundle's .icns
+ * icon — "" when the bundle declares no CFBundleIconFile (e.g. asset-
+ * catalog-only apps); callers must tolerate the file not existing. Returns
+ * 1 on success (bundle id resolved); `name_out` falls back to the bundle
+ * directory's own name (minus ".app") if the bundle has no CFBundleName in
+ * its Info.plist. All CF objects created here are released before
+ * returning, on every path. */
 static int bundle_info_for_pid(pid_t pid, char *bundle_id_out, size_t bundle_id_cap,
-                                char *name_out, size_t name_cap) {
+                                char *name_out, size_t name_cap,
+                                char *icon_out, size_t icon_cap) {
     char exe_path[PROC_PIDPATHINFO_MAXSIZE];
     if (proc_pidpath(pid, exe_path, sizeof(exe_path)) <= 0) return 0;
 
@@ -356,6 +370,19 @@ static int bundle_info_for_pid(pid_t pid, char *bundle_id_out, size_t bundle_id_
             snprintf(name_out, name_cap, "%s", base);
             size_t len = strlen(name_out);
             if (len > 4 && strcmp(name_out + len - 4, ".app") == 0) name_out[len - 4] = '\0';
+        }
+    }
+    if (ok && icon_out && icon_cap > 0) {
+        icon_out[0] = '\0';
+        CFStringRef icon = CFBundleGetValueForInfoDictionaryKey(bundle, CFSTR("CFBundleIconFile"));
+        char icon_name[256] = "";
+        if (icon && CFGetTypeID(icon) == CFStringGetTypeID() &&
+            CFStringGetCString(icon, icon_name, sizeof(icon_name), kCFStringEncodingUTF8) &&
+            icon_name[0]) {
+            size_t ilen = strlen(icon_name);
+            const char *suffix =
+                (ilen > 5 && strcasecmp(icon_name + ilen - 5, ".icns") == 0) ? "" : ".icns";
+            snprintf(icon_out, icon_cap, "%s/Contents/Resources/%s%s", app_path, icon_name, suffix);
         }
     }
     CFRelease(bundle);
@@ -446,6 +473,20 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
         pid_t pid = 0;
         if (!CFNumberGetValue(pid_num, kCFNumberIntType, &pid) || pid <= 0 || pid == self_pid) continue;
 
+        /* Only normal windows of a real size. Menu-bar extras, the Dock,
+         * Control Center, Notification Center etc. live on non-zero window
+         * layers (or as tiny status windows) and are capture-picker noise,
+         * not capturable applications. */
+        CFNumberRef layer_num = (CFNumberRef)CFDictionaryGetValue(entry, kCGWindowLayer);
+        int layer = 0;
+        if (!layer_num || !CFNumberGetValue(layer_num, kCFNumberIntType, &layer) || layer != 0)
+            continue;
+        CFDictionaryRef bounds_dict = (CFDictionaryRef)CFDictionaryGetValue(entry, kCGWindowBounds);
+        CGRect bounds = CGRectZero;
+        if (!bounds_dict || !CGRectMakeWithDictionaryRepresentation(bounds_dict, &bounds) ||
+            bounds.size.width < 64 || bounds.size.height < 64)
+            continue;
+
         /* The owner name decides the route: Wine exes never resolve through
          * the bundle walk (proc_pidpath fails / winetemp stub), so it must
          * be consulted BEFORE bundle_info_for_pid gets a chance to drop the
@@ -460,11 +501,13 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
 
         char bundle_id[128] = "";
         char name[256] = "";
+        char icon[PATH_MAX] = "";
         if (wine_exe) {
             snprintf(name, sizeof(name), "%s", owner);
             name[strlen(name) - 4] = '\0'; /* drop ".exe" */
         } else {
-            if (!bundle_info_for_pid(pid, bundle_id, sizeof(bundle_id), name, sizeof(name))) continue;
+            if (!bundle_info_for_pid(pid, bundle_id, sizeof(bundle_id), name, sizeof(name),
+                                     icon, sizeof(icon))) continue;
             if (!bundle_id[0]) continue;
         }
 
@@ -481,13 +524,27 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
         if (dup) continue;
         if (seen_count < 256) snprintf(seen[seen_count++], sizeof(seen[0]), "%s", key);
 
+        /* CGWindowListCopyWindowInfo returns windows front-to-back, so the
+         * first (only) window emitted per app is its frontmost — the one a
+         * window-capture pick should target (see rewind_set_capture_window). */
+        uint32_t window_id = 0;
+        CFNumberRef win_num = (CFNumberRef)CFDictionaryGetValue(entry, kCGWindowNumber);
+        if (win_num) {
+            long long wid = 0;
+            if (CFNumberGetValue(win_num, kCFNumberLongLongType, &wid) && wid > 0)
+                window_id = (uint32_t)wid;
+        }
+
         char escaped_id[256] = "";
         char escaped_name[512] = "";
+        char escaped_icon[PATH_MAX * 2] = "";
         json_escape_append(bundle_id, escaped_id, sizeof(escaped_id));
         json_escape_append(name, escaped_name, sizeof(escaped_name));
+        json_escape_append(icon, escaped_icon, sizeof(escaped_icon));
 
-        APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d}",
-               first ? "" : ",", escaped_id, escaped_name, (int)pid);
+        APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"%s\",\"window_id\":%u}",
+               first ? "" : ",", escaped_id, escaped_name, (int)pid, escaped_icon,
+               (unsigned)window_id);
         first = 0;
     }
     APPEND("]");
@@ -677,9 +734,11 @@ int rewind_obs_init(const char *out_dir, int seconds) {
         main_display_uuid(uuid, sizeof(uuid));
     }
     if (uuid[0]) obs_data_set_string(cs, "display_uuid", uuid);
-    if (g_app_bundle_id[0]) {
-        /* App target takes precedence over plain display capture when
-         * both a display and an app preference are set. */
+    if (g_window_id != 0) {
+        /* Window target beats app target beats plain display capture. */
+        obs_data_set_int(cs, "type", 1); /* ScreenCaptureWindowStream */
+        obs_data_set_int(cs, "window", (long long)g_window_id);
+    } else if (g_app_bundle_id[0]) {
         obs_data_set_int(cs, "type", 2); /* ScreenCaptureApplicationStream */
         obs_data_set_string(cs, "application", g_app_bundle_id);
     } else {
@@ -1000,6 +1059,10 @@ int rewind_list_capturable_apps(char *json_out, int json_cap) {
 
 int rewind_set_capture_app(const char *bundle_id) {
     snprintf(g_app_bundle_id, sizeof(g_app_bundle_id), "%s", bundle_id ? bundle_id : "");
+    /* Any app/display choice supersedes a one-off window target — the
+     * revert path (auto-switch ending, user re-picking a source) calls
+     * this, and a stale dead window id must not keep winning. */
+    g_window_id = 0;
 
     /* Same update-not-recreate approach as rewind_set_capture_display()
      * above: sck_video_capture_update() (mac-sck-video-capture.m) tears
@@ -1021,6 +1084,32 @@ int rewind_set_capture_app(const char *bundle_id) {
             obs_data_set_string(cs, "application", g_app_bundle_id);
         } else {
             obs_data_set_int(cs, "type", 0); /* ScreenCaptureDisplayStream */
+        }
+        obs_source_update(g_capture, cs);
+        obs_data_release(cs);
+    }
+    set_error("");
+    return 0;
+}
+
+int rewind_set_capture_window(uint32_t window_id) {
+    g_window_id = window_id;
+
+    /* Same update-not-recreate approach as the display/app setters above:
+     * sck_video_capture_update() re-initialises the SCStream when "type"
+     * changes, or when "window" changes while already in window mode.
+     * window_id == 0 reverts to whatever the remaining app/display state
+     * selects. */
+    if (g_capture) {
+        obs_data_t *cs = obs_data_create();
+        if (g_window_id != 0) {
+            obs_data_set_int(cs, "type", 1); /* ScreenCaptureWindowStream */
+            obs_data_set_int(cs, "window", (long long)g_window_id);
+        } else if (g_app_bundle_id[0]) {
+            obs_data_set_int(cs, "type", 2);
+            obs_data_set_string(cs, "application", g_app_bundle_id);
+        } else {
+            obs_data_set_int(cs, "type", 0);
         }
         obs_source_update(g_capture, cs);
         obs_data_release(cs);
@@ -1167,6 +1256,12 @@ int rewind_set_capture_app(const char *bundle_id) {
     /* TODO(libobs): obs_source_update() the capture source's type +
      * "application" (or revert to display capture on NULL/""). */
     snprintf(g_stub_app_bundle_id, sizeof(g_stub_app_bundle_id), "%s", bundle_id ? bundle_id : "");
+    set_error("");
+    return 0;
+}
+
+int rewind_set_capture_window(uint32_t window_id) {
+    (void)window_id;
     set_error("");
     return 0;
 }
