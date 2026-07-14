@@ -397,6 +397,53 @@ void main() {
     });
   });
 
+  group('session stamping (Clip.sessionAt)', () {
+    test(
+        'clips saved during one activation share the activation stamp; a '
+        'desktop save carries none', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      await coordinator.onHotkey();
+      await coordinator.onHotkey();
+      expect(library.all, hasLength(2));
+      final stamps = library.all.map((c) => c.sessionAt).toSet();
+      expect(stamps, hasLength(1), reason: 'same match -> same stamp');
+      expect(stamps.single, isNotNull);
+
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      await coordinator.onHotkey(); // desktop now
+      final desktopClip = library.all.firstWhere((c) => c.gameId == 'desktop');
+      expect(desktopClip.sessionAt, isNull);
+    });
+
+    test('a new activation gets a fresh stamp (one session per match)',
+        () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      await coordinator.onHotkey();
+      final first = library.all.single.sessionAt;
+
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      await coordinator.onHotkey();
+
+      final second =
+          library.all.firstWhere((c) => c.sessionAt != first).sessionAt;
+      expect(second, isNotNull);
+      expect(second, isNot(first));
+    });
+  });
+
   group('auto-switch capture', () {
     test(
         'activation with a matching running app switches capture without '

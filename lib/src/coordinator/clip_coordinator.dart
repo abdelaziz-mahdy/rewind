@@ -86,12 +86,22 @@ class ClipCoordinator {
     this.onClipIndexed,
   });
 
+  /// Activation time per currently-active gameId — the session (match) key
+  /// stamped onto every clip saved while that game stays active (see
+  /// [Clip.sessionAt]). Cleared on deactivation, so the next match gets a
+  /// fresh key.
+  final Map<String, DateTime> _sessionStartedAt = {};
+
   void start({bool supervise = true}) {
     // Auto-detection: when a game becomes active, apply its buffer length.
     registry.activity.listen((a) {
       if (a.active) {
         activeGame.value = a.gameId;
         activeGameIds.value = {...activeGameIds.value, a.gameId};
+        // One session per continuous activation: every clip saved until
+        // this game deactivates shares this timestamp, which is what lets
+        // the hub group a match's clips together (Clip.sessionAt).
+        _sessionStartedAt[a.gameId] = DateTime.now();
         talker.info('Detected ${a.displayName} running');
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);
@@ -102,6 +112,7 @@ class ClipCoordinator {
           engine?.setBufferSeconds(settings.defaultBufferSeconds);
         }
         activeGameIds.value = {...activeGameIds.value}..remove(a.gameId);
+        _sessionStartedAt.remove(a.gameId);
         _revertAutoSwitchFor(a);
       }
     });
@@ -311,6 +322,7 @@ class ClipCoordinator {
       event: e.kind,
       createdAt: e.time,
       sizeBytes: await file.length(),
+      sessionAt: _sessionStartedAt[e.gameId],
     );
     library.add(clip);
     await library.save();

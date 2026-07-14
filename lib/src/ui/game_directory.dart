@@ -32,6 +32,14 @@ class GameEntry {
   /// [detection] includes [DetectionMethod.processWatch]. Null otherwise.
   final String? processMatch;
   final bool active;
+
+  /// True only when the entry's OWN gameId (the vendor-API id, for a merged
+  /// row like League) is what's active. The merged League row is [active]
+  /// whenever EITHER half fires, but "client open in the lobby"
+  /// (`app:league_of_legends`, process watch) and "in a match"
+  /// (`league_of_legends`, Live Client API) are very different claims —
+  /// the hub's status line must not say "In match" for a lobby.
+  final bool vendorActive;
   final int clipCount;
   final int totalSizeBytes;
   final DateTime? lastClipAt;
@@ -42,6 +50,7 @@ class GameEntry {
     required this.detection,
     this.processMatch,
     required this.active,
+    this.vendorActive = false,
     required this.clipCount,
     required this.totalSizeBytes,
     this.lastClipAt,
@@ -171,6 +180,7 @@ GameEntry _buildEntry({
     detection: detection,
     processMatch: processMatch,
     active: matchIds.any(activeIds.contains),
+    vendorActive: activeIds.contains(gameId),
     clipCount: clipCount,
     totalSizeBytes: totalSizeBytes,
     lastClipAt: lastClipAt,

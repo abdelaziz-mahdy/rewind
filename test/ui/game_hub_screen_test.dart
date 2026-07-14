@@ -91,6 +91,52 @@ void main() {
     await t.pumpAndSettle();
   }
 
+  group('session grouping', () {
+    testWidgets(
+        'clips with distinct sessionAt stamps render under separate MATCH '
+        'headers for a Live-Client-API game', (t) async {
+      final match1 = DateTime(2026, 7, 14, 20);
+      final match2 = DateTime(2026, 7, 14, 22);
+      library.add(Clip(
+          path: '${tmp.path}/a.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.kill,
+          createdAt: DateTime(2026, 7, 14, 20, 10),
+          sizeBytes: 1,
+          sessionAt: match1));
+      library.add(Clip(
+          path: '${tmp.path}/b.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.kill,
+          createdAt: DateTime(2026, 7, 14, 20, 25),
+          sizeBytes: 1,
+          sessionAt: match1));
+      library.add(Clip(
+          path: '${tmp.path}/c.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.ace,
+          createdAt: DateTime(2026, 7, 14, 22, 5),
+          sizeBytes: 1,
+          sessionAt: match2));
+      await _pump(t, _app(hub(gameId: 'league_of_legends')));
+
+      final headers = inList(find.textContaining('MATCH · '));
+      expect(headers, findsNWidgets(2));
+      expect(inList(find.textContaining('2 CLIPS')), findsOneWidget);
+      expect(inList(find.textContaining('· 1 CLIP')), findsOneWidget);
+    });
+
+    testWidgets('a process-detected game labels its groups SESSION, not MATCH',
+        (t) async {
+      library.add(
+          clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      expect(inList(find.textContaining('SESSION · ')), findsOneWidget);
+      expect(inList(find.textContaining('MATCH · ')), findsNothing);
+    });
+  });
+
   group('header stats', () {
     testWidgets('omits the fact row when the game has no clips', (t) async {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
@@ -115,13 +161,29 @@ void main() {
   group('header detail line (folded in from the old integration-status card)',
       () {
     testWidgets(
-        'League merged row: the status pill names the detection method, '
-        'the detail line gives the live-match status', (t) async {
+        'League merged row: only the CLIENT open (process half active) must '
+        'NOT read as in-match — the API is not even listening', (t) async {
+      // Regression: sitting in the lobby (LeagueClientUx running, catalog
+      // half active) used to show "In match — connected to 127.0.0.1:2999"
+      // while nothing was listening on 2999 at all.
       coordinator.settings.setConfig(GameConfig(gameId: 'league_of_legends'));
       coordinator.activeGameIds.value = {'app:league_of_legends'};
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
       expect(find.text('LIVE CLIENT API'), findsOneWidget); // the header pill
+      expect(
+          t.widget<Text>(detailLine()).data,
+          'Client open — waiting for a match. Rewind connects automatically '
+          'when one starts.');
+    });
+
+    testWidgets(
+        'League merged row: the vendor-API half active means an actual '
+        'match', (t) async {
+      coordinator.settings.setConfig(GameConfig(gameId: 'league_of_legends'));
+      coordinator.activeGameIds.value = {'league_of_legends'};
+      await _pump(t, _app(hub(gameId: 'league_of_legends')));
+
       expect(t.widget<Text>(detailLine()).data,
           'In match — connected to 127.0.0.1:2999');
     });

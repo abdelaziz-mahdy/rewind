@@ -68,6 +68,9 @@ void main() {
       {DetectionMethod.liveClientApi, DetectionMethod.processWatch},
     );
     expect(league.active, isTrue);
+    // Only the catalog (client-open) half fired: the row is active but NOT
+    // vendor-active — the hub must not claim an in-progress match.
+    expect(league.vendorActive, isFalse);
     expect(league.processMatch, 'LeagueClientUx');
   });
 

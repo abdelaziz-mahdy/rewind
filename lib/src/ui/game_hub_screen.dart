@@ -9,6 +9,7 @@ import '../events/game_catalog.dart';
 import '../events/game_event.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
+import 'clip_sessions.dart';
 import 'game_directory.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
@@ -322,26 +323,50 @@ class _GameHubScreenState extends State<GameHubScreen> {
                   displayName: entry.displayName,
                   hotkeyLabel: widget.hotkeyLabel)
             else
-              GridView.builder(
+              // Grouped by play session (match): clips saved during one
+              // continuous game activation share a Clip.sessionAt stamp;
+              // older/desktop clips gap-cluster (see clip_sessions.dart).
+              // Keyed 'clipsList' as a whole so list-scoped test finders
+              // keep working across the flat-grid → sectioned change.
+              Column(
                 key: const ValueKey('clipsList'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                  mainAxisSpacing: clipGridSpacing,
-                  crossAxisSpacing: clipGridSpacing,
-                  childAspectRatio: clipGridChildAspectRatio,
-                ),
-                itemCount: clips.length,
-                itemBuilder: (context, i) => ClipTile(
-                  clip: clips[i],
-                  library: widget.library,
-                  thumbnails: widget.thumbnails,
-                  // Redundant here: the hub is already scoped to one game
-                  // (§ redesign spec change 1) — All Clips shows it instead.
-                  showGameName: false,
-                ),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final session in groupClipsIntoSessions(clips)) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                      child: Text(
+                        _sessionLabel(entry, session),
+                        style: Theme.of(context)
+                            .textTheme
+                            .micro
+                            .copyWith(color: context.rewindTokens.textMuted),
+                      ),
+                    ),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                        mainAxisSpacing: clipGridSpacing,
+                        crossAxisSpacing: clipGridSpacing,
+                        childAspectRatio: clipGridChildAspectRatio,
+                      ),
+                      itemCount: session.clips.length,
+                      itemBuilder: (context, i) => ClipTile(
+                        clip: session.clips[i],
+                        library: widget.library,
+                        thumbnails: widget.thumbnails,
+                        // Redundant here: the hub is already scoped to one
+                        // game (§ redesign spec change 1) — All Clips shows
+                        // it instead.
+                        showGameName: false,
+                      ),
+                    ),
+                  ],
+                ],
               ),
           ],
         );
@@ -410,10 +435,30 @@ class _GameHubScreenState extends State<GameHubScreen> {
   /// its process is currently seen running; for `desktop`, the hotkey hint.
   /// Static explanatory notes the card also used to show (e.g. "no event
   /// API for this game") are intentionally dropped here — one line only.
+  /// A session group's header: "MATCH · 2 h ago · 3 CLIPS" for games with a
+  /// real in-match API, "SESSION · …" for everything else (process-detected
+  /// games and the desktop pseudo-game, where "match" would overclaim).
+  String _sessionLabel(GameEntry entry, ClipSession session) {
+    final word = entry.detection.contains(DetectionMethod.liveClientApi)
+        ? 'MATCH'
+        : 'SESSION';
+    final count = session.clips.length;
+    return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
+        '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
+  }
+
   String _detailLine(GameEntry entry) {
     if (entry.detection.contains(DetectionMethod.liveClientApi)) {
+      // A merged row (League) is `active` when EITHER half fires; only the
+      // vendor-API half being active means an actual match. The client
+      // sitting in the lobby used to read "In match — connected to
+      // 127.0.0.1:2999" while nothing was listening on 2999 at all.
+      if (entry.vendorActive) {
+        return 'In match — connected to 127.0.0.1:2999';
+      }
       return entry.active
-          ? 'In match — connected to 127.0.0.1:2999'
+          ? 'Client open — waiting for a match. Rewind connects '
+              'automatically when one starts.'
           : 'Waiting for a match. Detection is automatic — start a game '
               'and Rewind connects.';
     }
