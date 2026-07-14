@@ -19,8 +19,9 @@ class FakeCaptureEngine implements CaptureEngine {
   final List<String> captureDisplayCalls = [];
 
   /// Two fake apps, mirroring what a real desktop's on-screen windows would
-  /// report from `rewind_list_capturable_apps`.
-  final List<AppInfo> apps = const [
+  /// report from `rewind_list_capturable_apps`. Mutable so tests can add
+  /// e.g. a Wine app (empty bundleId) to the enumeration.
+  List<AppInfo> apps = const [
     AppInfo(bundleId: 'com.rewind.stub.one', name: 'Stub App One', pid: 1001),
     AppInfo(bundleId: 'com.rewind.stub.two', name: 'Stub App Two', pid: 1002),
   ];

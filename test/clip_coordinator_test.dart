@@ -8,6 +8,7 @@ import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/events/process_watcher_source.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'fakes/fake_capture_engine.dart';
@@ -435,6 +436,39 @@ void main() {
 
       expect(
           engine.captureAppCalls, ['com.rewind.stub.one', 'com.persisted.app']);
+    });
+
+    test(
+        'a Wine game (empty bundleId, added live via addNewSources) '
+        'auto-switches to display capture (null), never an empty target',
+        () async {
+      // Wine games enumerate with an empty bundle id — no SCK app-capture
+      // target exists (see AppInfo.bundleId) — and this one was picked
+      // mid-session, so its source is adopted live rather than present
+      // at construction.
+      engine.apps = [
+        ...engine.apps,
+        const AppInfo(
+            bundleId: '', name: 'PenguinHotel-Win64-Shipping', pid: 9),
+      ];
+      final wineLister = FakeProcessLister()
+        ..names = [r'Z:\games\PenguinHotel-Win64-Shipping.exe'];
+      registry.addNewSources([
+        ProcessWatcherSource(
+          gameId: 'app:penguinhotel_win64_shipping',
+          displayName: 'PenguinHotel-Win64-Shipping',
+          processMatch: 'PenguinHotel-Win64-Shipping',
+          lister: wineLister,
+        ),
+      ]);
+
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, [null],
+          reason: 'must revert to display capture, not target ""');
+      expect(
+          coordinator.autoSwitchedAppName.value, 'PenguinHotel-Win64-Shipping');
     });
 
     test('autoSwitchCapture=false makes activation not switch capture',

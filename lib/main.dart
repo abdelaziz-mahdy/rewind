@@ -257,6 +257,10 @@ Future<void> main() async {
       engine?.setCaptureApp(s.captureAppBundleId);
       await bindBothHotkeys();
       registerCustomDisplayNames(_customDisplayNamesOf(s));
+      // A config added mid-session (picked app, Supported Games' Add) gets
+      // its detection watcher NOW — the registry adopts unseen gameIds and
+      // the next supervision tick starts them. No restart needed.
+      coordinator.registry.addNewSources(buildSources(s));
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),

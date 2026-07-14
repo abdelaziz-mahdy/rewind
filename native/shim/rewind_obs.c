@@ -387,25 +387,29 @@ static void json_escape_append(const char *in, char *out, size_t out_size) {
 /* True if `name` ends in ".exe" (case-insensitive) — a Windows program
  * running under a translation layer (CrossOver/Wine/Whisky). Wine sets both
  * the process comm and kCGWindowOwnerName to the Windows executable's name,
- * which is the only place the actual game's identity survives: proc_pidpath
- * resolves every Wine pid to the SAME wineloader inside CrossOver.app, so
- * bundle-derived names would collapse Steam, the game, and CrossOver itself
- * into one "CrossOver" entry (observed live, 2026-07-14). */
+ * which is the only place the actual game's identity survives. Verified
+ * live against CrossOver 2026-07-14:
+ *   - proc_pidpath() for Wine pids either FAILS outright or resolves to a
+ *     deleted winetemp-* stub with no .app ancestor, so the bundle route
+ *     below silently drops every Wine window (the original bug: games
+ *     never appeared in the picker at all);
+ *   - NSRunningApplication.bundleIdentifier is nil for Wine processes, so
+ *     ScreenCaptureKit application capture can NEVER target one — display
+ *     capture is the only way to record a Wine game. */
 static int is_windows_exe_name(const char *name) {
     size_t len = strlen(name);
     return len > 4 && strcasecmp(name + len - 4, ".exe") == 0;
 }
 
 /* Enumerate on-screen windows' owning applications into a compact JSON
- * array, deduplicated by bundle id — except Windows-exe (Wine) processes,
- * which share their host translator's bundle id and are instead named after
- * their exe (minus ".exe") and deduplicated by bundle id + name, so each
- * Windows program is its own entry. The emitted bundle id stays the host's:
- * it's what mac-capture's application filter matches, and capturing "the
- * CrossOver app" is the closest ScreenCaptureKit gets to capturing one Wine
- * program (its windows dominate the filter in practice). Returns 0 on
- * success, non-zero (with set_error) if enumeration fails or `json_out` is
- * too small to hold the result. */
+ * array, deduplicated by bundle id. Windows-exe (Wine) processes are the
+ * exception on every axis (see is_windows_exe_name): identified by
+ * kCGWindowOwnerName instead of the (unresolvable) bundle route, named
+ * after their exe minus ".exe", deduplicated by that name, and emitted
+ * with an EMPTY bundle id — there is no bundle id ScreenCaptureKit could
+ * match, and the Dart side treats "" as "keep capturing the display".
+ * Returns 0 on success, non-zero (with set_error) if enumeration fails or
+ * `json_out` is too small to hold the result. */
 static int list_capturable_apps_json(char *json_out, int json_cap) {
     if (!json_out || json_cap <= 0) return fail("invalid buffer");
 
@@ -442,13 +446,10 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
         pid_t pid = 0;
         if (!CFNumberGetValue(pid_num, kCFNumberIntType, &pid) || pid <= 0 || pid == self_pid) continue;
 
-        char bundle_id[128] = "";
-        char name[256] = "";
-        if (!bundle_info_for_pid(pid, bundle_id, sizeof(bundle_id), name, sizeof(name))) continue;
-        if (!bundle_id[0]) continue;
-
-        /* Wine exe: the window owner's name (the Windows program) beats the
-         * bundle name (the translator hosting it). */
+        /* The owner name decides the route: Wine exes never resolve through
+         * the bundle walk (proc_pidpath fails / winetemp stub), so it must
+         * be consulted BEFORE bundle_info_for_pid gets a chance to drop the
+         * window. */
         char owner[256] = "";
         CFStringRef owner_ref = (CFStringRef)CFDictionaryGetValue(entry, kCGWindowOwnerName);
         if (owner_ref) {
@@ -456,14 +457,20 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
                 owner[0] = '\0';
         }
         int wine_exe = is_windows_exe_name(owner);
+
+        char bundle_id[128] = "";
+        char name[256] = "";
         if (wine_exe) {
             snprintf(name, sizeof(name), "%s", owner);
             name[strlen(name) - 4] = '\0'; /* drop ".exe" */
+        } else {
+            if (!bundle_info_for_pid(pid, bundle_id, sizeof(bundle_id), name, sizeof(name))) continue;
+            if (!bundle_id[0]) continue;
         }
 
         char key[384];
         if (wine_exe) {
-            snprintf(key, sizeof(key), "%s\n%s", bundle_id, name);
+            snprintf(key, sizeof(key), "wine\n%s", name);
         } else {
             snprintf(key, sizeof(key), "%s", bundle_id);
         }

@@ -223,6 +223,37 @@ void main() {
       expect(sourceLine('CrossOver'), findsNothing);
     });
 
+    testWidgets(
+        'picking a Wine app (empty bundleId) reverts capture to the display '
+        'but still registers the game', (t) async {
+      // Wine programs enumerate with an empty bundle id (see
+      // AppInfo.bundleId): there is nothing SCK app capture could target,
+      // so the pick must clear any app target — never store "" — while the
+      // game still gets its config (detection, rail row, clip filing).
+      const wineGame =
+          AppInfo(bundleId: '', name: 'PenguinHotel-Win64-Shipping', pid: 99);
+      final settings = AppSettings(
+          captureAppBundleId: 'com.example.two', captureAppName: 'App Two');
+      await t.pumpWidget(app(cluster(
+        settings: settings,
+        capturableApps: [..._apps, wineGame],
+      )));
+
+      await t.tap(sourceLine('App Two'));
+      await settleMenu(t);
+      await t.tap(find.text('PenguinHotel-Win64-Shipping').last);
+      await settleMenu(t);
+
+      expect(settings.captureAppBundleId, isNull);
+      expect(settings.captureAppName, isNull);
+      final cfg = settings.allConfigs
+          .where((c) => c.gameId == 'app:penguinhotel_win64_shipping')
+          .toList();
+      expect(cfg, hasLength(1));
+      expect(cfg.single.processMatch, 'PenguinHotel-Win64-Shipping');
+      expect(cfg.single.displayName, 'PenguinHotel-Win64-Shipping');
+    });
+
     testWidgets('picking a display clears the stored captureAppName',
         (t) async {
       final settings = AppSettings(

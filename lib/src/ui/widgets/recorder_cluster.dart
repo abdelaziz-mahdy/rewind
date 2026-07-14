@@ -326,8 +326,17 @@ class _SourceLine extends StatelessWidget {
   /// duplicate row for a game the catalog already knows) and never
   /// overwrites an already-set `processMatch` on an existing config.
   void _pickApp(AppInfo a) {
-    settings.captureAppBundleId = a.bundleId;
-    settings.captureAppName = a.name;
+    if (a.bundleId.isEmpty) {
+      // Wine/CrossOver program (see AppInfo.bundleId): ScreenCaptureKit has
+      // no bundle id to app-capture it by, so the pick reverts capture to
+      // the display (which shows the game — they run fullscreen) while
+      // still registering the game below for detection/rail/clip filing.
+      settings.captureAppBundleId = null;
+      settings.captureAppName = null;
+    } else {
+      settings.captureAppBundleId = a.bundleId;
+      settings.captureAppName = a.name;
+    }
     final gameId = gameIdForApp(a);
     final cfg = settings.configFor(gameId);
     cfg.processMatch ??= a.name;

@@ -55,6 +55,20 @@ class GameRegistry {
   /// One supervision pass — used by tests and by [startSupervising].
   Future<void> tickNow() => _tick();
 
+  /// Adopt any of [candidates] whose gameId isn't supervised yet — the live
+  /// half of "add a game while the app is running" (picking an app from the
+  /// capture-source menu, Supported Games' Add): the next supervision tick
+  /// starts watching them, no restart needed. Existing sources are left
+  /// untouched (their running state must survive), and removal is
+  /// deliberately not handled — a deleted config's source just idles until
+  /// the next launch rebuilds the list.
+  void addNewSources(Iterable<GameEventSource> candidates) {
+    final have = {for (final s in _sources) s.gameId};
+    for (final c in candidates) {
+      if (have.add(c.gameId)) _sources.add(c);
+    }
+  }
+
   Future<void> _tick() async {
     for (final s in _sources) {
       final running = await s.isGameRunning();

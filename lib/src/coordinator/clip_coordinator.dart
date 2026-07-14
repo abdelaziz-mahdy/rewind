@@ -150,7 +150,10 @@ class ClipCoordinator {
       return;
     }
 
-    capture.setCaptureApp(match.bundleId);
+    // Wine games enumerate with an empty bundle id (no SCK app-capture
+    // target exists — see AppInfo.bundleId); null reverts the engine to
+    // display capture, which is what shows a fullscreen Wine game.
+    capture.setCaptureApp(match.bundleId.isEmpty ? null : match.bundleId);
     _autoSwitchedGameId = a.gameId;
     autoSwitchedAppName.value = match.name;
     talker.info('Auto-switched capture to ${match.name}');

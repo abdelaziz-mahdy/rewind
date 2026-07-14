@@ -4,7 +4,11 @@ import 'dart:convert';
 /// reported by `rewind_list_capturable_apps`.
 class AppInfo {
   /// Stable per-app identifier (macOS bundle id, e.g. `com.apple.Safari`);
-  /// pass this back to [CaptureEngine.setCaptureApp].
+  /// pass this back to [CaptureEngine.setCaptureApp]. EMPTY for Windows
+  /// programs running under CrossOver/Wine: those have no bundle id
+  /// ScreenCaptureKit could match, so app capture can't target them —
+  /// callers must treat "" as "capture the display instead" and never hand
+  /// it to [CaptureEngine.setCaptureApp] as a real target.
   final String bundleId;
 
   /// Human-readable display name, for UI presentation.
