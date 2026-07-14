@@ -203,7 +203,7 @@ class ClipCoordinator {
   /// so without the null round-trip a second consecutive identical failure
   /// would never notify listeners — no second SnackBar, reproducing the
   /// "pressed it and nothing happened" complaint. The null pass is harmless:
-  /// the UI listener ([HomeScreen]) early-returns on null.
+  /// the UI listener (the Shell) early-returns on null.
   void _reportSaveError(String msg) {
     lastSaveError.value = null;
     lastSaveError.value = msg;

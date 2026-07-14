@@ -21,8 +21,7 @@ import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
 import 'src/settings/settings_store.dart';
 import 'src/tray/tray_service.dart';
-import 'src/ui/home_screen.dart';
-import 'src/ui/settings_screen.dart';
+import 'src/ui/shell.dart';
 import 'src/ui/theme.dart';
 
 /// Reveals the clips folder in the OS file manager — shared by the Home
@@ -258,30 +257,18 @@ class RewindApp extends StatelessWidget {
     return MaterialApp(
       title: 'Rewind',
       theme: rewindTheme(),
-      home: Builder(
-        builder: (context) => HomeScreen(
-          coordinator: coordinator,
-          library: library,
-          captureError: captureError,
-          bufferActive: bufferActive,
-          hotkeyLabel: settings.hotkey,
-          displays: displays,
-          capturableApps: capturableApps,
-          onSettingsChanged: onSettingsChanged,
-          onOpenClipsFolder: onOpenClipsFolder,
-          settingsRevision: settingsRevision,
-          onOpenSettings: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => SettingsScreen(
-                settings: settings,
-                onChanged: onSettingsChanged,
-                displays: displays,
-                capturableApps: capturableApps,
-                onHotkeyRecording: onHotkeyRecording,
-              ),
-            ),
-          ),
-        ),
+      home: Shell(
+        coordinator: coordinator,
+        library: library,
+        captureError: captureError,
+        bufferActive: bufferActive,
+        hotkeyLabel: settings.hotkey,
+        displays: displays,
+        capturableApps: capturableApps,
+        onSettingsChanged: onSettingsChanged,
+        onOpenClipsFolder: onOpenClipsFolder,
+        settingsRevision: settingsRevision,
+        onHotkeyRecording: onHotkeyRecording,
       ),
     );
   }

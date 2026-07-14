@@ -10,11 +10,13 @@ import '../../obs/display_info.dart';
 import '../../settings/app_settings.dart';
 import '../theme.dart';
 
-/// Top-of-home hero card: buffering indicator (large numerals), active-game
-/// chip, the capture-source chip, the "Save clip" action, and (when capture
-/// failed to start) an error banner. This is the visual anchor of the whole
-/// app — the one place a glance should tell you "is it recording, what game,
-/// and from where."
+/// The persistent "recorder deck": a single 48 px row — buffering indicator,
+/// active-game chip, the capture-source chip, the "Save clip" action — pinned
+/// above the content area on every Shell destination (see docs/superpowers/
+/// specs/2026-07-13-game-centric-redesign.md §3.2). When capture failed to
+/// start, an [_ErrorBanner] renders as a second row underneath. This is the
+/// visual anchor of the whole app — the one place a glance should tell you
+/// "is it recording, what game, and from where."
 class StatusStrip extends StatelessWidget {
   final ClipCoordinator coordinator;
   final String? captureError;
@@ -138,62 +140,64 @@ class StatusStrip extends StatelessWidget {
 
   Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (captureError != null) ...[
-            _ErrorBanner(message: captureError!),
-            const SizedBox(height: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainer,
-              borderRadius:
-                  BorderRadius.circular(context.rewindTokens.radiusCard),
-              border: Border.fromBorderSide(hairlineBorder()),
-            ),
-            child: Row(
-              children: [
-                Expanded(child: _liveIndicator(context)),
-                const SizedBox(width: 16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(bottom: hairlineBorder()),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _liveIndicator(context)),
+              const SizedBox(width: 12),
+              Flexible(
+                child: ValueListenableBuilder<String?>(
+                  valueListenable: coordinator.activeGame,
+                  builder: (context, gameId, _) => _GameChip(
+                    key: const ValueKey('activeGameChip'),
+                    label: displayNameFor(gameId),
+                  ),
+                ),
+              ),
+              if (displays.isNotEmpty) ...[
+                const SizedBox(width: 8),
                 Flexible(
                   child: ValueListenableBuilder<String?>(
-                    valueListenable: coordinator.activeGame,
-                    builder: (context, gameId, _) =>
-                        _GameChip(label: displayNameFor(gameId)),
-                  ),
-                ),
-                if (displays.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: ValueListenableBuilder<String?>(
-                      valueListenable: coordinator.autoSwitchedAppName,
-                      builder: (context, autoName, _) => _SourceChip(
-                        displays: displays,
-                        capturableApps: capturableApps,
-                        settings: coordinator.settings,
-                        onSettingsChanged: onSettingsChanged,
-                        autoSwitchedAppName: autoName,
-                      ),
+                    valueListenable: coordinator.autoSwitchedAppName,
+                    builder: (context, autoName, _) => _SourceChip(
+                      displays: displays,
+                      capturableApps: capturableApps,
+                      settings: coordinator.settings,
+                      onSettingsChanged: onSettingsChanged,
+                      autoSwitchedAppName: autoName,
                     ),
                   ),
-                ],
-                const SizedBox(width: 16),
-                FilledButton.icon(
-                  onPressed: captureError == null
-                      ? () => coordinator.onHotkey()
-                      : null,
-                  icon: const Icon(Icons.videocam_outlined),
-                  label: const Text('Save clip'),
                 ),
               ],
-            ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+                onPressed:
+                    captureError == null ? () => coordinator.onHotkey() : null,
+                icon: const Icon(Icons.videocam_outlined, size: 16),
+                label: const Text('Save clip'),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        if (captureError != null)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _ErrorBanner(message: captureError!),
+          ),
+      ],
     );
   }
 }
@@ -248,7 +252,7 @@ class _BufferQuickSet extends StatelessWidget {
 class _GameChip extends StatelessWidget {
   final String label;
 
-  const _GameChip({required this.label});
+  const _GameChip({required this.label, super.key});
 
   @override
   Widget build(BuildContext context) {
