@@ -95,6 +95,35 @@ class ThumbnailCache {
 /// `main()` — must never block startup, and never throws (each generation
 /// already can't, per [ThumbnailGenerator]'s contract, and [ThumbnailCache]
 /// swallows failures into its negative cache).
+/// Startup sweep: deletes `.thumbs/*.jpg` files whose clip no longer exists
+/// in [clips] — thumbnails orphaned by deletions that happened OUTSIDE the
+/// app (Finder, another machine syncing the folder), which the in-app
+/// delete path (`ClipLibrary.onClipDeleted` → `ThumbnailCache.invalidate`)
+/// never sees. Returns the number removed; never throws (best-effort, like
+/// every other cleanup here).
+Future<int> removeOrphanThumbnails(List<Clip> clips, Directory clipsDir) async {
+  final thumbs = Directory(p.join(clipsDir.path, '.thumbs'));
+  if (!await thumbs.exists()) return 0;
+  final valid = {
+    for (final c in clips) p.canonicalize(ThumbnailCache.thumbPathFor(c.path)),
+  };
+  var removed = 0;
+  try {
+    await for (final f in thumbs.list()) {
+      if (f is! File || p.extension(f.path).toLowerCase() != '.jpg') continue;
+      if (valid.contains(p.canonicalize(f.path))) continue;
+      try {
+        await f.delete();
+        removed++;
+      } catch (_) {}
+    }
+  } catch (err, stack) {
+    talker.handle(err, stack);
+  }
+  if (removed > 0) talker.info('Removed $removed orphaned thumbnail(s)');
+  return removed;
+}
+
 Future<void> backfillMissingThumbnails(
   List<Clip> clips,
   ThumbnailCache cache, {

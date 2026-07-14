@@ -1,11 +1,15 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../clip/clip_library.dart';
+import '../clip/clips_dir.dart';
 import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import 'theme.dart';
+import 'widgets/clip_tile.dart' show formatSize;
 
 /// Hotkey, default buffer length, capture display/app, and the follow-the-
 /// game toggle — grouped into labeled sections (Capture / Hotkey).
@@ -47,12 +51,18 @@ class SettingsScreen extends StatefulWidget {
   /// Optional so existing callers/tests don't need to wire it.
   final Future<void> Function(bool recording)? onHotkeyRecording;
 
+  /// The clip library, for the Storage section's live usage readout
+  /// ("31 clips · 1.2 GB"). Optional — tests and callers that don't care
+  /// about storage just lose the readout, not the section.
+  final ClipLibrary? library;
+
   const SettingsScreen({
     required this.settings,
     required this.onChanged,
     required this.displays,
     this.capturableApps = const [],
     this.onHotkeyRecording,
+    this.library,
     super.key,
   });
 
@@ -64,6 +74,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _bufferSeconds;
   late bool _customBuffer;
   late final TextEditingController _customBufferController;
+  late final TextEditingController _maxStorageController;
+  late final TextEditingController _maxAgeController;
 
   @override
   void initState() {
@@ -71,12 +83,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _bufferSeconds = widget.settings.defaultBufferSeconds;
     _customBuffer = _bufferSeconds != 30 && _bufferSeconds != 60;
     _customBufferController = TextEditingController(text: '$_bufferSeconds');
+    _maxStorageController = TextEditingController(
+        text: widget.settings.maxStorageGb?.toString() ?? '');
+    _maxAgeController = TextEditingController(
+        text: widget.settings.maxClipAgeDays?.toString() ?? '');
   }
 
   @override
   void dispose() {
     _customBufferController.dispose();
+    _maxStorageController.dispose();
+    _maxAgeController.dispose();
     super.dispose();
+  }
+
+  /// Blank commits null (that limit off); only valid positive integers
+  /// commit otherwise — mid-typing garbage neither persists nor fights the
+  /// caret by rewriting the field.
+  void _handleLimitChanged(String value, void Function(int?) write) {
+    final t = value.trim();
+    if (t.isEmpty) {
+      write(null);
+    } else {
+      final parsed = int.tryParse(t);
+      if (parsed == null || parsed < 1) return;
+      write(parsed);
+    }
+    widget.onChanged(widget.settings);
+  }
+
+  Future<void> _pickClipsDir() async {
+    final path = await getDirectoryPath();
+    if (path == null) return; // cancelled
+    setState(() => widget.settings.clipsDirPath = path);
+    await widget.onChanged(widget.settings);
+  }
+
+  void _resetClipsDir() {
+    setState(() => widget.settings.clipsDirPath = null);
+    widget.onChanged(widget.settings);
   }
 
   /// Called by [_HotkeyRecorderField] once a combo is captured (or the
@@ -294,6 +339,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: widget.settings.recordHotkey,
                   onChanged: _handleRecordHotkeyChanged,
                   onRecording: widget.onHotkeyRecording,
+                ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Storage',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.library case final lib?) ...[
+                  ListenableBuilder(
+                    listenable: lib,
+                    builder: (context, _) => Text(
+                      '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
+                      style: Theme.of(context).textTheme.bodyMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Text('Max storage (GB)',
+                    style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('maxStorageField'),
+                  controller: _maxStorageController,
+                  keyboardType: TextInputType.number,
+                  decoration:
+                      const InputDecoration(hintText: 'Blank = unlimited'),
+                  onChanged: (v) => _handleLimitChanged(
+                      v, (gb) => widget.settings.maxStorageGb = gb),
+                ),
+                const SizedBox(height: 20),
+                Text('Delete clips older than (days)',
+                    style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('maxAgeField'),
+                  controller: _maxAgeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: 'Blank = never'),
+                  onChanged: (v) => _handleLimitChanged(
+                      v, (days) => widget.settings.maxClipAgeDays = days),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Oldest clips are removed first when a limit is hit. '
+                  'Protected clips are never auto-deleted.',
+                  style: Theme.of(context).textTheme.bodyMuted,
+                ),
+                const SizedBox(height: 20),
+                Text('Recordings folder',
+                    style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        resolveClipsDirPath(widget.settings.clipsDirPath),
+                        key: const ValueKey('clipsDirLabel'),
+                        style: Theme.of(context).textTheme.bodyMuted,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      key: const ValueKey('chooseClipsDirButton'),
+                      onPressed: _pickClipsDir,
+                      child: const Text('Choose…'),
+                    ),
+                    if (widget.settings.clipsDirPath != null)
+                      TextButton(
+                        key: const ValueKey('resetClipsDirButton'),
+                        onPressed: _resetClipsDir,
+                        child: const Text('Reset'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Applies on next launch. Existing clips stay where '
+                  'they are.',
+                  style: Theme.of(context).textTheme.bodyMuted,
                 ),
               ],
             ),

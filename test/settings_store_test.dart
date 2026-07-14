@@ -141,6 +141,38 @@ void main() {
         'PenguinHotel-Win64-Shipping');
   });
 
+  group('storage/cleanup settings', () {
+    test('maxStorageGb defaults to 20 and round-trips', () {
+      expect(AppSettings().maxStorageGb, 20);
+      final s = AppSettings(maxStorageGb: 50);
+      expect(AppSettings.fromJson(s.toJson()).maxStorageGb, 50);
+    });
+
+    test('a stored null maxStorageGb means UNLIMITED and survives reload', () {
+      final s = AppSettings(maxStorageGb: null);
+      expect(AppSettings.fromJson(s.toJson()).maxStorageGb, isNull);
+    });
+
+    test('a settings file predating the key falls back to the 20 GB default',
+        () {
+      final j = AppSettings().toJson()..remove('maxStorageGb');
+      expect(AppSettings.fromJson(j).maxStorageGb, 20);
+    });
+
+    test('maxClipAgeDays defaults to null (never) and round-trips', () {
+      expect(AppSettings().maxClipAgeDays, isNull);
+      final s = AppSettings(maxClipAgeDays: 14);
+      expect(AppSettings.fromJson(s.toJson()).maxClipAgeDays, 14);
+    });
+
+    test('clipsDirPath round-trips (null = per-OS default)', () {
+      expect(AppSettings().clipsDirPath, isNull);
+      final s = AppSettings(clipsDirPath: '/Volumes/gaming/Clips');
+      expect(AppSettings.fromJson(s.toJson()).clipsDirPath,
+          '/Volumes/gaming/Clips');
+    });
+  });
+
   test('corrupt file is backed up and defaults returned', () async {
     final store = SettingsStore(tmp);
     store.file.writeAsStringSync('{not json');

@@ -40,6 +40,23 @@ class AppSettings {
   /// preference; see `ClipCoordinator`. Defaults to on.
   bool autoSwitchCapture;
 
+  /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
+  /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
+  /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
+  /// Enforced by `StorageManager` (oldest unprotected clips first).
+  int? maxStorageGb;
+
+  /// Auto-cleanup: delete unprotected clips older than this many days.
+  /// Null means NEVER (age cleanup off — the default).
+  int? maxClipAgeDays;
+
+  /// Custom recordings folder. Null means the per-OS default
+  /// (`~/Movies/Rewind` on macOS — see `clips_dir.dart`). Applied at
+  /// startup: the capture engine, clip library, and debug triggers are all
+  /// bound to it, so a change takes effect on the next launch (Settings
+  /// says so next to the field).
+  String? clipsDirPath;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
@@ -50,6 +67,9 @@ class AppSettings {
     this.captureAppBundleId,
     this.captureAppName,
     this.autoSwitchCapture = true,
+    this.maxStorageGb = 20,
+    this.maxClipAgeDays,
+    this.clipsDirPath,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -80,6 +100,9 @@ class AppSettings {
         'captureAppBundleId': captureAppBundleId,
         'captureAppName': captureAppName,
         'autoSwitchCapture': autoSwitchCapture,
+        'maxStorageGb': maxStorageGb,
+        'maxClipAgeDays': maxClipAgeDays,
+        'clipsDirPath': clipsDirPath,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -91,6 +114,13 @@ class AppSettings {
         captureAppBundleId: j['captureAppBundleId'] as String?,
         captureAppName: j['captureAppName'] as String?,
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
+        // A stored null is a deliberate "unlimited" choice and must survive
+        // the round-trip; only a MISSING key (pre-cleanup settings file)
+        // falls back to the 20 GB default.
+        maxStorageGb:
+            j.containsKey('maxStorageGb') ? j['maxStorageGb'] as int? : 20,
+        maxClipAgeDays: j['maxClipAgeDays'] as int?,
+        clipsDirPath: j['clipsDirPath'] as String?,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

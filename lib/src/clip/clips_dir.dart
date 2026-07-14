@@ -14,7 +14,16 @@ String clipsDirPath({required String os, required Map<String, String> env}) {
   }
 }
 
-Future<Directory> ensureClipsDir() async => Directory(clipsDirPath(
-      os: Platform.operatingSystem,
-      env: Platform.environment,
-    )).create(recursive: true);
+/// The clips directory to use given an optional user [override] (the
+/// Settings "Recordings folder" — `AppSettings.clipsDirPath`): the override
+/// verbatim when set and non-blank, else the per-OS default.
+String resolveClipsDirPath(String? override) =>
+    (override != null && override.trim().isNotEmpty)
+        ? override
+        : clipsDirPath(
+            os: Platform.operatingSystem,
+            env: Platform.environment,
+          );
+
+Future<Directory> ensureClipsDir({String? override}) async =>
+    Directory(resolveClipsDirPath(override)).create(recursive: true);

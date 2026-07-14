@@ -425,4 +425,90 @@ void main() {
             .value,
         isFalse);
   });
+
+  group('Storage section', () {
+    Future<void> pumpTall(WidgetTester t, Widget child) async {
+      // The settings ListView is long; without a tall viewport the Storage
+      // section never builds (see CLAUDE.md's testing gotchas).
+      t.view.physicalSize = const Size(1200, 3000);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(child);
+    }
+
+    testWidgets('max storage commits ints; blank commits null (unlimited)',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await pumpTall(
+          t,
+          _app(SettingsScreen(
+            settings: settings,
+            onChanged: (s) async => calls.add(s),
+            displays: const [],
+          )));
+
+      final field = find.byKey(const ValueKey('maxStorageField'));
+      await t.enterText(field, '50');
+      await t.pump();
+      expect(settings.maxStorageGb, 50);
+
+      await t.enterText(field, '');
+      await t.pump();
+      expect(settings.maxStorageGb, isNull);
+
+      // Garbage neither commits nor resets the previous value.
+      await t.enterText(field, '5');
+      await t.pump();
+      await t.enterText(field, 'abc');
+      await t.pump();
+      expect(settings.maxStorageGb, 5);
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets('max age (days) commits ints; blank commits null (never)',
+        (t) async {
+      final settings = AppSettings();
+      await pumpTall(
+          t,
+          _app(SettingsScreen(
+            settings: settings,
+            onChanged: (_) async {},
+            displays: const [],
+          )));
+
+      final field = find.byKey(const ValueKey('maxAgeField'));
+      await t.enterText(field, '14');
+      await t.pump();
+      expect(settings.maxClipAgeDays, 14);
+
+      await t.enterText(field, '');
+      await t.pump();
+      expect(settings.maxClipAgeDays, isNull);
+    });
+
+    testWidgets(
+        'recordings folder shows the override and Reset clears it back to '
+        'the default', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(clipsDirPath: '/Volumes/gaming/Clips');
+      await pumpTall(
+          t,
+          _app(SettingsScreen(
+            settings: settings,
+            onChanged: (s) async => calls.add(s),
+            displays: const [],
+          )));
+
+      expect(find.text('/Volumes/gaming/Clips'), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('resetClipsDirButton')));
+      await t.pump();
+
+      expect(settings.clipsDirPath, isNull);
+      expect(calls, isNotEmpty);
+      // Back on the default: the Reset button disappears.
+      expect(find.byKey(const ValueKey('resetClipsDirButton')), findsNothing);
+    });
+  });
 }

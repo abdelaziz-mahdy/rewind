@@ -210,6 +210,7 @@ class _ShellState extends State<Shell> {
           displays: widget.displays,
           capturableApps: widget.capturableApps,
           onHotkeyRecording: widget.onHotkeyRecording,
+          library: widget.library,
         ),
     };
   }

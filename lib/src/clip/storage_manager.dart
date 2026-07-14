@@ -1,3 +1,4 @@
+import '../settings/app_settings.dart';
 import 'clip.dart';
 import 'clip_library.dart';
 
@@ -12,6 +13,17 @@ class RetentionPolicy {
   const RetentionPolicy({this.maxBytes, this.maxAge});
 
   static const twentyGb = RetentionPolicy(maxBytes: 20 * 1024 * 1024 * 1024);
+
+  /// The policy the user's Storage settings describe — null fields mean
+  /// that axis of cleanup is off (see `AppSettings.maxStorageGb` /
+  /// `maxClipAgeDays`).
+  factory RetentionPolicy.fromSettings(AppSettings s) => RetentionPolicy(
+        maxBytes: s.maxStorageGb == null
+            ? null
+            : s.maxStorageGb! * 1024 * 1024 * 1024,
+        maxAge:
+            s.maxClipAgeDays == null ? null : Duration(days: s.maxClipAgeDays!),
+      );
 }
 
 /// Enforces the [RetentionPolicy] over a [ClipLibrary].

@@ -56,12 +56,27 @@ Future<void> main() async {
 
   final store = SettingsStore(await getApplicationSupportDirectory());
   final settings = await store.load();
-  final clipsDir = await ensureClipsDir();
+  // Custom recordings folder (Settings → Storage), falling back to the
+  // per-OS default when unset — or when the override can't be created
+  // (deleted volume, permissions): losing recordings silently is worse
+  // than ignoring a stale preference, so fall back loudly.
+  Directory clipsDir;
+  try {
+    clipsDir = await ensureClipsDir(override: settings.clipsDirPath);
+  } catch (err) {
+    talker
+        .error('Recordings folder "${settings.clipsDirPath}" unusable ($err); '
+            'using the default');
+    clipsDir = await ensureClipsDir();
+  }
   final thumbnailCache = ThumbnailCache(MediaKitThumbnailGenerator());
   final library = await ClipLibrary.load(
     clipsDir,
     onClipDeleted: (clip) => thumbnailCache.invalidate(clip),
   );
+  // Best-effort startup sweep for thumbnails orphaned by out-of-app
+  // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
+  unawaited(removeOrphanThumbnails(library.all, clipsDir));
 
   // Bring up capture. In stub mode init/start succeed but saves write no
   // file (the coordinator ignores those); with libobs linked this starts the
@@ -114,10 +129,26 @@ Future<void> main() async {
   final displays = engine != null ? connectedDisplays : const <DisplayInfo>[];
   final capturableApps = engine != null ? connectedApps : const <AppInfo>[];
 
+  // Auto-cleanup: the user's Storage settings drive the retention policy.
+  // Enforced after every save (coordinator), once at startup (backlog from
+  // sessions where the app wasn't running to see clips age), and on a slow
+  // periodic sweep so an age policy fires even across an idle session.
+  final storage =
+      StorageManager(library, policy: RetentionPolicy.fromSettings(settings));
+  Future<void> storageSweep() async {
+    final deleted = await storage.enforce();
+    if (deleted.isNotEmpty) {
+      talker.info('Storage cleanup: removed ${deleted.length} old clip(s)');
+    }
+  }
+
+  unawaited(storageSweep());
+  Timer.periodic(const Duration(minutes: 30), (_) => storageSweep());
+
   final coordinator = ClipCoordinator(
     registry: GameRegistry(sources: buildSources(settings)),
     library: library,
-    storage: StorageManager(library),
+    storage: storage,
     settings: settings,
     outDir: clipsDir.path,
     engine: engine,
@@ -261,6 +292,9 @@ Future<void> main() async {
       // its detection watcher NOW — the registry adopts unseen gameIds and
       // the next supervision tick starts them. No restart needed.
       coordinator.registry.addNewSources(buildSources(s));
+      // Tightened Storage limits apply immediately, not at the next save.
+      storage.policy = RetentionPolicy.fromSettings(s);
+      unawaited(storageSweep());
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),

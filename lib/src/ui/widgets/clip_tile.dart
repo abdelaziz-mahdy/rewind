@@ -93,7 +93,7 @@ class EventBadge extends StatelessWidget {
   }
 }
 
-enum _ClipAction { openDefault, reveal, delete }
+enum _ClipAction { openDefault, reveal, protect, delete }
 
 /// Grid geometry for the clip card grid (maintainer: "instead of list, a
 /// grid will make more sense for the recording"). [clipGridMaxCrossAxisExtent]
@@ -225,6 +225,7 @@ class _ClipTileState extends State<ClipTile> {
                             // already hovering the card.
                             opacity: _hovering ? 1 : 0.45,
                             child: _OverflowMenu(
+                              protected: clip.protected,
                               onSelected: (action) =>
                                   _onAction(context, action),
                             ),
@@ -251,12 +252,29 @@ class _ClipTileState extends State<ClipTile> {
                             ),
                             const SizedBox(height: 4),
                           ],
-                          Text(
-                            '${relativeAge(clip.createdAt)} · '
-                            '${formatSize(clip.sizeBytes)}',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: theme.textTheme.bodyMuted,
+                          Row(
+                            children: [
+                              if (clip.protected) ...[
+                                // Pinned against auto-cleanup (see the
+                                // overflow menu's Protect action).
+                                Icon(
+                                  Icons.lock,
+                                  key: const ValueKey('protectedLock'),
+                                  size: 11,
+                                  color: tokens.textMuted,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Flexible(
+                                child: Text(
+                                  '${relativeAge(clip.createdAt)} · '
+                                  '${formatSize(clip.sizeBytes)}',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: theme.textTheme.bodyMuted,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -277,6 +295,14 @@ class _ClipTileState extends State<ClipTile> {
         await _open(widget.clip.path);
       case _ClipAction.reveal:
         await _reveal(widget.clip.path);
+      case _ClipAction.protect:
+        // Protected clips are exempt from StorageManager's auto-cleanup
+        // (max-storage / max-age pruning) — the ShadowPlay-style "keep this
+        // one forever" pin. setState so the lock badge appears immediately;
+        // save persists the flag across restarts.
+        widget.library.setProtected(widget.clip, !widget.clip.protected);
+        setState(() {});
+        await widget.library.save();
       case _ClipAction.delete:
         final confirmed = await showDialog<bool>(
           context: context,
@@ -341,7 +367,11 @@ class _ClipTileState extends State<ClipTile> {
 class _OverflowMenu extends StatelessWidget {
   final ValueChanged<_ClipAction> onSelected;
 
-  const _OverflowMenu({required this.onSelected});
+  /// Whether the clip is currently pinned against auto-cleanup — flips the
+  /// protect item's label.
+  final bool protected;
+
+  const _OverflowMenu({required this.onSelected, required this.protected});
 
   @override
   Widget build(BuildContext context) {
@@ -362,6 +392,12 @@ class _OverflowMenu extends StatelessWidget {
             value: _ClipAction.reveal,
             child: Text(
                 Platform.isMacOS ? 'Reveal in Finder' : 'Reveal in Explorer'),
+          ),
+          PopupMenuItem(
+            value: _ClipAction.protect,
+            child: Text(protected
+                ? 'Unprotect (allow auto-cleanup)'
+                : 'Protect from auto-cleanup'),
           ),
           const PopupMenuItem(value: _ClipAction.delete, child: Text('Delete')),
         ],

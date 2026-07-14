@@ -5,6 +5,7 @@ import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/settings/app_settings.dart';
 
 Clip _clip(String path, DateTime at, int bytes, {bool protected = false}) =>
     Clip(
@@ -68,5 +69,46 @@ void main() {
     await mgr.enforce(now: now);
 
     expect(deleted, contains('a'));
+  });
+
+  group('RetentionPolicy.fromSettings', () {
+    test('maps GB to bytes and days to a Duration', () {
+      final p = RetentionPolicy.fromSettings(
+          AppSettings(maxStorageGb: 5, maxClipAgeDays: 30));
+      expect(p.maxBytes, 5 * 1024 * 1024 * 1024);
+      expect(p.maxAge, const Duration(days: 30));
+    });
+
+    test('nulls mean that cleanup axis is OFF', () {
+      final p = RetentionPolicy.fromSettings(
+          AppSettings(maxStorageGb: null, maxClipAgeDays: null));
+      expect(p.maxBytes, isNull);
+      expect(p.maxAge, isNull);
+    });
+
+    test('defaults reproduce the old hardcoded 20 GB cap, no age limit', () {
+      final p = RetentionPolicy.fromSettings(AppSettings());
+      expect(p.maxBytes, 20 * 1024 * 1024 * 1024);
+      expect(p.maxAge, isNull);
+    });
+  });
+
+  test('a policy swapped in at runtime is honored by the next enforce()',
+      () async {
+    // Settings change mid-session: main.dart writes storage.policy and
+    // sweeps immediately — enforce must read the LIVE policy, not the one
+    // it was constructed with.
+    final tmp = Directory.systemTemp.createTempSync('rewind_sm_policy');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final f = File('${tmp.path}/old.mp4')..writeAsBytesSync(const [0]);
+    final lib = ClipLibrary(clipsDir: tmp)
+      ..add(_clip(f.path, DateTime(2026, 1, 1), 1));
+    final mgr = StorageManager(lib); // default: 20 GB cap, no age limit
+    expect(await mgr.enforce(now: DateTime(2026, 7, 1)), isEmpty);
+
+    mgr.policy = const RetentionPolicy(maxAge: Duration(days: 30));
+    final deleted = await mgr.enforce(now: DateTime(2026, 7, 1));
+    expect(deleted, hasLength(1));
+    expect(f.existsSync(), isFalse);
   });
 }

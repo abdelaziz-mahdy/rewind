@@ -166,4 +166,37 @@ void main() {
       expect(generator.callCount, 0);
     });
   });
+
+  group('removeOrphanThumbnails', () {
+    test('deletes thumbs whose clip is gone, keeps live ones', () async {
+      final clipFile = File(p.join(tmp.path, 'alive.mp4'))
+        ..writeAsBytesSync([0]);
+      final clip = Clip(
+          path: clipFile.path,
+          gameId: 'desktop',
+          event: GameEventKind.manual,
+          createdAt: DateTime(2026, 7, 1),
+          sizeBytes: 1);
+      final thumbs = Directory(p.join(tmp.path, '.thumbs'))
+        ..createSync(recursive: true);
+      final live = File(ThumbnailCache.thumbPathFor(clipFile.path))
+        ..writeAsBytesSync([1]);
+      final orphan = File(p.join(thumbs.path, 'deleted-elsewhere.jpg'))
+        ..writeAsBytesSync([2]);
+      // Non-jpg files (e.g. .DS_Store) must never be touched.
+      final bystander = File(p.join(thumbs.path, '.DS_Store'))
+        ..writeAsBytesSync([3]);
+
+      final removed = await removeOrphanThumbnails([clip], tmp);
+
+      expect(removed, 1);
+      expect(live.existsSync(), isTrue);
+      expect(orphan.existsSync(), isFalse);
+      expect(bystander.existsSync(), isTrue);
+    });
+
+    test('no .thumbs directory is a no-op', () async {
+      expect(await removeOrphanThumbnails(const [], tmp), 0);
+    });
+  });
 }
