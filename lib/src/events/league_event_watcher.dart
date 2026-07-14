@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:io';
 
 import 'game_event.dart';
 import 'game_event_source.dart';
@@ -8,14 +8,28 @@ import 'game_event_source.dart';
 /// Watches League of Legends via the local Live Client Data API.
 ///
 /// While a match is running, the League client serves data on
-/// https://127.0.0.1:2999 (self-signed cert; localhost only). We poll
+/// https://127.0.0.1:2999 (localhost only). We poll
 /// `/liveclientdata/eventdata` and translate new events into [GameEvent]s.
 ///
-/// NOTE: this is a scaffold. TODO(v0.2): handle the self-signed certificate,
-/// de-duplicate events by EventID, and map multikills correctly.
+/// TODO(v0.2): de-duplicate events by EventID across reconnects, and map
+/// multikills to their exact tier via KillStreak.
 class LeagueEventWatcher implements GameEventSource {
-  static const _base = 'https://127.0.0.1:2999';
+  static const _host = '127.0.0.1';
+  static const _port = 2999;
   static const _pollInterval = Duration(milliseconds: 500);
+  static const _requestTimeout = Duration(milliseconds: 600);
+
+  /// Riot serves the API over TLS with a SELF-SIGNED certificate (their own
+  /// root, not in the system trust store), so a stock HTTP client rejects
+  /// the handshake — which left this watcher permanently blind: it reported
+  /// "waiting for a match" straight through a live game (observed
+  /// 2026-07-14: `curl -k` answered with live gamestats while every Dart
+  /// request died in the handshake). Trust is scoped to EXACTLY
+  /// 127.0.0.1:2999 — never a blanket bad-certificate pass.
+  final HttpClient _client = HttpClient()
+    ..connectionTimeout = const Duration(milliseconds: 800)
+    ..badCertificateCallback =
+        ((cert, host, port) => host == _host && port == _port);
 
   final _controller = StreamController<GameEvent>.broadcast();
   Timer? _timer;
@@ -27,17 +41,28 @@ class LeagueEventWatcher implements GameEventSource {
   @override
   String get displayName => 'League of Legends';
 
-  @override
-  Future<bool> isGameRunning() async {
+  /// GETs a Live Client Data path, returning the response body on HTTP 200
+  /// and null on ANY failure — connection refused (no match: normal),
+  /// timeouts, non-200s. Never throws.
+  Future<String?> _get(String path) async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base/liveclientdata/gamestats'))
-          .timeout(const Duration(milliseconds: 400));
-      return res.statusCode == 200;
+      final req = await _client
+          .getUrl(Uri.https('$_host:$_port', path))
+          .timeout(_requestTimeout);
+      final res = await req.close().timeout(_requestTimeout);
+      if (res.statusCode != 200) {
+        await res.drain<void>();
+        return null;
+      }
+      return await utf8.decoder.bind(res).join().timeout(_requestTimeout);
     } catch (_) {
-      return false; // API only exists mid-match; connection-refused is normal.
+      return null;
     }
   }
+
+  @override
+  Future<bool> isGameRunning() async =>
+      await _get('/liveclientdata/gamestats') != null;
 
   @override
   Stream<GameEvent> events() => _controller.stream;
@@ -56,12 +81,10 @@ class LeagueEventWatcher implements GameEventSource {
 
   Future<void> _poll() async {
     try {
-      final res = await http
-          .get(Uri.parse('$_base/liveclientdata/eventdata'))
-          .timeout(const Duration(milliseconds: 400));
-      if (res.statusCode != 200) return;
+      final body = await _get('/liveclientdata/eventdata');
+      if (body == null) return;
 
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final data = jsonDecode(body) as Map<String, dynamic>;
       final events = (data['Events'] as List?) ?? const [];
       for (final e in events) {
         final id = (e['EventID'] as num?)?.toInt() ?? -1;

@@ -11,7 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.0            # dart:ffi helpers for the libobs C shim
-  http: ^1.2.0          # League Live Client Data API polling
   path: ^1.9.0
   path_provider: ^2.1.0 # locate the clips directory per-OS
   hotkey_manager: ^0.2.3 # global hotkey (manual "clip that")
