@@ -74,6 +74,35 @@ class FakeCaptureEngine implements CaptureEngine {
     return f.path;
   }
 
+  /// When true, [startRecording]/[stopRecording] fail like the shim would.
+  bool failRecording = false;
+  bool _recording = false;
+  String? _recordingDir;
+  bool get isRecording => _recording;
+
+  @override
+  bool startRecording(String outDir) {
+    calls.add('startRecording');
+    if (failRecording || _recording) return false;
+    _recording = true;
+    _recordingDir = outDir;
+    return true;
+  }
+
+  @override
+  String? stopRecording() {
+    calls.add('stopRecording');
+    if (failRecording || !_recording) return null;
+    _recording = false;
+    final f = File(p.join(_recordingDir ?? '.', 'recording-${_n++}.mp4'));
+    if (writeFile) {
+      f
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(List.filled(32, 0));
+    }
+    return f.path;
+  }
+
   @override
   void shutdown() => calls.add('shutdown');
   @override

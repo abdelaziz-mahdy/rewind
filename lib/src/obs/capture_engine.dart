@@ -27,6 +27,18 @@ abstract class CaptureEngine {
   /// Returns the saved file path, or null on failure.
   String? saveClip(String outDir);
 
+  /// Begin a manual recording session into [outDir]: unlike the rolling
+  /// replay buffer, this records continuously from now until
+  /// [stopRecording], sharing the same capture source and encoders. The
+  /// replay buffer keeps running independently. Returns false on failure
+  /// (including when a recording is already in progress).
+  bool startRecording(String outDir);
+
+  /// End the manual recording session started by [startRecording].
+  /// Returns the recorded file's path, or null on failure / when no
+  /// recording is in progress.
+  String? stopRecording();
+
   /// Release all capture resources.
   void shutdown();
 

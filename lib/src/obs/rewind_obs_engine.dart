@@ -20,6 +20,15 @@ class RewindObsEngine implements CaptureEngine {
   bool setBufferSeconds(int seconds) => _obs.setBufferSeconds(seconds) == 0;
   @override
   String? saveClip(String outDir) => _obs.saveClip(outDir);
+
+  // TODO(recording): temporary stubs — the shim's rewind_start_recording /
+  // rewind_stop_recording land with the manual-recording native task; these
+  // keep the tree compiling until the FFI bindings exist.
+  @override
+  bool startRecording(String outDir) => false;
+  @override
+  String? stopRecording() => null;
+
   @override
   void shutdown() => _obs.shutdown();
   @override
