@@ -9,6 +9,10 @@ class AppSettings {
   /// maps this to hotkey_manager). Example: "Alt+F10".
   String hotkey;
 
+  /// Global "start/stop recording" hotkey — same portable descriptor format
+  /// as [hotkey], bound independently (see `HotkeyService.bindAll`).
+  String recordHotkey;
+
   /// The display to capture, identified by a display uuid as reported by
   /// `CaptureEngine.listDisplays`. Null means "use the main display" (the
   /// capture engine's own default).
@@ -33,6 +37,7 @@ class AppSettings {
   AppSettings({
     this.defaultBufferSeconds = 30,
     this.hotkey = 'Alt+F10',
+    this.recordHotkey = 'Alt+F9',
     this.captureDisplayUuid,
     this.captureAppBundleId,
     this.autoSwitchCapture = true,
@@ -61,6 +66,7 @@ class AppSettings {
   Map<String, dynamic> toJson() => {
         'defaultBufferSeconds': defaultBufferSeconds,
         'hotkey': hotkey,
+        'recordHotkey': recordHotkey,
         'captureDisplayUuid': captureDisplayUuid,
         'captureAppBundleId': captureAppBundleId,
         'autoSwitchCapture': autoSwitchCapture,
@@ -70,6 +76,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
         defaultBufferSeconds: j['defaultBufferSeconds'] as int? ?? 30,
         hotkey: j['hotkey'] as String? ?? 'Alt+F10',
+        recordHotkey: j['recordHotkey'] as String? ?? 'Alt+F9',
         captureDisplayUuid: j['captureDisplayUuid'] as String?,
         captureAppBundleId: j['captureAppBundleId'] as String?,
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,

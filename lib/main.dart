@@ -110,23 +110,48 @@ Future<void> main() async {
   )..start();
 
   final hotkeys = HotkeyService();
-  if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
-    talker.warning('Could not register hotkey "${settings.hotkey}"');
-  } else {
-    talker.info('Hotkey "${settings.hotkey}" registered');
+  Future<void> bindBothHotkeys() async {
+    final result = await hotkeys.bindAll(
+      saveDescriptor: settings.hotkey,
+      recordDescriptor: settings.recordHotkey,
+      onSave: coordinator.onHotkey,
+      onRecordToggle: coordinator.toggleRecording,
+    );
+    if (!result.saveOk) {
+      talker.warning('Could not register hotkey "${settings.hotkey}"');
+    } else {
+      talker.info('Hotkey "${settings.hotkey}" registered');
+    }
+    if (!result.recordOk) {
+      talker.warning(
+          'Could not register record hotkey "${settings.recordHotkey}"');
+    } else {
+      talker.info('Record hotkey "${settings.recordHotkey}" registered');
+    }
   }
+
+  await bindBothHotkeys();
 
   if (kDebugMode) {
     // Headless save trigger for integration tests (and agent-driven
     // verification): touching <clipsDir>/.save-now behaves like the hotkey.
     // Debug builds only; never active in release.
     final trigger = File('${clipsDir.path}/.save-now');
+    // Same idea for the record hotkey: touching <clipsDir>/.record-toggle
+    // starts/stops a manual recording headlessly.
+    final recordTrigger = File('${clipsDir.path}/.record-toggle');
     Timer.periodic(const Duration(seconds: 1), (_) async {
       if (trigger.existsSync()) {
         try {
           trigger.deleteSync();
         } catch (_) {}
         await coordinator.onHotkey();
+      }
+      if (recordTrigger.existsSync()) {
+        try {
+          recordTrigger.deleteSync();
+        } catch (_) {}
+        await coordinator.toggleRecording();
       }
     });
   }
@@ -152,6 +177,7 @@ Future<void> main() async {
         bufferActive.value = false;
       }
     },
+    onToggleRecording: coordinator.toggleRecording,
     // No window_manager dependency in v0.1: clicking the tray only offers
     // actions; the window is managed by the OS dock/app switcher.
     onShowWindow: () {},
@@ -163,9 +189,15 @@ Future<void> main() async {
     },
     onOpenClips: () => _openClipsFolder(clipsDir.path),
   );
-  // Seed the tray's toggle label from the real startup state — its internal
-  // default assumes an active buffer, which is wrong when capture failed.
+  // Seed the tray's toggle labels from the real startup state — its internal
+  // defaults assume an active buffer and no recording, which is wrong when
+  // capture failed / on every normal cold start respectively.
   await tray.setBufferState(bufferActive.value);
+  await tray.setRecordingState(coordinator.isRecording.value);
+  // Keep the tray's "Start/Stop recording" label following the deck button
+  // and the record hotkey, same as setBufferState above.
+  coordinator.isRecording
+      .addListener(() => tray.setRecordingState(coordinator.isRecording.value));
 
   runApp(RewindApp(
     coordinator: coordinator,
@@ -191,36 +223,29 @@ Future<void> main() async {
       // meaningful choice here ("Entire display") that the engine must be
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
-      if (!await hotkeys.bind(s.hotkey, coordinator.onHotkey)) {
-        talker.warning('Could not register hotkey "${s.hotkey}"');
-      } else {
-        talker.info('Hotkey "${s.hotkey}" registered');
-      }
+      await bindBothHotkeys();
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
     onHotkeyRecording: (recording) async {
       if (recording) {
-        // Suspend the live global hotkey while the recorder is listening:
-        // otherwise pressing the currently-bound combo mid-record both
-        // fires a spurious save and, since the OS owns it at system scope,
+        // Suspend BOTH live global hotkeys while the recorder is listening:
+        // otherwise pressing a currently-bound combo mid-record both fires
+        // a spurious save/toggle and, since the OS owns it at system scope,
         // may never reach the recorder's key handler at all — making it
-        // impossible to re-record the hotkey that's already in use.
+        // impossible to re-record a hotkey that's already in use (by either
+        // field, since a single `hotkey_manager` registry backs both).
         await hotkeys.dispose();
         return;
       }
       // Recording ended WITHOUT a capture (Escape / click away / navigated
-      // off Settings): re-bind the still-unchanged `settings.hotkey`,
-      // restoring what was live before recording started. The successful
-      // capture path deliberately does NOT reach here — onSettingsChanged
-      // owns that rebind, and a second concurrent unregisterAll+register
-      // cycle could interleave into a double registration (one press,
-      // two saved clips).
-      if (!await hotkeys.bind(settings.hotkey, coordinator.onHotkey)) {
-        talker.warning('Could not re-register hotkey "${settings.hotkey}"');
-      } else {
-        talker.info('Hotkey "${settings.hotkey}" re-registered');
-      }
+      // off Settings): re-bind the still-unchanged settings, restoring
+      // what was live before recording started. The successful capture
+      // path deliberately does NOT reach here — onSettingsChanged owns
+      // that rebind, and a second concurrent unregisterAll+register cycle
+      // could interleave into a double registration (one press, two saved
+      // clips).
+      await bindBothHotkeys();
     },
   ));
 }

@@ -42,6 +42,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 - Rolling replay buffer (RAM-backed) — **working on macOS**, Windows native bring-up pending
 - **Manual hotkey clip** ("clip that") saving the last **15s / 30s / 60s / custom** — configurable **per game**, hotkey set by pressing it
+- **Manual recording**: a deck button and a dedicated hotkey (default **Alt+F9**) start/stop a continuous recording, independent of the replay buffer, with a live elapsed-time readout and a matching tray item
 - **Automatic game detection** (process catalog + per-app watchers) with **auto-follow capture**: start a game and recording switches to it
 - **Game-centric library**: each game is a destination — its clips, event filters, detection status, and settings in one hub
 - Capture a **specific display or application**, switchable from the main screen

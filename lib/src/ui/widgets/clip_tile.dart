@@ -37,6 +37,7 @@ Color eventColor(BuildContext context, GameEventKind kind) {
   final scheme = Theme.of(context).colorScheme;
   switch (kind) {
     case GameEventKind.manual:
+    case GameEventKind.recording:
     case GameEventKind.victory:
       return scheme.primary;
     case GameEventKind.defeat:

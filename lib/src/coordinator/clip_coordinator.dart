@@ -44,6 +44,15 @@ class ClipCoordinator {
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
 
+  /// Whether a manual recording session (`CaptureEngine.startRecording`) is
+  /// currently in progress. Independent of the rolling replay buffer — both
+  /// can run at once.
+  final ValueNotifier<bool> isRecording = ValueNotifier(false);
+
+  /// When the current recording session started, for the deck's elapsed-time
+  /// readout. Null whenever [isRecording] is false.
+  final ValueNotifier<DateTime?> recordingStartedAt = ValueNotifier(null);
+
   /// The game whose capture target we auto-switched to (see
   /// [_autoSwitchCaptureFor]), so [_revertAutoSwitchFor] only reverts when
   /// THAT specific game deactivates — not some unrelated game exiting while
@@ -170,32 +179,93 @@ class ClipCoordinator {
         return;
       }
 
-      final file = File(path);
-      // The stub shim reports a path without writing anything; never index
-      // a clip whose file doesn't exist.
-      if (!await file.exists()) {
-        talker.warning('Clip save reported a path with no file on disk: '
-            '$path');
-        return;
-      }
-
-      library.add(Clip(
-        path: path,
-        gameId: e.gameId,
-        event: e.kind,
-        createdAt: e.time,
-        sizeBytes: await file.length(),
-      ));
-      await library.save();
-      await storage.enforce();
-      lastSaveError.value = null;
-      talker.info('Clip saved: $path');
+      await _indexClip(path, e);
     } catch (err, stack) {
       // Auto-clip saves are fire-and-forget from the event stream; a failed
       // save (disk full, index write error) must never crash the app.
       talker.handle(err, stack);
       _reportSaveError(err.toString());
     }
+  }
+
+  /// Manual recording entry point: starts a continuous recording session on
+  /// first call, stops and saves it (as a [GameEventKind.recording] clip) on
+  /// the next — independent of the rolling replay buffer, which keeps
+  /// running throughout. No-ops when there's no capture backend (dev mode).
+  Future<void> toggleRecording() async {
+    final capture = engine;
+    if (capture == null) return; // dev mode: no capture backend wired up
+
+    if (!isRecording.value) {
+      try {
+        if (!capture.startRecording(outDir)) {
+          final msg = capture.lastError.isNotEmpty
+              ? capture.lastError
+              : 'Recording failed to start';
+          _reportSaveError(msg);
+          talker.error('Recording failed to start: $msg');
+          return;
+        }
+        isRecording.value = true;
+        recordingStartedAt.value = DateTime.now();
+        talker.info('Recording started');
+      } catch (err, stack) {
+        talker.handle(err, stack);
+        _reportSaveError(err.toString());
+      }
+      return;
+    }
+
+    final gameId = activeGame.value ?? 'desktop';
+    // The engine-side session ends with this call either way (success or
+    // failure) — clear local state up front so a failed save below doesn't
+    // leave the deck stuck showing "recording".
+    isRecording.value = false;
+    recordingStartedAt.value = null;
+    try {
+      final path = capture.stopRecording();
+      if (path == null) {
+        final msg = capture.lastError.isNotEmpty
+            ? capture.lastError
+            : 'Recording save failed';
+        _reportSaveError(msg);
+        talker.error('Recording save failed: $msg');
+        return;
+      }
+
+      await _indexClip(
+          path, GameEvent(gameId: gameId, kind: GameEventKind.recording));
+    } catch (err, stack) {
+      talker.handle(err, stack);
+      _reportSaveError(err.toString());
+    }
+  }
+
+  /// Shared "wrap a capture-engine-reported path into the clip library"
+  /// logic for both [_save] (replay buffer) and [toggleRecording] (manual
+  /// recording): guards against a reported path with no file on disk (the
+  /// stub shim reports a path without writing anything), indexes the clip,
+  /// persists the library, enforces the storage cap, and clears the last
+  /// save error.
+  Future<void> _indexClip(String path, GameEvent e) async {
+    final file = File(path);
+    if (!await file.exists()) {
+      talker.warning('Clip save reported a path with no file on disk: '
+          '$path');
+      return;
+    }
+
+    library.add(Clip(
+      path: path,
+      gameId: e.gameId,
+      event: e.kind,
+      createdAt: e.time,
+      sizeBytes: await file.length(),
+    ));
+    await library.save();
+    await storage.enforce();
+    lastSaveError.value = null;
+    talker.info('Clip saved: $path');
   }
 
   /// Sets [lastSaveError], forcing a notification even when the message is

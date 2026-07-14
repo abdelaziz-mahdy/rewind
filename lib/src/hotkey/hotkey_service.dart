@@ -3,19 +3,48 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 
 import 'hotkey_descriptor.dart';
 
-/// Registers ONE system-wide hotkey mapped from a portable descriptor.
+/// Registers system-wide hotkeys mapped from portable descriptors.
 ///
 /// Thin wrapper over `hotkey_manager`; all portable parsing lives in
 /// [HotkeyDescriptor]. Not unit-testable without a host window, so this
 /// class is kept deliberately small and compile-checked via `flutter analyze`.
 class HotkeyService {
   /// Parses [descriptor], registers it as the sole system-wide hotkey
-  /// (replacing any previously bound one), and invokes [onPressed] on
-  /// key-down. Returns `false` if [descriptor] is invalid, its key has no
-  /// known mapping, or the OS refuses the registration (e.g. the combo is
-  /// owned by another app) — in the OS-refusal case the previous hotkey is
-  /// already unregistered, so the caller should surface the failure.
+  /// (replacing any previously bound one, including a record hotkey bound
+  /// via [bindAll]), and invokes [onPressed] on key-down. Returns `false` if
+  /// [descriptor] is invalid, its key has no known mapping, or the OS
+  /// refuses the registration (e.g. the combo is owned by another app) — in
+  /// the OS-refusal case the previous hotkey is already unregistered, so the
+  /// caller should surface the failure.
   Future<bool> bind(
+    String descriptor,
+    Future<void> Function() onPressed,
+  ) async {
+    await hotKeyManager.unregisterAll();
+    return _registerOne(descriptor, onPressed);
+  }
+
+  /// Registers TWO independent system-wide hotkeys — the "save clip" combo
+  /// and the "toggle recording" combo — replacing any previously bound
+  /// hotkeys (a single [hotKeyManager.unregisterAll] up front, since
+  /// `hotkey_manager` has no per-key unregister that's safe to rely on
+  /// across combos). Each descriptor is parsed and registered
+  /// independently: an invalid/unregistrable [recordDescriptor] does not
+  /// prevent [saveDescriptor] from binding, and vice versa. Returns which
+  /// of the two succeeded so the caller can report each failure separately.
+  Future<({bool saveOk, bool recordOk})> bindAll({
+    required String saveDescriptor,
+    required String recordDescriptor,
+    required Future<void> Function() onSave,
+    required Future<void> Function() onRecordToggle,
+  }) async {
+    await hotKeyManager.unregisterAll();
+    final saveOk = await _registerOne(saveDescriptor, onSave);
+    final recordOk = await _registerOne(recordDescriptor, onRecordToggle);
+    return (saveOk: saveOk, recordOk: recordOk);
+  }
+
+  Future<bool> _registerOne(
     String descriptor,
     Future<void> Function() onPressed,
   ) async {
@@ -24,7 +53,6 @@ class HotkeyService {
     final key = _keys[d.key];
     if (key == null) return false;
 
-    await hotKeyManager.unregisterAll();
     final hotKey = HotKey(
       key: key,
       modifiers: d.modifiers.map((m) => _mods[m]!).toList(),
@@ -38,7 +66,7 @@ class HotkeyService {
     return true;
   }
 
-  /// Unregisters the currently bound hotkey, if any.
+  /// Unregisters all currently bound hotkeys, if any.
   Future<void> dispose() => hotKeyManager.unregisterAll();
 
   static const _mods = {

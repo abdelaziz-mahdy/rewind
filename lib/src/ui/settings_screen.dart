@@ -88,6 +88,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// Same as [_handleHotkeyChanged], for the independent record-toggle
+  /// hotkey field.
+  void _handleRecordHotkeyChanged(String value) {
+    widget.settings.recordHotkey = value;
+    widget.onChanged(widget.settings);
+  }
+
   void _selectBuffer(int seconds) {
     setState(() {
       _bufferSeconds = seconds;
@@ -268,10 +275,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _Section(
             title: 'Hotkey',
-            child: _HotkeyRecorderField(
-              value: widget.settings.hotkey,
-              onChanged: _handleHotkeyChanged,
-              onRecording: widget.onHotkeyRecording,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Save clip', style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                _HotkeyRecorderField(
+                  key: const ValueKey('saveHotkeyField'),
+                  value: widget.settings.hotkey,
+                  onChanged: _handleHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+                const SizedBox(height: 20),
+                Text('Record', style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                _HotkeyRecorderField(
+                  key: const ValueKey('recordHotkeyField'),
+                  value: widget.settings.recordHotkey,
+                  onChanged: _handleRecordHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+              ],
             ),
           ),
         ],
@@ -340,6 +364,7 @@ class _HotkeyRecorderField extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.onRecording,
+    super.key,
   });
 
   @override

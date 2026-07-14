@@ -303,6 +303,86 @@ void main() {
     });
   });
 
+  group('record button', () {
+    testWidgets('idle state shows an outlined "Record" button', (t) async {
+      await t.pumpWidget(app(strip(settings: AppSettings())));
+      expect(find.text('Record'), findsOneWidget);
+      final btn =
+          t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
+      expect(btn.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'tapping starts a recording, flipping to the filled elapsed state',
+        (t) async {
+      final coordinator = makeCoordinator(AppSettings());
+      await t.pumpWidget(app(strip(
+        settings: AppSettings(),
+        coordinatorOverride: coordinator,
+      )));
+
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+
+      expect(coordinator.isRecording.value, isTrue);
+      expect(find.text('Record'), findsNothing);
+      expect(find.textContaining('0:00'), findsOneWidget);
+
+      // Stop before the test ends so no Timer is left pending (bounded
+      // pumps only — see the file's pumpAndSettle caveat).
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+      await t.pump();
+    });
+
+    testWidgets('the elapsed readout ticks once a second while recording',
+        (t) async {
+      final coordinator = makeCoordinator(AppSettings());
+      await t.pumpWidget(app(strip(
+        settings: AppSettings(),
+        coordinatorOverride: coordinator,
+      )));
+
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+      expect(find.textContaining('0:00'), findsOneWidget);
+
+      await t.pump(const Duration(seconds: 1));
+      expect(find.textContaining('0:01'), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+      await t.pump();
+    });
+
+    testWidgets(
+        'tapping again while recording stops it and saves a recording clip',
+        (t) async {
+      final coordinator = makeCoordinator(AppSettings());
+      await t.pumpWidget(app(strip(
+        settings: AppSettings(),
+        coordinatorOverride: coordinator,
+      )));
+
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('recordButton')));
+      await t.pump();
+      await t.pump(); // let the async stop/save chain settle
+
+      expect(coordinator.isRecording.value, isFalse);
+      expect(find.text('Record'), findsOneWidget);
+    });
+
+    testWidgets('disabled when there is a capture error', (t) async {
+      await t.pumpWidget(
+          app(strip(settings: AppSettings(), captureError: 'boom')));
+      final btn =
+          t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
+      expect(btn.onPressed, isNull);
+    });
+  });
+
   group('permission banner button', () {
     testWidgets('present for a permission-related capture error', (t) async {
       await t.pumpWidget(app(strip(

@@ -213,6 +213,78 @@ void main() {
     expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
   });
 
+  group('toggleRecording', () {
+    test('starts with isRecording false and no start time', () {
+      expect(coordinator.isRecording.value, isFalse);
+      expect(coordinator.recordingStartedAt.value, isNull);
+    });
+
+    test('a full start/stop cycle adds a recording clip', () async {
+      await coordinator.toggleRecording();
+      expect(coordinator.isRecording.value, isTrue);
+      expect(coordinator.recordingStartedAt.value, isNotNull);
+      expect(engine.calls, contains('startRecording'));
+      expect(library.all, isEmpty); // nothing saved until stop
+
+      await coordinator.toggleRecording();
+      expect(coordinator.isRecording.value, isFalse);
+      expect(coordinator.recordingStartedAt.value, isNull);
+      expect(engine.calls, contains('stopRecording'));
+      expect(library.all, hasLength(1));
+      expect(library.all.single.gameId, 'desktop');
+      expect(library.all.single.event, GameEventKind.recording);
+      expect(File(library.all.single.path).existsSync(), isTrue);
+    });
+
+    test('start attributes the recording to the active game', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      await coordinator.toggleRecording();
+      await coordinator.toggleRecording();
+
+      expect(library.all.single.gameId, 'league_of_legends');
+    });
+
+    test('failRecording surfaces an error and leaves isRecording false',
+        () async {
+      engine.failRecording = true;
+      await coordinator.toggleRecording();
+      expect(coordinator.isRecording.value, isFalse);
+      expect(coordinator.lastSaveError.value, isNotNull);
+      expect(library.all, isEmpty);
+    });
+
+    test('a failed stop still clears isRecording (engine-side session ended)',
+        () async {
+      await coordinator.toggleRecording(); // start succeeds
+      expect(coordinator.isRecording.value, isTrue);
+
+      engine.failRecording = true;
+      await coordinator.toggleRecording(); // stop fails
+      expect(coordinator.isRecording.value, isFalse);
+      expect(coordinator.recordingStartedAt.value, isNull);
+      expect(coordinator.lastSaveError.value, isNotNull);
+      expect(library.all, isEmpty);
+    });
+
+    test('toggling with no capture backend (dev mode) no-ops safely', () async {
+      final devCoordinator = ClipCoordinator(
+        registry: GameRegistry(sources: const []),
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        // engine: null — dev mode
+      )..start(supervise: false);
+
+      await devCoordinator.toggleRecording();
+      expect(devCoordinator.isRecording.value, isFalse);
+      expect(library.all, isEmpty);
+    });
+  });
+
   group('activeGameIds', () {
     test('starts empty', () {
       expect(coordinator.activeGameIds.value, isEmpty);

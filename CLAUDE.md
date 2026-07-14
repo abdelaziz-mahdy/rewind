@@ -69,6 +69,8 @@ rewind/
   / short clips / **black frames**. Run it after anything touching capture.
 - Debug save trigger: `touch ~/Movies/Rewind/.save-now` acts like the hotkey
   (debug builds only) — how agents save clips without a keyboard.
+- Debug record trigger: `touch ~/Movies/Rewind/.record-toggle` acts like the
+  record hotkey (debug builds only) — starts/stops a manual recording.
 
 **macOS capture gotchas (each cost hours once):**
 - **TCC / Screen Recording keys off the code signature.** The app signs with

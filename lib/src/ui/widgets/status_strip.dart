@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -189,6 +190,11 @@ class StatusStrip extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(width: _controlGap),
+              _RecordButton(
+                coordinator: coordinator,
+                disabled: captureError != null,
+              ),
               const SizedBox(width: _controlGap),
               SizedBox(
                 height: _controlHeight,
@@ -448,6 +454,129 @@ class _SourceChip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The deck's manual-recording toggle: idle it's an outlined "Record" button
+/// with a dot icon; while [ClipCoordinator.isRecording] is true it becomes a
+/// filled, `rec`-red "■ 0:42" button with a 1 s-ticking elapsed readout
+/// (tabular numerals) computed from [ClipCoordinator.recordingStartedAt].
+/// Clicking either state calls [ClipCoordinator.toggleRecording] — starting,
+/// then stopping, the same session.
+class _RecordButton extends StatefulWidget {
+  final ClipCoordinator coordinator;
+
+  /// Mirrors the Save clip button: true whenever there's a capture error.
+  final bool disabled;
+
+  const _RecordButton({required this.coordinator, required this.disabled});
+
+  @override
+  State<_RecordButton> createState() => _RecordButtonState();
+}
+
+class _RecordButtonState extends State<_RecordButton> {
+  Timer? _ticker;
+
+  /// Whole seconds elapsed since the recording started. Seeded once from
+  /// [ClipCoordinator.recordingStartedAt] when a session begins, then
+  /// incremented by the ticker itself rather than re-read from
+  /// `DateTime.now()` on every tick — so the readout advances exactly once
+  /// per `Timer.periodic` fire under `flutter_test`'s fake-time `pump()`,
+  /// which fast-forwards `Timer`s but not the unfakeable `DateTime.now()`.
+  int _elapsedSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.coordinator.isRecording.addListener(_onRecordingChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecordButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coordinator != widget.coordinator) {
+      oldWidget.coordinator.isRecording.removeListener(_onRecordingChanged);
+      widget.coordinator.isRecording.addListener(_onRecordingChanged);
+      _onRecordingChanged();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.coordinator.isRecording.removeListener(_onRecordingChanged);
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  /// Starts/stops the 1 s ticker alongside [ClipCoordinator.isRecording]
+  /// flipping, and rebuilds so the button's state (outlined vs filled-red)
+  /// and its elapsed readout stay in sync.
+  void _onRecordingChanged() {
+    final recording = widget.coordinator.isRecording.value;
+    if (recording && _ticker == null) {
+      final start = widget.coordinator.recordingStartedAt.value;
+      _elapsedSeconds =
+          start != null ? DateTime.now().difference(start).inSeconds : 0;
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        _elapsedSeconds++;
+        if (mounted) setState(() {});
+      });
+    } else if (!recording && _ticker != null) {
+      _ticker!.cancel();
+      _ticker = null;
+    }
+    if (mounted) setState(() {});
+  }
+
+  String get _elapsed {
+    final minutes = _elapsedSeconds ~/ 60;
+    final seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onPressed =
+        widget.disabled ? null : () => widget.coordinator.toggleRecording();
+    if (widget.coordinator.isRecording.value) {
+      return SizedBox(
+        height: _controlHeight,
+        child: FilledButton.icon(
+          key: const ValueKey('recordButton'),
+          style: FilledButton.styleFrom(
+            backgroundColor: context.rewindTokens.rec,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: onPressed,
+          icon: const Icon(Icons.stop_rounded, size: _controlIconSize),
+          label: Text(
+            _elapsed,
+            style: Theme.of(context)
+                .textTheme
+                .label
+                .copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: _controlHeight,
+      child: OutlinedButton.icon(
+        key: const ValueKey('recordButton'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: onPressed,
+        icon: const Icon(Icons.fiber_manual_record, size: _controlIconSize),
+        label: const Text('Record'),
       ),
     );
   }

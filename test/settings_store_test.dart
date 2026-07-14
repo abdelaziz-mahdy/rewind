@@ -17,6 +17,23 @@ void main() {
     expect(s.captureDisplayUuid, isNull);
   });
 
+  test('recordHotkey defaults to Alt+F9', () {
+    expect(AppSettings().recordHotkey, 'Alt+F9');
+  });
+
+  test('recordHotkey round-trips through toJson/fromJson', () {
+    final s = AppSettings(recordHotkey: 'Ctrl+F9');
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.recordHotkey, 'Ctrl+F9');
+  });
+
+  test('recordHotkey round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(recordHotkey: 'Ctrl+F9'));
+    final loaded = await store.load();
+    expect(loaded.recordHotkey, 'Ctrl+F9');
+  });
+
   test('captureDisplayUuid round-trips through toJson/fromJson', () {
     final s = AppSettings(captureDisplayUuid: 'display-uuid-123');
     final loaded = AppSettings.fromJson(s.toJson());

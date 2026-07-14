@@ -9,9 +9,12 @@ import 'package:rewind/src/ui/theme.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
-/// Taps the hotkey recorder field, putting it into "Press keys…" state.
+/// Taps the SAVE hotkey recorder field, putting it into "Press keys…" state.
+/// Targeted by key rather than by displayed text: with the record hotkey
+/// field also on screen (default "Alt+F9"), a text-based finder would match
+/// both fields.
 Future<void> _startRecording(WidgetTester t) async {
-  await t.tap(find.textContaining(RegExp(r'Click to set a hotkey|^Alt\+')));
+  await t.tap(find.byKey(const ValueKey('saveHotkeyField')));
   await t.pump();
 }
 
@@ -136,6 +139,64 @@ void main() {
     expect(recording, [true, false, true]);
     expect(calls, isNotEmpty);
     expect(calls.last.hotkey, 'F9');
+  });
+
+  testWidgets('the record hotkey field shows its own default value', (t) async {
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    expect(find.text('Alt+F10'), findsOneWidget); // save hotkey
+    expect(find.text('Alt+F9'), findsOneWidget); // record hotkey
+  });
+
+  testWidgets(
+      'recording a combo in the record hotkey field updates '
+      'settings.recordHotkey without touching settings.hotkey', (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
+    await t.pump();
+    expect(find.text('Press keys…'), findsOneWidget);
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.f8);
+    await t.pump();
+
+    expect(calls, isNotEmpty);
+    expect(calls.last.recordHotkey, 'Ctrl+F8');
+    expect(calls.last.hotkey, 'Alt+F10'); // untouched
+
+    await t.sendKeyUpEvent(LogicalKeyboardKey.f8);
+    await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+  });
+
+  testWidgets(
+      'onHotkeyRecording fires for the record field too, same as the '
+      'save field', (t) async {
+    final recording = <bool>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+      onHotkeyRecording: (r) async => recording.add(r),
+    )));
+
+    await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
+    await t.pump();
+    expect(recording, [true]);
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+    await t.sendKeyUpEvent(LogicalKeyboardKey.escape);
+    expect(recording, [true, false]);
   });
 
   testWidgets('picking 60s updates settings via onChanged', (t) async {

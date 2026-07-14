@@ -22,6 +22,7 @@ enum GameEventKind {
   // Match flow
   victory,
   defeat,
+  recording, // a manual recording session (deck button / record hotkey)
   other,
 }
 
