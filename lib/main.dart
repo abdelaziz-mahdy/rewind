@@ -198,6 +198,7 @@ Future<void> main() async {
       }
       settingsRevision.value++;
     },
+    onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
     onHotkeyRecording: (recording) async {
       if (recording) {
         // Suspend the live global hotkey while the recorder is listening:
@@ -236,6 +237,7 @@ class RewindApp extends StatelessWidget {
   final Future<void> Function(bool recording) onHotkeyRecording;
   final VoidCallback onOpenClipsFolder;
   final ValueListenable<int>? settingsRevision;
+  final void Function(String bundleId)? onSetCaptureApp;
 
   const RewindApp({
     required this.coordinator,
@@ -249,6 +251,7 @@ class RewindApp extends StatelessWidget {
     required this.onHotkeyRecording,
     required this.onOpenClipsFolder,
     this.settingsRevision,
+    this.onSetCaptureApp,
     super.key,
   });
 
@@ -269,6 +272,7 @@ class RewindApp extends StatelessWidget {
         onOpenClipsFolder: onOpenClipsFolder,
         settingsRevision: settingsRevision,
         onHotkeyRecording: onHotkeyRecording,
+        onSetCaptureApp: onSetCaptureApp,
       ),
     );
   }

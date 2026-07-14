@@ -8,6 +8,7 @@ import '../../events/game_catalog.dart';
 import '../../obs/app_info.dart';
 import '../../obs/display_info.dart';
 import '../../settings/app_settings.dart';
+import '../capture_app_match.dart';
 import '../theme.dart';
 
 /// Shared sizing for the deck's right-hand control group (game chip,
@@ -368,8 +369,20 @@ class _SourceChip extends StatelessWidget {
     onSettingsChanged(settings);
   }
 
+  /// Picking an app is also how Rewind "learns" it: writes a [GameConfig] so
+  /// the game shows up in the rail right away and is auto-detected/
+  /// auto-followed the next time it's running (see `capture_app_match.dart`
+  /// and `source_builder.dart`) — without this, a manually-picked app would
+  /// be forgotten the moment the user picks something else or restarts.
+  /// Reuses an existing catalog entry's gameId when [a] matches one (no
+  /// duplicate row for a game the catalog already knows) and never
+  /// overwrites an already-set `processMatch` on an existing config.
   void _pickApp(AppInfo a) {
     settings.captureAppBundleId = a.bundleId;
+    final gameId = gameIdForApp(a);
+    final cfg = settings.configFor(gameId);
+    cfg.processMatch ??= a.name;
+    settings.setConfig(cfg);
     onSettingsChanged(settings);
   }
 

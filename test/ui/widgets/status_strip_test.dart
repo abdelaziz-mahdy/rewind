@@ -124,6 +124,53 @@ void main() {
     });
 
     testWidgets(
+        'picking an app also creates a GameConfig for it, reusing an '
+        'existing catalog gameId when the app matches one', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      const catalogApp =
+          AppInfo(bundleId: 'com.valve.cs2', name: 'Counter-Strike 2', pid: 3);
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        capturableApps: const [..._apps, catalogApp],
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      await t.tap(find.textContaining('Capturing: Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('Counter-Strike 2').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      final cfg =
+          settings.allConfigs.where((c) => c.gameId == 'app:cs2').toList();
+      expect(cfg, hasLength(1));
+      expect(cfg.single.processMatch, 'Counter-Strike 2');
+    });
+
+    testWidgets('picking a non-catalog app mints a fresh app:<slug> GameConfig',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(app(strip(
+        settings: settings,
+        capturableApps: _apps,
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      await t.tap(find.textContaining('Capturing: Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('App Two').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      final cfg =
+          settings.allConfigs.where((c) => c.gameId == 'app:app_two').toList();
+      expect(cfg, hasLength(1));
+      expect(cfg.single.processMatch, 'App Two');
+    });
+
+    testWidgets(
         'picking a display writes captureDisplayUuid and clears '
         'captureAppBundleId', (t) async {
       final calls = <AppSettings>[];

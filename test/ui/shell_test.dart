@@ -8,6 +8,7 @@ import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/shell.dart';
@@ -50,6 +51,9 @@ void main() {
     String? error,
     ValueNotifier<bool>? bufferActive,
     VoidCallback? onOpenClipsFolder,
+    List<AppInfo> capturableApps = const [],
+    Future<void> Function(AppSettings)? onSettingsChanged,
+    void Function(String bundleId)? onSetCaptureApp,
   }) =>
       Shell(
         coordinator: coordinator,
@@ -60,8 +64,10 @@ void main() {
         // (matches status_strip_test.dart's own note on the same widget).
         bufferActive: bufferActive ?? ValueNotifier<bool>(false),
         hotkeyLabel: 'Alt+F10',
-        onSettingsChanged: (_) async {},
+        capturableApps: capturableApps,
+        onSettingsChanged: onSettingsChanged ?? (_) async {},
         onOpenClipsFolder: onOpenClipsFolder ?? () {},
+        onSetCaptureApp: onSetCaptureApp,
       );
 
   Clip clip(String path, String gameId, GameEventKind event, DateTime createdAt,
@@ -273,6 +279,93 @@ void main() {
       await t.pump(const Duration(milliseconds: 200));
 
       expect(find.textContaining('Supported Games'), findsOneWidget);
+    });
+  });
+
+  group('detected game banner', () {
+    Finder banner(String gameId) =>
+        find.byKey(ValueKey('detectedGameBanner:$gameId'));
+
+    testWidgets(
+        'appears for a catalog game detected running with no GameConfig yet',
+        (t) async {
+      coordinator.activeGameIds.value = {'app:cs2'};
+      await t.pumpWidget(_app(shell()));
+
+      expect(banner('app:cs2'), findsOneWidget);
+      expect(
+          find.textContaining('Counter-Strike 2 is running'), findsOneWidget);
+    });
+
+    testWidgets('absent once the game already has a GameConfig', (t) async {
+      coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
+      coordinator.activeGameIds.value = {'app:cs2'};
+      await t.pumpWidget(_app(shell()));
+
+      expect(banner('app:cs2'), findsNothing);
+    });
+
+    testWidgets('absent when no catalog game is running', (t) async {
+      await t.pumpWidget(_app(shell()));
+      expect(find.textContaining(' is running'), findsNothing);
+    });
+
+    testWidgets(
+        'Record configures the game, sets the matching capture app, and '
+        'opens its hub', (t) async {
+      final settingsCalls = <AppSettings>[];
+      String? capturedBundleId;
+      coordinator.activeGameIds.value = {'app:cs2'};
+      await t.pumpWidget(_app(shell(
+        capturableApps: const [
+          AppInfo(bundleId: 'com.valve.cs2', name: 'Counter-Strike 2', pid: 7),
+        ],
+        onSettingsChanged: (s) async => settingsCalls.add(s),
+        onSetCaptureApp: (bundleId) => capturedBundleId = bundleId,
+      )));
+
+      await t
+          .tap(find.byKey(const ValueKey('detectedGameBannerRecord:app:cs2')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(coordinator.settings.allConfigs.any((c) => c.gameId == 'app:cs2'),
+          isTrue);
+      expect(settingsCalls, isNotEmpty);
+      expect(capturedBundleId, 'com.valve.cs2');
+      expect(
+          find.byKey(const ValueKey('gameHubScreen:app:cs2')), findsOneWidget);
+    });
+
+    testWidgets(
+        'Record does not touch the capture app when nothing currently '
+        'running matches the game', (t) async {
+      String? capturedBundleId;
+      coordinator.activeGameIds.value = {'app:cs2'};
+      await t.pumpWidget(_app(shell(
+        onSetCaptureApp: (bundleId) => capturedBundleId = bundleId,
+      )));
+
+      await t
+          .tap(find.byKey(const ValueKey('detectedGameBannerRecord:app:cs2')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(capturedBundleId, isNull);
+      expect(coordinator.settings.allConfigs.any((c) => c.gameId == 'app:cs2'),
+          isTrue);
+    });
+
+    testWidgets('dismiss hides the banner for that game only', (t) async {
+      coordinator.activeGameIds.value = {'app:cs2', 'app:dota2'};
+      await t.pumpWidget(_app(shell()));
+
+      await t
+          .tap(find.byKey(const ValueKey('detectedGameBannerDismiss:app:cs2')));
+      await t.pump();
+
+      expect(banner('app:cs2'), findsNothing);
+      expect(banner('app:dota2'), findsOneWidget);
     });
   });
 }

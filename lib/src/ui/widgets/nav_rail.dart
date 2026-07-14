@@ -112,7 +112,7 @@ class NavRail extends StatelessWidget {
           _NavItem(
             key: const ValueKey('navItem:addGame'),
             icon: Icons.add,
-            label: '+ Add game',
+            label: 'Add game',
             selected: selected is SupportedGamesDestination,
             onTap: () => onSelect(const SupportedGamesDestination()),
           ),

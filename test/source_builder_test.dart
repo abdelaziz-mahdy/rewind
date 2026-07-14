@@ -92,5 +92,46 @@ void main() {
       final gameIds = sources.map((s) => s.gameId).toList();
       expect(gameIds.toSet().length, gameIds.length);
     });
+
+    // The capture-source chip's "remember this app" write (see
+    // `capture_app_match.dart`/`status_strip.dart`) generates GameConfigs of
+    // exactly this shape: `app:<slug>` ids for non-catalog apps, and a reuse
+    // of an existing catalog gameId for apps that match one. Both must flow
+    // through `buildSources` the same way Supported Games' Add flow does.
+    test(
+        'a picked-app config for a non-catalog app (app:<slug> gameId) adds '
+        'a matching ProcessWatcherSource', () {
+      final settings = AppSettings()
+        ..setConfig(GameConfig(gameId: 'app:discord', processMatch: 'Discord'));
+
+      final sources = buildSources(settings);
+      final discord = sources
+          .whereType<ProcessWatcherSource>()
+          .where((s) => s.gameId == 'app:discord');
+
+      expect(discord, hasLength(1));
+      expect(discord.single.processMatch, 'Discord');
+      expect(sources.length, 1 + popularGamesCatalog.length + 1);
+    });
+
+    test(
+        'a picked-app config reusing a catalog gameId (e.g. app:cs2) does '
+        'not add a second source for it', () {
+      final settings = AppSettings()
+        ..setConfig(
+            GameConfig(gameId: 'app:cs2', processMatch: 'Counter-Strike 2'));
+
+      final sources = buildSources(settings);
+      final cs2 = sources
+          .whereType<ProcessWatcherSource>()
+          .where((s) => s.gameId == 'app:cs2');
+
+      // Still exactly one — the catalog's own source — using the catalog's
+      // processMatch, not the picked app's, since the catalog entry is
+      // built first and the user config is skipped once its gameId is seen.
+      expect(cs2, hasLength(1));
+      expect(cs2.single.processMatch, 'cs2');
+      expect(sources.length, 1 + popularGamesCatalog.length);
+    });
   });
 }
