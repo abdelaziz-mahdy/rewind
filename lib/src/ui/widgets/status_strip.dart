@@ -10,6 +10,16 @@ import '../../obs/display_info.dart';
 import '../../settings/app_settings.dart';
 import '../theme.dart';
 
+/// Shared sizing for the deck's right-hand control group (game chip,
+/// capture-source chip, Save clip) so the three read as one row of equal-
+/// height controls instead of the mismatched heights/icon sizes the bar
+/// used to have (see docs/superpowers/specs/2026-07-13-game-centric-
+/// redesign.md §3.2).
+const double _controlHeight = 32;
+const double _controlIconSize = 14;
+const double _controlGap = 8;
+const double _controlPaddingH = 12;
+
 /// The persistent "recorder deck": a single 48 px row — buffering indicator,
 /// active-game chip, the capture-source chip, the "Save clip" action — pinned
 /// above the content area on every Shell destination (see docs/superpowers/
@@ -75,7 +85,7 @@ class StatusStrip extends StatelessWidget {
             captureError != null ? 'Capture unavailable' : 'Paused',
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: theme.textTheme.numeral
+            style: theme.textTheme.title
                 .copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
@@ -90,7 +100,7 @@ class StatusStrip extends StatelessWidget {
           builder: (context, gameId, _) => _BufferQuickSet(
             label:
                 'Buffering · ${coordinator.settings.bufferSecondsFor(gameId)} s',
-            style: theme.textTheme.numeral,
+            style: theme.textTheme.title,
             onPick: (seconds) {
               // Mirrors exactly what `bufferSecondsFor` reads: with a game
               // active, `configFor` lazily creates (or reuses) that game's
@@ -153,7 +163,7 @@ class StatusStrip extends StatelessWidget {
           child: Row(
             children: [
               Expanded(child: _liveIndicator(context)),
-              const SizedBox(width: 12),
+              const SizedBox(width: _controlGap),
               Flexible(
                 child: ValueListenableBuilder<String?>(
                   valueListenable: coordinator.activeGame,
@@ -164,7 +174,7 @@ class StatusStrip extends StatelessWidget {
                 ),
               ),
               if (displays.isNotEmpty) ...[
-                const SizedBox(width: 8),
+                const SizedBox(width: _controlGap),
                 Flexible(
                   child: ValueListenableBuilder<String?>(
                     valueListenable: coordinator.autoSwitchedAppName,
@@ -178,16 +188,23 @@ class StatusStrip extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              const SizedBox(width: _controlGap),
+              SizedBox(
+                height: _controlHeight,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: _controlPaddingH),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: captureError == null
+                      ? () => coordinator.onHotkey()
+                      : null,
+                  icon: const Icon(Icons.videocam_outlined,
+                      size: _controlIconSize),
+                  label: const Text('Save clip'),
                 ),
-                onPressed:
-                    captureError == null ? () => coordinator.onHotkey() : null,
-                icon: const Icon(Icons.videocam_outlined, size: 16),
-                label: const Text('Save clip'),
               ),
             ],
           ),
@@ -260,7 +277,9 @@ class _GameChip extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 180),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        height: _controlHeight,
+        padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
@@ -270,7 +289,8 @@ class _GameChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.sports_esports_outlined,
-                size: 14, color: theme.colorScheme.onSurfaceVariant),
+                size: _controlIconSize,
+                color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -384,7 +404,9 @@ class _SourceChip extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 200),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          height: _controlHeight,
+          padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest,
             borderRadius:
@@ -394,7 +416,9 @@ class _SourceChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
+              Icon(icon,
+                  size: _controlIconSize,
+                  color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
@@ -406,7 +430,8 @@ class _SourceChip extends StatelessWidget {
               ),
               const SizedBox(width: 2),
               Icon(Icons.expand_more,
-                  size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  size: _controlIconSize,
+                  color: theme.colorScheme.onSurfaceVariant),
             ],
           ),
         ),

@@ -12,6 +12,7 @@ import 'game_directory.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
+import 'widgets/game_tile_avatar.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -316,6 +317,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
         children: [
           Row(
             children: [
+              GameTileAvatar(
+                gameId: entry.gameId,
+                displayName: entry.displayName,
+                size: 40,
+              ),
+              const SizedBox(width: 12),
               Flexible(
                 child: Text(
                   entry.displayName,

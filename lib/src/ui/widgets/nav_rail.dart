@@ -6,6 +6,7 @@ import '../../clip/clip_library.dart';
 import '../game_directory.dart';
 import '../shell_destination.dart';
 import '../theme.dart';
+import 'game_tile_avatar.dart';
 
 /// The persistent 220 px left rail (see docs/superpowers/specs/
 /// 2026-07-13-game-centric-redesign.md §3.1): wordmark, All Clips, one row
@@ -228,6 +229,12 @@ class _GameRow extends StatelessWidget {
           ),
           child: Row(
             children: [
+              GameTileAvatar(
+                gameId: entry.gameId,
+                displayName: entry.displayName,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   entry.displayName,

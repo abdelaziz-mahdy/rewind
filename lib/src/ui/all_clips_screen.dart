@@ -106,11 +106,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    tooltip: 'Open clips folder',
-                    icon: const Icon(Icons.folder_open_outlined),
-                    onPressed: widget.onOpenClipsFolder,
-                  ),
+                  _FolderButton(onPressed: widget.onOpenClipsFolder),
                 ],
               ),
             ),
@@ -178,6 +174,34 @@ class _EmptyLibrary extends StatelessWidget {
             label: const Text('Open clips folder'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The header's "open clips folder" affordance: a compact, hairline-bordered
+/// square icon button flush with the header's right padding edge — a small
+/// bordered control rather than a bare [IconButton] so it reads as a
+/// deliberate action next to the title, not a stray floating glyph.
+class _FolderButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _FolderButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return IconButton(
+      tooltip: 'Open clips folder',
+      icon: const Icon(Icons.folder_open_outlined, size: 18),
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        side: BorderSide(color: tokens.hairline),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+        minimumSize: const Size(36, 36),
+        visualDensity: VisualDensity.compact,
       ),
     );
   }

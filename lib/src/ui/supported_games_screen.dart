@@ -6,6 +6,7 @@ import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../settings/app_settings.dart';
 import 'theme.dart';
+import 'widgets/game_tile_avatar.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s doc on this):
 /// the vendor integration that drives auto-clip-on-event, and the catalog's
@@ -188,6 +189,12 @@ class _CatalogRowTile extends StatelessWidget {
       ),
       child: Row(
         children: [
+          GameTileAvatar(
+            gameId: row.gameId,
+            displayName: row.displayName,
+            size: 32,
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
