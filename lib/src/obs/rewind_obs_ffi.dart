@@ -17,6 +17,12 @@ external int _startBuffer();
 @Native<Int32 Function()>(symbol: 'rewind_stop_buffer')
 external int _stopBuffer();
 
+@Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_start_recording')
+external int _startRecording(Pointer<Utf8> outDir);
+
+@Native<Pointer<Utf8> Function()>(symbol: 'rewind_stop_recording')
+external Pointer<Utf8> _stopRecording();
+
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_buffer_seconds')
 external int _setBufferSeconds(int seconds);
 
@@ -74,6 +80,24 @@ class RewindObs {
 
   int startBuffer() => _startBuffer();
   int stopBuffer() => _stopBuffer();
+
+  /// Starts a manual recording into [outDir]. Returns 0 on success.
+  int startRecording(String outDir) {
+    final p = outDir.toNativeUtf8();
+    try {
+      return _startRecording(p);
+    } finally {
+      malloc.free(p);
+    }
+  }
+
+  /// Stops the manual recording started by [startRecording], returning the
+  /// recorded file's path, or null if none was in progress / on failure.
+  String? stopRecording() {
+    final r = _stopRecording();
+    if (r == nullptr) return null;
+    return r.toDartString();
+  }
 
   /// Apply a new replay-buffer length (used on per-game switch).
   int setBufferSeconds(int seconds) => _setBufferSeconds(seconds);

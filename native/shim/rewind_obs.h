@@ -29,6 +29,24 @@ const char *rewind_save_clip(const char *out_dir);
 /* Stop the replay buffer. Returns 0 on success. */
 int rewind_stop_buffer(void);
 
+/* Begin a manual, continuous recording session into `out_dir`, independent
+ * of the rolling replay buffer (which keeps running unaffected). Writes to
+ * "<out_dir>/rewind-rec-<timestamp>.mp4", mirroring the replay buffer's own
+ * filename style. The underlying output is created once on first use and
+ * reused on subsequent calls; it shares the same video/audio encoders as
+ * the replay buffer (standard practice for libobs outputs — see
+ * native/shim/README.md). Returns 0 on success, non-zero if a recording is
+ * already in progress or the output fails to start (see rewind_last_error). */
+int rewind_start_recording(const char *out_dir);
+
+/* End the recording session started by rewind_start_recording. Blocks
+ * (bounded, ~5s) until the output has fully stopped so the file is
+ * finalised before returning. Returns a pointer to a NUL-terminated path
+ * string owned by the shim (valid until the next call to
+ * rewind_start_recording or rewind_stop_recording), or NULL if no recording
+ * was in progress (see rewind_last_error). */
+const char *rewind_stop_recording(void);
+
 /* Tear down libobs. Returns 0 on success. */
 int rewind_obs_shutdown(void);
 

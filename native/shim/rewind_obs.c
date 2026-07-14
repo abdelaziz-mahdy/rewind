@@ -53,11 +53,17 @@ const char *rewind_last_error(void) {
 #include <libproc.h>
 #endif
 
-static obs_source_t  *g_capture = NULL;
-static obs_encoder_t *g_venc    = NULL;
-static obs_encoder_t *g_aenc    = NULL;
-static obs_output_t  *g_replay  = NULL;
-static int             g_seconds = 30;
+static obs_source_t  *g_capture   = NULL;
+static obs_encoder_t *g_venc      = NULL;
+static obs_encoder_t *g_aenc      = NULL;
+static obs_output_t  *g_replay    = NULL;
+static int             g_seconds  = 30;
+
+/* Manual-recording output (see rewind_start_recording). Created lazily on
+ * first use, shares g_venc/g_aenc with g_replay, and is reused across
+ * subsequent start/stop cycles rather than recreated each time. */
+static obs_output_t  *g_recording      = NULL;
+static char            g_recording_path[1024] = "";
 
 /* User's preferred capture display, as a "display_uuid" string (see
  * rewind_set_capture_display). Empty means "use the main display" — the
@@ -792,6 +798,95 @@ int rewind_stop_buffer(void) {
     return 0;
 }
 
+int rewind_start_recording(const char *out_dir) {
+    if (!g_initialized) return fail("not initialized");
+    if (!out_dir || !out_dir[0]) return fail("out_dir is required");
+    if (g_recording && obs_output_active(g_recording))
+        return fail("recording already in progress");
+
+    if (!g_recording) {
+        /* Created once and reused for every subsequent start/stop cycle
+         * (obs_output_update() below refreshes its "path" setting per
+         * recording rather than recreating the output). Shares g_venc/
+         * g_aenc with g_replay: obs_output_set_video_encoder/audio_encoder
+         * only refuse to attach when the TARGET output is itself active
+         * (see obs_output_set_video_encoder2 in libobs/obs-output.c), not
+         * when the encoder is already attached to another output — so
+         * g_replay and g_recording can both encode concurrently from the
+         * same encoder pair, the same fan-out OBS Studio itself relies on
+         * for simultaneous stream+recording+replay. */
+        obs_data_t *ro = obs_data_create();
+        g_recording = obs_output_create("ffmpeg_muxer", "rewind-recording", ro, NULL);
+        obs_data_release(ro);
+        if (!g_recording) return fail("ffmpeg_muxer output unavailable");
+        obs_output_set_video_encoder(g_recording, g_venc);
+        obs_output_set_audio_encoder(g_recording, g_aenc, 0);
+    }
+
+    /* Mirrors the replay buffer's own filename style: os_generate_formatted_
+     * filename is the same helper libobs's own replay-buffer/recording
+     * outputs use internally (see generate_filename() in obs-ffmpeg-mux.c)
+     * for the %CCYY-%MM-%DD-... template. ffmpeg_muxer's "path" setting
+     * wants a full file path, not a directory+format pair (see
+     * ffmpeg_mux_start_internal() in obs-ffmpeg-mux.c), so the directory
+     * join happens here rather than being left to libobs. */
+    char *filename = os_generate_formatted_filename(
+        "mp4", false, "rewind-rec-%CCYY-%MM-%DD-%hh-%mm-%ss");
+    if (!filename) return fail("failed to generate recording filename");
+
+    char path[1024];
+    size_t dir_len = strlen(out_dir);
+    int has_trailing_slash = dir_len > 0 && out_dir[dir_len - 1] == '/';
+    snprintf(path, sizeof(path), "%s%s%s", out_dir,
+             has_trailing_slash ? "" : "/", filename);
+    bfree(filename);
+
+    os_mkdirs(out_dir);
+
+    obs_data_t *settings = obs_data_create();
+    obs_data_set_string(settings, "path", path);
+    obs_output_update(g_recording, settings);
+    obs_data_release(settings);
+
+    if (!obs_output_start(g_recording)) {
+        const char *err = obs_output_get_last_error(g_recording);
+        if (err && *err) return fail(err);
+        if (mux_helper_present() == 0)
+            return fail("recording failed to start: the obs-ffmpeg-mux "
+                        "helper is missing next to the app executable "
+                        "(rebuild, or re-run tools/bundle_obs_macos.sh)");
+        return fail("recording failed to start (no detail from libobs; "
+                    "check the in-app Logs screen)");
+    }
+
+    strncpy(g_recording_path, path, sizeof(g_recording_path) - 1);
+    g_recording_path[sizeof(g_recording_path) - 1] = '\0';
+    set_error("");
+    return 0;
+}
+
+const char *rewind_stop_recording(void) {
+    if (!g_initialized || !g_recording || !obs_output_active(g_recording)) {
+        set_error("recording not in progress");
+        return NULL;
+    }
+    obs_output_stop(g_recording);
+
+    /* obs_output_stop() is a graceful async stop (flushes buffered frames,
+     * finalises the file, exits the obs-ffmpeg-mux helper process) — poll
+     * obs_output_active() until it clears, same bounded-wait pattern as
+     * rewind_save_clip()'s poll on get_last_replay. */
+    for (int i = 0; i < 100 && obs_output_active(g_recording); i++) {
+        os_sleep_ms(50);
+    }
+    if (obs_output_active(g_recording)) {
+        set_error("timed out waiting for recording to stop");
+        return NULL;
+    }
+    set_error("");
+    return g_recording_path;
+}
+
 int rewind_set_buffer_seconds(int seconds) {
     if (!g_initialized) return fail("not initialized");
     if (seconds <= 0) { set_error("invalid buffer length"); return 2; }
@@ -807,7 +902,9 @@ int rewind_set_buffer_seconds(int seconds) {
 int rewind_obs_shutdown(void) {
     if (!g_initialized) return 0;
     if (g_replay && obs_output_active(g_replay)) obs_output_stop(g_replay);
-    obs_output_release(g_replay);   g_replay = NULL;
+    if (g_recording && obs_output_active(g_recording)) obs_output_stop(g_recording);
+    obs_output_release(g_replay);     g_replay = NULL;
+    obs_output_release(g_recording);  g_recording = NULL;
     obs_encoder_release(g_venc);    g_venc = NULL;
     obs_encoder_release(g_aenc);    g_aenc = NULL;
     obs_set_output_source(0, NULL);
@@ -922,8 +1019,41 @@ int rewind_stop_buffer(void) {
     return 0;
 }
 
+/* Stub state for rewind_start_recording/rewind_stop_recording — mirrors
+ * rewind_save_clip's stub behavior: synthesizes a plausible path but writes
+ * no file, so the Dart pipeline can be exercised end-to-end before libobs
+ * is linked. */
+static int  g_stub_recording = 0;
+static char g_stub_recording_path[1024] = "";
+
+int rewind_start_recording(const char *out_dir) {
+    if (!g_initialized) { set_error("not initialized"); return 1; }
+    if (g_stub_recording) { set_error("recording already in progress"); return 1; }
+    /* TODO(libobs): create/reuse a second "ffmpeg_muxer" output sharing the
+     * replay buffer's encoders and obs_output_start() it. */
+    time_t t = time(NULL);
+    snprintf(g_stub_recording_path, sizeof(g_stub_recording_path),
+             "%s/rewind-rec-%ld.mp4", out_dir ? out_dir : ".", (long)t);
+    g_stub_recording = 1;
+    set_error("stub: libobs not linked; no file written");
+    return 0;
+}
+
+const char *rewind_stop_recording(void) {
+    if (!g_initialized || !g_stub_recording) {
+        set_error("recording not in progress");
+        return NULL;
+    }
+    /* TODO(libobs): obs_output_stop() the recording output and wait for it
+     * to fully deactivate. */
+    g_stub_recording = 0;
+    set_error("");
+    return g_stub_recording_path;
+}
+
 int rewind_obs_shutdown(void) {
     /* TODO(libobs): release sources/encoders/outputs; obs_shutdown(); */
+    g_stub_recording = 0;
     g_initialized = 0;
     return 0;
 }
