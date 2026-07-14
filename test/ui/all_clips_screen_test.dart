@@ -169,4 +169,17 @@ void main() {
       expect(inList(find.text('MANUAL')), findsOneWidget);
     });
   });
+
+  testWidgets('folder button sits flush right at wide widths', (t) async {
+    t.view.physicalSize = const Size(1600, 900);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    library
+        .add(clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
+    await t.pumpWidget(_app(screen()));
+    final right = t.getTopRight(find.byTooltip('Open clips folder')).dx;
+    // Flush with the header's right padding — a flex-allocation regression
+    // once stranded it at ~60% of the row width.
+    expect(right, greaterThan(1600 - 40));
+  });
 }

@@ -87,17 +87,20 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
               padding: const EdgeInsets.fromLTRB(24, 20, 16, 4),
               child: Row(
                 children: [
-                  Flexible(
-                    child: Text(
-                      'All clips',
-                      key: const ValueKey('allClipsTitle'),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.display,
-                    ),
+                  // One flexible child only (the subtitle, tight fill): with
+                  // several loose flex-1 children sharing the row, each is
+                  // ALLOCATED an equal slice of the free space whether it
+                  // uses it or not — which stranded the folder button at
+                  // ~60% width instead of flush right.
+                  Text(
+                    'All clips',
+                    key: const ValueKey('allClipsTitle'),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.display,
                   ),
                   const SizedBox(width: 12),
-                  Flexible(
+                  Expanded(
                     child: Text(
                       '${scoped.length} clips · ${formatSize(totalBytes)}',
                       overflow: TextOverflow.ellipsis,
@@ -105,7 +108,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       style: Theme.of(context).textTheme.bodyMuted,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 12),
                   _FolderButton(onPressed: widget.onOpenClipsFolder),
                 ],
               ),
