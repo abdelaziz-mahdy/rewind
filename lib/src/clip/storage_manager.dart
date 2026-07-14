@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'clip.dart';
 import 'clip_library.dart';
@@ -64,12 +63,11 @@ class StorageManager {
   }
 
   Future<void> _delete(Clip clip) async {
-    try {
-      final f = File(clip.path);
-      if (await f.exists()) await f.delete();
-    } catch (_) {
-      // Log and continue; a locked/missing file shouldn't stall pruning.
-    }
-    library.remove(clip);
+    // Route through the library's own deletion so related on-disk state
+    // (cached thumbnails, the persisted index) is cleaned up exactly like a
+    // user-initiated delete — pruning used to bypass it and orphan
+    // .thumbs/ files forever. deleteClip already tolerates locked/missing
+    // files without throwing.
+    await library.deleteClip(clip);
   }
 }

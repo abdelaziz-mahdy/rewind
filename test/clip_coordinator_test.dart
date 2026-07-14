@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
@@ -211,6 +212,51 @@ void main() {
     await coordinator.onHotkey();
     expect(library.all, isEmpty);
     expect(File('${tmp.path}/clips.json').existsSync(), isFalse);
+  });
+
+  group('onClipIndexed hook', () {
+    test('fires with the newly-indexed clip after a successful save', () async {
+      final indexed = <Clip>[];
+      final withHook = ClipCoordinator(
+        registry: registry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        onClipIndexed: (c) async => indexed.add(c),
+      )..start(supervise: false);
+
+      await withHook.onHotkey();
+
+      expect(indexed, hasLength(1));
+      expect(indexed.single, same(library.all.single));
+    });
+
+    test('does not fire when the save fails', () async {
+      final indexed = <Clip>[];
+      engine.failSave = true;
+      final withHook = ClipCoordinator(
+        registry: registry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        onClipIndexed: (c) async => indexed.add(c),
+      )..start(supervise: false);
+
+      await withHook.onHotkey();
+
+      expect(indexed, isEmpty);
+    });
+
+    test('a null hook (the default) is simply not called', () async {
+      // No onClipIndexed passed to the outer `coordinator` from setUp —
+      // this just proves a save with no hook configured still succeeds.
+      await coordinator.onHotkey();
+      expect(library.all, hasLength(1));
+    });
   });
 
   group('toggleRecording', () {

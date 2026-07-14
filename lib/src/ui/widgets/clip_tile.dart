@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
+import '../../clip/thumbnail_cache.dart';
 import '../../events/game_catalog.dart';
 import '../../events/game_event.dart';
 import '../player_screen.dart';
@@ -103,7 +104,17 @@ class ClipTile extends StatefulWidget {
   final Clip clip;
   final ClipLibrary library;
 
-  const ClipTile({required this.clip, required this.library, super.key});
+  /// Source of leading-tile thumbnails. Null (the default in every test that
+  /// doesn't care about thumbnails) always renders the placeholder — real
+  /// call sites thread a shared cache down from `main.dart`.
+  final ThumbnailCache? thumbnails;
+
+  const ClipTile({
+    required this.clip,
+    required this.library,
+    this.thumbnails,
+    super.key,
+  });
 
   @override
   State<ClipTile> createState() => _ClipTileState();
@@ -134,18 +145,7 @@ class _ClipTileState extends State<ClipTile> {
           type: MaterialType.transparency,
           child: ListTile(
             onTap: () => _openInApp(context, clip),
-            leading: Container(
-              width: 64,
-              height: 44,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius:
-                    BorderRadius.circular(context.rewindTokens.radiusChip),
-                border: Border.fromBorderSide(hairlineBorder()),
-              ),
-              child: Icon(Icons.play_arrow_rounded,
-                  color: theme.colorScheme.onSurfaceVariant),
-            ),
+            leading: _ClipThumbnail(clip: clip, thumbnails: widget.thumbnails),
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -252,4 +252,67 @@ class _ClipTileState extends State<ClipTile> {
       // Best-effort: no OS handler available is not fatal.
     }
   }
+}
+
+/// The tile's leading 64x44 slot: a real video-frame thumbnail once
+/// generated, with a small play-glyph overlay; the original bare play-glyph
+/// placeholder while absent (no [thumbnails] cache — most tests — or the
+/// frame hasn't been generated yet). [FutureBuilder] on [ThumbnailCache.ensure]
+/// is deliberate: it starts on the placeholder and swaps to the image the
+/// moment generation completes, with no extra listenable plumbing needed.
+class _ClipThumbnail extends StatelessWidget {
+  final Clip clip;
+  final ThumbnailCache? thumbnails;
+
+  const _ClipThumbnail({required this.clip, required this.thumbnails});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cache = thumbnails;
+    final radius = BorderRadius.circular(context.rewindTokens.radiusChip);
+    return Container(
+      width: 64,
+      height: 44,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: radius,
+        border: Border.fromBorderSide(hairlineBorder()),
+      ),
+      // ClipRRect (not Container.clipBehavior) so the thumbnail image's
+      // corners round to match the border — `Container.clipBehavior` needs
+      // the `Clip` enum, which the app's own `Clip` model class (imported
+      // above) shadows in this file.
+      child: ClipRRect(
+        borderRadius: radius,
+        child: cache == null
+            ? _placeholder(theme)
+            : FutureBuilder<File?>(
+                future: cache.ensure(clip),
+                builder: (context, snapshot) {
+                  final file = snapshot.data;
+                  if (file == null) return _placeholder(theme);
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.file(file, fit: BoxFit.cover),
+                      Center(
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _placeholder(ThemeData theme) => Icon(
+        Icons.play_arrow_rounded,
+        color: theme.colorScheme.onSurfaceVariant,
+      );
 }

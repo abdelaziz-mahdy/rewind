@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../clip/clip_library.dart';
+import '../clip/thumbnail_cache.dart';
 import '../events/game_event.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
@@ -12,11 +13,13 @@ class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
   final VoidCallback onOpenClipsFolder;
+  final ThumbnailCache? thumbnails;
 
   const AllClipsScreen({
     required this.library,
     required this.hotkeyLabel,
     required this.onOpenClipsFolder,
+    this.thumbnails,
     super.key,
   });
 
@@ -127,8 +130,11 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                   : ListView.builder(
                       key: const ValueKey('clipsList'),
                       itemCount: clips.length,
-                      itemBuilder: (context, i) =>
-                          ClipTile(clip: clips[i], library: widget.library),
+                      itemBuilder: (context, i) => ClipTile(
+                        clip: clips[i],
+                        library: widget.library,
+                        thumbnails: widget.thumbnails,
+                      ),
                     ),
             ),
           ],

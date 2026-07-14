@@ -95,6 +95,32 @@ rewind/
   (bundle id). Verified against the vendored source in
   `native/third_party/work/obs-studio/plugins/mac-capture/`.
 
+**media_kit headless-Player gotchas (cost hours diagnosing thumbnail
+generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
+- **`Player.screenshot()` returns null with no VideoController attached.**
+  The default headless `PlayerConfiguration` has `vo=null` (no video output),
+  and mpv's `screenshot-raw` command reads from the video output's current
+  frame — with no video output there's nothing to grab, so `screenshot()`
+  silently resolves to `null` in well under a second (NOT a timeout). Fix: a
+  `media_kit_video` `VideoController(player)` must be created (never built
+  into a `Video` widget — it just needs to exist as mpv's render target),
+  and `controller.waitUntilFirstFrameRendered` awaited before screenshotting.
+- **Subscribe to a Player property stream BEFORE calling `open()`.**
+  `PlayerStream.duration` (and friends) is a broadcast `StreamController`;
+  mpv's property observers are registered at `Player()` construction, so the
+  "duration known" event can fire as early as during `open()` itself. A
+  `.firstWhere()` subscription started only after `await player.open(...)`
+  can miss that event entirely — broadcast streams never replay past events
+  — hanging until timeout on every single call.
+- **`open --stdout`/`--stderr` (used by `tools/e2e_smoke.sh`) does NOT
+  capture Dart's own `print()`/`talker` output** — only native C-level log
+  lines (libobs' `blog()`) show up in that file. To see Dart-side output
+  while debugging, run the built binary directly from Terminal instead of
+  via `open` (accepting that Screen Recording permission then attributes to
+  the Terminal, per the launch-context gotcha above — fine for anything that
+  doesn't need real capture, e.g. testing thumbnail generation against an
+  already-recorded clip).
+
 **UI layer rules (post game-centric redesign — spec:
 `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`):**
 - All styling flows through `RewindTokens` / the text-theme extension in
@@ -117,6 +143,16 @@ rewind/
   libmpv); tests assert navigation by route name (`playerScreenRouteName`).
 - Real `dart:io` file work inside `testWidgets` bodies hangs the fake-async
   zone — use plain `test()` or fakes.
+- Thumbnails: `MediaKitThumbnailGenerator` (media_kit-backed, like
+  `PlayerScreen`) must never be constructed in tests — fake the
+  `ThumbnailGenerator` seam instead (`test/fakes/fake_thumbnail_generator.dart`).
+  That fake writes with the `*Sync` `dart:io` calls deliberately: the async
+  variants hang forever if a `ClipTile` widget test triggers them (via
+  `FutureBuilder` calling `ThumbnailCache.ensure` during build) — this is
+  the previous bullet's gotcha in disguise, since `testWidgets` bodies run
+  in a fake-async zone. Sync IO blocks the call stack instead of scheduling
+  a real completion, so it works from any zone; bounded `pump()`s alone are
+  then enough to observe the placeholder-to-image swap.
 - Tall screens need `t.view.physicalSize` widening or off-screen widgets
   never build.
 

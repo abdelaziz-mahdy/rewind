@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 import '../clip/clip_library.dart';
+import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../log/log.dart';
@@ -29,6 +30,11 @@ class Shell extends StatefulWidget {
   final ClipCoordinator coordinator;
   final ClipLibrary library;
   final String? captureError;
+
+  /// Forwarded to every [ClipTile] (via All Clips / each game hub) for
+  /// leading-tile thumbnails. Null (e.g. every existing Shell test) always
+  /// renders ClipTile's placeholder.
+  final ThumbnailCache? thumbnails;
 
   /// Live buffer state (toggled by the tray's pause/resume). When null the
   /// deck assumes the buffer is running iff capture came up without error.
@@ -78,6 +84,7 @@ class Shell extends StatefulWidget {
     this.settingsRevision,
     this.onHotkeyRecording,
     this.onSetCaptureApp,
+    this.thumbnails,
     super.key,
   });
 
@@ -166,6 +173,7 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           hotkeyLabel: widget.hotkeyLabel,
           onOpenClipsFolder: widget.onOpenClipsFolder,
+          thumbnails: widget.thumbnails,
         ),
       GameDestination(gameId: final id) => GameHubScreen(
           key: ValueKey('gameHubScreen:$id'),
@@ -174,6 +182,7 @@ class _ShellState extends State<Shell> {
           coordinator: widget.coordinator,
           hotkeyLabel: widget.hotkeyLabel,
           onSettingsChanged: widget.onSettingsChanged,
+          thumbnails: widget.thumbnails,
         ),
       SupportedGamesDestination() => SupportedGamesScreen(
           key: const ValueKey('supportedGamesScreen'),

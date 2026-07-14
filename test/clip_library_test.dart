@@ -81,6 +81,37 @@ void main() {
     expect((await ClipLibrary.load(tmp)).all, isEmpty);
   });
 
+  test('deleteClip invokes onClipDeleted with the deleted clip', () async {
+    final f = await _mp4(tmp, 'a.mp4');
+    Clip? notified;
+    final lib = ClipLibrary(clipsDir: tmp, onClipDeleted: (c) => notified = c)
+      ..add(Clip(
+          path: f.path,
+          gameId: 'desktop',
+          event: GameEventKind.manual,
+          createdAt: DateTime(2026, 7, 1),
+          sizeBytes: 8));
+    await lib.save();
+    final clip = lib.all.single;
+    await lib.deleteClip(clip);
+    expect(notified, same(clip));
+  });
+
+  test('load does not descend into .thumbs (stray .mp4 there is not adopted)',
+      () async {
+    // A real clip alongside a `.thumbs` subdirectory containing a
+    // pathologically-named "clip" — proves the disk scan is non-recursive
+    // and .thumbs never contributes phantom library entries.
+    await _mp4(tmp, 'real.mp4');
+    final thumbsDir = Directory(p.join(tmp.path, '.thumbs'))
+      ..createSync(recursive: true);
+    await _mp4(thumbsDir, 'stray.mp4');
+
+    final loaded = await ClipLibrary.load(tmp);
+    expect(loaded.all, hasLength(1));
+    expect(loaded.all.single.path, p.join(tmp.path, 'real.mp4'));
+  });
+
   test('add notifies listeners', () async {
     final lib = ClipLibrary(clipsDir: tmp);
     var notified = 0;

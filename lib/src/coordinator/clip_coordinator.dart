@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,14 @@ class ClipCoordinator {
   final AppSettings settings;
   final CaptureEngine? engine; // null in dev mode (shim not built)
   final String outDir;
+
+  /// Fired fire-and-forget after a clip is successfully indexed (see
+  /// [_indexClip]) — the coordinator's hook into the thumbnail pipeline.
+  /// A plain callback rather than an injected `ThumbnailCache` so the
+  /// coordinator has no dependency on media_kit, matching this class's
+  /// existing "pure Dart, testable" shape (§ CLAUDE.md's event-watcher
+  /// principle, extended here to the save path).
+  final Future<void> Function(Clip)? onClipIndexed;
 
   /// The most-recently-activated game, used to attribute manual hotkey clips,
   /// pick the buffer length, and let the UI show what's being captured. Null
@@ -74,6 +83,7 @@ class ClipCoordinator {
     required this.settings,
     required this.outDir,
     this.engine,
+    this.onClipIndexed,
   });
 
   void start({bool supervise = true}) {
@@ -271,17 +281,22 @@ class ClipCoordinator {
       return;
     }
 
-    library.add(Clip(
+    final clip = Clip(
       path: path,
       gameId: e.gameId,
       event: e.kind,
       createdAt: e.time,
       sizeBytes: await file.length(),
-    ));
+    );
+    library.add(clip);
     await library.save();
     await storage.enforce();
     lastSaveError.value = null;
     talker.info('Clip saved: $path');
+
+    // Fire-and-forget: thumbnail generation must never delay or fail a save.
+    final hook = onClipIndexed;
+    if (hook != null) unawaited(hook(clip));
   }
 
   /// Sets [lastSaveError], forcing a notification even when the message is

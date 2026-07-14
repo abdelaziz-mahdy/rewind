@@ -11,7 +11,14 @@ class ClipLibrary extends ChangeNotifier {
   final Directory clipsDir;
   final List<Clip> _clips = [];
 
-  ClipLibrary({required this.clipsDir});
+  /// Notified after a clip's file is deleted via [deleteClip] — both
+  /// user-initiated deletion and `StorageManager`'s automatic pruning route
+  /// through it — so callers can clean up related on-disk state, e.g. a
+  /// cached thumbnail. A plain callback, not an injected `ThumbnailCache`,
+  /// so this class stays free of any media_kit dependency.
+  final void Function(Clip)? onClipDeleted;
+
+  ClipLibrary({required this.clipsDir, this.onClipDeleted});
 
   List<Clip> get all => List.unmodifiable(_clips);
   int get totalBytes => _clips.fold(0, (sum, c) => sum + c.sizeBytes);
@@ -39,6 +46,7 @@ class ClipLibrary extends ChangeNotifier {
       final f = File(clip.path);
       if (await f.exists()) await f.delete();
     } catch (_) {}
+    onClipDeleted?.call(clip);
     remove(clip);
     await save();
   }
@@ -53,8 +61,11 @@ class ClipLibrary extends ChangeNotifier {
 
   /// Load the index and reconcile with disk: entries whose file vanished are
   /// dropped; .mp4 files with no entry are adopted as manual desktop clips.
-  static Future<ClipLibrary> load(Directory clipsDir) async {
-    final lib = ClipLibrary(clipsDir: clipsDir);
+  static Future<ClipLibrary> load(
+    Directory clipsDir, {
+    void Function(Clip)? onClipDeleted,
+  }) async {
+    final lib = ClipLibrary(clipsDir: clipsDir, onClipDeleted: onClipDeleted);
     final known = <String>{};
     final index = lib._index;
     if (await index.exists()) {

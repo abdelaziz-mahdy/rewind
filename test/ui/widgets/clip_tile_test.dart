@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/thumbnail_cache.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/player_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart';
+
+import '../../fakes/fake_thumbnail_generator.dart';
 
 class _RecordingObserver extends NavigatorObserver {
   final List<Route<dynamic>> pushed = [];
@@ -81,5 +84,57 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Delete'), findsOneWidget);
+  });
+
+  group('thumbnail', () {
+    testWidgets('with no thumbnails cache, always shows the placeholder glyph',
+        (t) async {
+      await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
+      await t.pump();
+
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+    });
+
+    testWidgets(
+        'shows the placeholder first, then swaps to the generated '
+        'thumbnail once ready', (t) async {
+      // FakeThumbnailGenerator writes with the *Sync dart:io variants
+      // deliberately — see its doc comment — so this test never needs real
+      // async work driven from outside the widget-test fake-async zone.
+      final cache = ThumbnailCache(FakeThumbnailGenerator());
+
+      await t.pumpWidget(
+          app(ClipTile(clip: clip, library: library, thumbnails: cache)));
+
+      // Generation is still in flight the very first frame (even a fully
+      // synchronous fake still needs a microtask to resolve its Future) —
+      // the placeholder glyph shows, no image yet.
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+
+      // Bounded pumps flush the queued microtasks that let the fake's
+      // (synchronous, already-complete) generation work reach FutureBuilder.
+      await t.pump();
+      await t.pump();
+
+      expect(find.byType(Image), findsOneWidget);
+      // The play-glyph overlay stays visible on top of the image.
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    });
+
+    testWidgets('a failed generation leaves the placeholder showing',
+        (t) async {
+      final cache =
+          ThumbnailCache(FakeThumbnailGenerator(failFor: {clip.path}));
+
+      await t.pumpWidget(
+          app(ClipTile(clip: clip, library: library, thumbnails: cache)));
+      await t.pump();
+      await t.pump();
+
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+    });
   });
 }

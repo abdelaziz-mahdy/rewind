@@ -28,8 +28,11 @@ fail() { echo "E2E FAIL: $*" >&2; exit 1; }
 
 # Wake the display and keep it awake for the duration of the test — a
 # sleeping display records as faithful black frames and fails the pixel
-# check with a misleading verdict.
-caffeinate -d -u -t 45 &
+# check with a misleading verdict. 70s (not 45s): the app now stays alive
+# through the thumbnail poll below (moved after this point so real libmpv
+# thumbnail generation — which runs in-process — has time to finish before
+# pkill tears the app down).
+caffeinate -d -u -t 70 &
 CAFF_PID=$!
 trap 'kill $CAFF_PID 2>/dev/null || true' EXIT
 
@@ -52,7 +55,9 @@ sleep 6
 touch "$CLIPS_DIR/.record-toggle"
 sleep 8   # stop + muxer finalize + index
 
-pkill -x rewind 2>/dev/null || true
+# NOTE: pkill is deliberately deferred until after the thumbnail poll below
+# — thumbnail generation runs in-process (headless media_kit/libmpv) after
+# a clip is indexed, so killing the app too early would race it.
 
 REC_AFTER=$(ls "$CLIPS_DIR"/rewind-rec-*.mp4 2>/dev/null | wc -l | tr -d ' ')
 [[ "$REC_AFTER" -gt "$REC_BEFORE" ]] || fail "manual recording produced no rewind-rec-*.mp4 (see $LOG)"
@@ -89,5 +94,24 @@ if command -v ffprobe >/dev/null 2>&1; then
 else
   echo "warning: ffprobe not found — skipping duration/pixel checks" >&2
 fi
+
+# --- Thumbnail check --------------------------------------------------------
+# The one place thumbnail generation is exercised through the REAL libmpv
+# backend (widget/unit tests only ever fake the ThumbnailGenerator seam).
+# The app is still running at this point (pkill is below) so the
+# fire-and-forget generation kicked off when $CLIP was indexed has a real
+# chance to finish.
+echo "==> Waiting for the thumbnail of $CLIP"
+THUMB="$(dirname "$CLIP")/.thumbs/$(basename "$CLIP" .mp4).jpg"
+THUMB_DEADLINE=$((SECONDS + 15))
+while [[ ! -f "$THUMB" ]] && [[ $SECONDS -lt $THUMB_DEADLINE ]]; do
+  sleep 1
+done
+[[ -f "$THUMB" ]] || fail "thumbnail not generated within 15s: $THUMB (see $LOG)"
+THUMB_SIZE=$(stat -f%z "$THUMB" 2>/dev/null || stat -c%s "$THUMB" 2>/dev/null)
+[[ "$THUMB_SIZE" -gt 1024 ]] || fail "thumbnail suspiciously small (${THUMB_SIZE} bytes): $THUMB"
+echo "==> Thumbnail check passed ($THUMB, ${THUMB_SIZE} bytes)"
+
+pkill -x rewind 2>/dev/null || true
 
 echo "E2E PASS: $CLIP"

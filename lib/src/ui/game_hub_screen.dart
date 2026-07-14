@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../clip/clip_library.dart';
+import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../events/game_event.dart';
@@ -72,6 +73,7 @@ class GameHubScreen extends StatefulWidget {
   final ClipLibrary library;
   final ClipCoordinator coordinator;
   final String hotkeyLabel;
+  final ThumbnailCache? thumbnails;
 
   /// Persists a settings change (mutated in place) — the same
   /// `settings.configFor(gameId)` → `setConfig` → `onSettingsChanged` path
@@ -84,6 +86,7 @@ class GameHubScreen extends StatefulWidget {
     required this.coordinator,
     required this.hotkeyLabel,
     required this.onSettingsChanged,
+    this.thumbnails,
     super.key,
   });
 
@@ -319,8 +322,11 @@ class _GameHubScreenState extends State<GameHubScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: clips.length,
-                itemBuilder: (context, i) =>
-                    ClipTile(clip: clips[i], library: widget.library),
+                itemBuilder: (context, i) => ClipTile(
+                  clip: clips[i],
+                  library: widget.library,
+                  thumbnails: widget.thumbnails,
+                ),
               ),
           ],
         );

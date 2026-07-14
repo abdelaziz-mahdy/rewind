@@ -51,4 +51,22 @@ void main() {
     expect(deleted, isEmpty);
     expect(lib.all.length, 1);
   });
+
+  test('automatic pruning fires onClipDeleted (thumbnail cleanup path)',
+      () async {
+    final tmp = Directory.systemTemp.createTempSync('rewind_sm_hook');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final deleted = <String>[];
+    final lib =
+        ClipLibrary(clipsDir: tmp, onClipDeleted: (c) => deleted.add(c.path));
+    final now = DateTime(2026, 1, 1, 12);
+    lib.add(_clip('a', now.subtract(const Duration(hours: 3)), 10));
+    lib.add(_clip('b', now.subtract(const Duration(hours: 1)), 10));
+
+    final mgr =
+        StorageManager(lib, policy: const RetentionPolicy(maxBytes: 15));
+    await mgr.enforce(now: now);
+
+    expect(deleted, contains('a'));
+  });
 }

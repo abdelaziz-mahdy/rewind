@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'src/clip/clip_library.dart';
 import 'src/clip/clips_dir.dart';
 import 'src/clip/storage_manager.dart';
+import 'src/clip/thumbnail_cache.dart';
+import 'src/clip/thumbnail_generator.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
@@ -47,7 +49,11 @@ Future<void> main() async {
   final store = SettingsStore(await getApplicationSupportDirectory());
   final settings = await store.load();
   final clipsDir = await ensureClipsDir();
-  final library = await ClipLibrary.load(clipsDir);
+  final thumbnailCache = ThumbnailCache(MediaKitThumbnailGenerator());
+  final library = await ClipLibrary.load(
+    clipsDir,
+    onClipDeleted: (clip) => thumbnailCache.invalidate(clip),
+  );
 
   // Bring up capture. In stub mode init/start succeed but saves write no
   // file (the coordinator ignores those); with libobs linked this starts the
@@ -107,7 +113,16 @@ Future<void> main() async {
     settings: settings,
     outDir: clipsDir.path,
     engine: engine,
+    onClipIndexed: (clip) async {
+      await thumbnailCache.ensure(clip);
+    },
   )..start();
+
+  // Backfill thumbnails for any pre-existing clip that doesn't have one yet
+  // (e.g. clips saved by a previous version). Deliberately not awaited —
+  // walks the library sequentially in the background and must never delay
+  // startup.
+  unawaited(backfillMissingThumbnails(library.all, thumbnailCache));
 
   final hotkeys = HotkeyService();
   Future<void> bindBothHotkeys() async {
@@ -207,6 +222,7 @@ Future<void> main() async {
     bufferActive: bufferActive,
     displays: displays,
     capturableApps: capturableApps,
+    thumbnails: thumbnailCache,
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     settingsRevision: settingsRevision,
     onSettingsChanged: (s) async {
@@ -263,6 +279,7 @@ class RewindApp extends StatelessWidget {
   final VoidCallback onOpenClipsFolder;
   final ValueListenable<int>? settingsRevision;
   final void Function(String bundleId)? onSetCaptureApp;
+  final ThumbnailCache? thumbnails;
 
   const RewindApp({
     required this.coordinator,
@@ -277,6 +294,7 @@ class RewindApp extends StatelessWidget {
     required this.onOpenClipsFolder,
     this.settingsRevision,
     this.onSetCaptureApp,
+    this.thumbnails,
     super.key,
   });
 
@@ -298,6 +316,7 @@ class RewindApp extends StatelessWidget {
         settingsRevision: settingsRevision,
         onHotkeyRecording: onHotkeyRecording,
         onSetCaptureApp: onSetCaptureApp,
+        thumbnails: thumbnails,
       ),
     );
   }
