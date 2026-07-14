@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../events/game_catalog.dart';
 import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
-import '../settings/game_config.dart';
 import 'theme.dart';
 
-/// Hotkey, default buffer length, capture display, and per-game overrides —
-/// grouped into labeled sections (Capture / Hotkey / Per-game). `onChanged`
-/// is called with the (mutated in place) [AppSettings] whenever a field
-/// commits a valid value — the caller persists it and rebinds the hotkey /
-/// re-targets the capture engine.
+/// Hotkey, default buffer length, capture display/app, and the follow-the-
+/// game toggle — grouped into labeled sections (Capture / Hotkey).
+/// Per-game overrides now live inline in each game's hub
+/// (`game_hub_screen.dart`) instead of a section here. `onChanged` is called
+/// with the (mutated in place) [AppSettings] whenever a field commits a
+/// valid value — the caller persists it and rebinds the hotkey / re-targets
+/// the capture engine.
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
   final Future<void> Function(AppSettings) onChanged;
@@ -65,8 +65,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _customBuffer;
   late final TextEditingController _customBufferController;
 
-  final Map<String, TextEditingController> _perGameControllers = {};
-
   @override
   void initState() {
     super.initState();
@@ -78,15 +76,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _customBufferController.dispose();
-    for (final c in _perGameControllers.values) {
-      c.dispose();
-    }
     super.dispose();
   }
-
-  TextEditingController _controllerFor(GameConfig cfg) =>
-      _perGameControllers.putIfAbsent(cfg.gameId,
-          () => TextEditingController(text: '${cfg.bufferSeconds}'));
 
   /// Called by [_HotkeyRecorderField] once a combo is captured (or the
   /// field is cleared, [value] == ''). The recorder only ever produces
@@ -122,11 +113,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
-  void _handleGameBufferChanged(GameConfig cfg, String value) {
-    final clamped =
-        (int.tryParse(value) ?? cfg.bufferSeconds).clamp(5, 300).toInt();
-    cfg.bufferSeconds = clamped;
-    widget.settings.setConfig(cfg);
+  /// See §3.6's "Follow the game" toggle: writes
+  /// [AppSettings.autoSwitchCapture] straight through, same as every other
+  /// field on this screen.
+  void _handleAutoSwitchChanged(bool value) {
+    widget.settings.autoSwitchCapture = value;
+    setState(() {});
     widget.onChanged(widget.settings);
   }
 
@@ -171,7 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final configs = widget.settings.allConfigs.toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -248,6 +239,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: _handleAppChanged,
                   ),
                 ],
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Follow the game',
+                              style: Theme.of(context).textTheme.bodyMedium),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Switch capture to a game's window when it "
+                            'launches',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      key: const ValueKey('autoSwitchCaptureSwitch'),
+                      value: widget.settings.autoSwitchCapture,
+                      onChanged: _handleAutoSwitchChanged,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -259,35 +275,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onRecording: widget.onHotkeyRecording,
             ),
           ),
-          if (configs.isNotEmpty)
-            _Section(
-              title: 'Per-game',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final cfg in configs)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Expanded(child: Text(displayNameFor(cfg.gameId))),
-                          SizedBox(
-                            width: 100,
-                            child: TextField(
-                              controller: _controllerFor(cfg),
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                  labelText: 'Buffer (s)'),
-                              onChanged: (value) =>
-                                  _handleGameBufferChanged(cfg, value),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
         ],
       ),
     );

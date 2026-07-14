@@ -266,8 +266,7 @@ void main() {
       expect(find.text('HOTKEY'), findsOneWidget);
     });
 
-    testWidgets('the Supported Games placeholder renders for + Add game',
-        (t) async {
+    testWidgets('the Supported Games screen renders for + Add game', (t) async {
       await t.pumpWidget(_app(shell()));
       await t.tap(navItem('addGame'));
       await t.pump();

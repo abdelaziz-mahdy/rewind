@@ -12,7 +12,7 @@ import 'all_clips_screen.dart';
 import 'game_hub_screen.dart';
 import 'settings_screen.dart';
 import 'shell_destination.dart';
-import 'theme.dart';
+import 'supported_games_screen.dart';
 import 'widgets/nav_rail.dart';
 import 'widgets/status_strip.dart';
 
@@ -132,11 +132,12 @@ class _ShellState extends State<Shell> {
           hotkeyLabel: widget.hotkeyLabel,
           onSettingsChanged: widget.onSettingsChanged,
         ),
-      // Supported Games is built in T5; this is the explicit interim empty
-      // pane the T3 brief allows for a not-yet-built destination.
-      SupportedGamesDestination() => const _ComingSoonPane(
-          key: ValueKey('supportedGamesPane'),
-          label: 'Supported Games',
+      SupportedGamesDestination() => SupportedGamesScreen(
+          key: const ValueKey('supportedGamesScreen'),
+          coordinator: widget.coordinator,
+          library: widget.library,
+          onSettingsChanged: widget.onSettingsChanged,
+          onOpenGame: (gameId) => _select(GameDestination(gameId)),
         ),
       SettingsDestination() => SettingsScreen(
           key: const ValueKey('settingsScreen'),
@@ -190,27 +191,6 @@ class _ShellState extends State<Shell> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The Supported Games / other not-yet-built destinations' placeholder: a
-/// bare "coming in this build" pane, per the T3 brief — no invented catalog
-/// UI ahead of T5.
-class _ComingSoonPane extends StatelessWidget {
-  final String label;
-
-  const _ComingSoonPane({required this.label, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Text(
-        '$label — coming in this build',
-        style: theme.textTheme.body
-            .copyWith(color: context.rewindTokens.textMuted),
       ),
     );
   }

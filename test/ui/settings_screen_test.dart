@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
-import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 
@@ -311,17 +310,58 @@ void main() {
   });
 
   testWidgets(
-      'a per-game row shows the friendly display name, not the '
-      'raw gameId', (t) async {
-    final settings = AppSettings()
-      ..setConfig(GameConfig(gameId: 'app:cs2', bufferSeconds: 45));
+      'the Per-game section is gone — per-game settings live in '
+      'each game\'s hub now', (t) async {
     await t.pumpWidget(_app(SettingsScreen(
-      settings: settings,
+      settings: AppSettings(),
       onChanged: (_) async {},
       displays: const [],
     )));
 
-    expect(find.text('Counter-Strike 2'), findsOneWidget);
-    expect(find.text('app:cs2'), findsNothing);
+    expect(find.textContaining('Per-game'), findsNothing);
+  });
+
+  testWidgets('the follow-the-game switch defaults on and reflects settings',
+      (t) async {
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(autoSwitchCapture: false),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    expect(find.text('Follow the game'), findsOneWidget);
+    final sw =
+        t.widget<Switch>(find.byKey(const ValueKey('autoSwitchCaptureSwitch')));
+    expect(sw.value, isFalse);
+  });
+
+  testWidgets(
+      'toggling follow-the-game writes autoSwitchCapture and fires '
+      'onChanged', (t) async {
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    expect(
+        t
+            .widget<Switch>(
+                find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
+            .value,
+        isTrue);
+
+    await t.tap(find.byKey(const ValueKey('autoSwitchCaptureSwitch')));
+    await t.pump();
+
+    expect(calls, isNotEmpty);
+    expect(calls.last.autoSwitchCapture, isFalse);
+    expect(
+        t
+            .widget<Switch>(
+                find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
+            .value,
+        isFalse);
   });
 }

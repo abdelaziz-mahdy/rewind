@@ -58,6 +58,11 @@ official local API) and a second title, **MECCHA CHAMELEON** (a mech action game
 runs in **manual-hotkey mode** unless the vendor exposes a sanctioned event
 source. See [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
 
+The full, live list of auto-detectable titles — plus each one's detection
+method and whether it's running or already in your library — is in-app under
+**+ Add game** (`lib/src/ui/supported_games_screen.dart`), sourced from the
+same `popularGamesCatalog` the table above summarizes.
+
 ## Building
 
 Requires the Flutter SDK (desktop enabled). The native C shim is compiled and
