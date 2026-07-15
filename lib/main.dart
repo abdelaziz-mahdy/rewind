@@ -166,16 +166,17 @@ Future<void> main() async {
     outDir: clipsDir.path,
     engine: engine,
     matchStats: matchStats,
-    onClipIndexed: (clip) async {
-      await thumbnailCache.ensure(clip);
-    },
+    // Deliberately NO thumbnail generation on save: generating a thumbnail
+    // spins up a headless mpv player (real CPU/GPU), and clips are saved
+    // WHILE YOU GAME — the worst time to spend that. Thumbnails are made
+    // lazily instead, on first view (see `ClipThumbnail`'s FutureBuilder →
+    // `ThumbnailCache.ensure`) and cached, so nothing is generated until you
+    // actually open a clip list.
   )..start();
 
-  // Backfill thumbnails for any pre-existing clip that doesn't have one yet
-  // (e.g. clips saved by a previous version). Deliberately not awaited —
-  // walks the library sequentially in the background and must never delay
-  // startup.
-  unawaited(backfillMissingThumbnails(library.all, thumbnailCache));
+  // No startup backfill either, for the same reason — the app must idle at
+  // ~0% extra CPU. Missing thumbnails fill in on demand when their clip
+  // first scrolls into a view.
 
   final hotkeys = HotkeyService();
   Future<void> bindBothHotkeys() async {

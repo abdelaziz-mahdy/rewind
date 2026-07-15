@@ -62,6 +62,28 @@ These shape every milestone:
 - [ ] Export presets (resolution/bitrate)
 - [ ] Optional upload/share targets
 
+## Packaging & CI/CD — distributable installers
+
+Turn the tag-driven release into real, downloadable installers. Tracked
+here because it spans build config, native deps, and CI.
+
+- [ ] **macOS `.dmg`**: package the built `.app` (with the bundled libobs
+      runtime + `obs-ffmpeg-mux` helper) into a drag-to-Applications DMG
+      (e.g. `create-dmg` or `hdiutil`).
+- [ ] **Windows installer**: package the Flutter Windows build (+ libobs
+      runtime once the Windows capture backend exists) into an installer
+      (Inno Setup or MSIX).
+- [ ] **Fix release/universal builds**: `flutter build macos --release`
+      currently fails to link because the fetched **libobs is arm64-only**
+      (`_obs_output_get_last_error` undefined for the x86_64 slice). Either
+      build a universal libobs in `tools/fetch_libobs.sh`, or produce
+      per-arch (arm64 / x86_64) release artifacts and DMGs. This also
+      unblocks profile-mode performance measurement.
+- [ ] **Wire into `release.yml`**: build → package → attach the DMG /
+      installer to the drafted GitHub Release on every `v*` tag.
+- [ ] Signing/notarization is the v1.0 item below; unsigned local
+      artifacts are fine for this task.
+
 ## v1.0 — "It's polished"
 
 - [ ] Signed + notarized macOS build, signed Windows installer

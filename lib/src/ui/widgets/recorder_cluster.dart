@@ -655,40 +655,27 @@ class _IdleDot extends StatelessWidget {
   }
 }
 
-/// A small solid dot signaling that the replay buffer is live: a slow,
-/// subtle opacity pulse (0.45 → 1.0 over 1.2 s) earns it motion without any
-/// glow — no BoxShadow, per the redesign's "no halos anywhere" rule.
-class _PulseDot extends StatefulWidget {
+/// A small solid dot signaling that the replay buffer is live.
+///
+/// This used to pulse via a forever-repeating [AnimationController]. That is
+/// a trap for a tool that runs in the BACKGROUND while you game: a
+/// never-ending animation keeps Flutter submitting a fresh frame every
+/// vsync, which forces the OS compositor to re-rasterize the whole (large,
+/// Retina) window continuously — measured at ~45% app CPU + ~45%
+/// WindowServer CPU while otherwise idle. A recorder must not steal that
+/// from the game. It's now a STATIC dot, so the app renders only when
+/// something actually changes and idles at ~0% CPU.
+class _PulseDot extends StatelessWidget {
   const _PulseDot();
 
   @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.45, end: 1.0).animate(_controller),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.rewindTokens.rec,
-          shape: BoxShape.circle,
-        ),
-        child: const SizedBox(width: 10, height: 10),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.rewindTokens.rec,
+        shape: BoxShape.circle,
       ),
+      child: const SizedBox(width: 10, height: 10),
     );
   }
 }

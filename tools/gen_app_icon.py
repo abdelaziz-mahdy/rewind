@@ -6,8 +6,7 @@ rendering. No design tools, no third-party deps -- python3 stdlib only
 
 Design: a dark rounded-square plate (#0E1114 with a subtle radial lift
 toward #1E242C near the center) holding a bold two-triangle "rewind" glyph
-in accent mint (#3DDC97) with a soft glow, plus a small red "recording"
-dot (#FF5470) in the top-right corner. Rendered once at 1024x1024 with
+in accent mint (#3DDC97) with a soft glow. Rendered once at 1024x1024 with
 per-pixel signed-distance-field math, then box-filter downscaled (via a
 premultiplied-alpha mip chain, so transparent edges don't fringe dark) to
 every required size.
@@ -171,9 +170,8 @@ def render_app_icon_master():
             glyph_a = glyph_coverage(dglyph, glyph_glow_sigma, glyph_glow_intensity)
             col, a = over(col, a, ACCENT, glyph_a * plate_a)
 
-            ddot = math.hypot(px - dot_cx, py - dot_cy) - dot_r
-            dot_a = glyph_coverage(ddot, dot_glow_sigma, dot_glow_intensity)
-            col, a = over(col, a, RECORD, dot_a * plate_a)
+            # (The red "recording" dot was removed — as an app-icon badge it
+            #  just read as an unread-notification mark, not a feature.)
 
             buf[idx] = int(round(clamp(col[0], 0.0, 255.0)))
             buf[idx + 1] = int(round(clamp(col[1], 0.0, 255.0)))
