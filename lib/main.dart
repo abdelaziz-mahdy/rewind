@@ -393,6 +393,7 @@ class _RewindAppState extends State<RewindApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Rewind',
+      debugShowCheckedModeBanner: false,
       theme: rewindTheme(),
       home: _showOnboarding
           ? OnboardingScreen(
