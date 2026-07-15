@@ -149,6 +149,7 @@ class LeagueEventWatcher implements GameEventSource {
         if (kind == null) continue;
         if (!_involvesActivePlayer(name, map)) continue;
 
+        talker.info('League: ${kind.name} (event #$id, $name)');
         _controller
             .add(GameEvent(gameId: gameId, kind: kind, meta: {'raw': map}));
       }

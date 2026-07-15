@@ -405,6 +405,11 @@ void main() {
 
       expect(find.byKey(const ValueKey('liveEventsSlot')), findsOneWidget);
       expect(inLiveEvents(find.text('KILL')), findsOneWidget);
+
+      // The emitted kill started a burst-debounce timer in the coordinator;
+      // cancel it inside the test body — the binding's pending-timer
+      // invariant runs before addTearDown callbacks would.
+      leagueCoordinator.dispose();
     });
 
     testWidgets('never appears for non-League games (no vendor event source)',

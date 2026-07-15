@@ -79,8 +79,17 @@ class ClipCoordinator {
   /// How long [_indexClip] waits for a save-reported file to appear on disk
   /// before dropping it (the mux helper can lag the shim's path report
   /// under load). Tests that deliberately report paths with no file (stub
-  /// mode) pass [Duration.zero] to skip the wait.
+  /// mode) pass [Duration.zero] to skip the wait — which also skips the
+  /// completeness settle below.
   final Duration indexFileGrace;
+
+  /// Poll spacing for the file-completeness settle: after the file exists,
+  /// [_indexClip] waits until its size stops growing before indexing. An
+  /// mp4 the mux is STILL WRITING has no moov atom yet — thumbnailing it
+  /// reports "no duration" and the failure is negative-cached, which is
+  /// exactly how every clip's thumbnail broke once audio made finalization
+  /// slower (2026-07-14 22:08 log).
+  final Duration fileSettleInterval;
 
   ClipCoordinator({
     required this.registry,
@@ -91,6 +100,8 @@ class ClipCoordinator {
     this.engine,
     this.onClipIndexed,
     this.indexFileGrace = const Duration(seconds: 5),
+    this.fileSettleInterval = const Duration(milliseconds: 250),
+    this.burstQuiet = const Duration(seconds: 8),
   });
 
   /// Activation time per currently-active gameId — the session (match) key
@@ -99,12 +110,24 @@ class ClipCoordinator {
   /// fresh key.
   final Map<String, DateTime> _sessionStartedAt = {};
 
-  /// Minimum spacing between event-triggered saves (manual hotkey/button
-  /// saves are exempt — an explicit ask always saves). Defense in depth
-  /// against ANY over-eager event source; the replay buffer's length means
-  /// closely-spaced events share one clip anyway.
-  static const _autoSaveCooldown = Duration(seconds: 10);
-  DateTime? _lastAutoSaveAt;
+  /// Burst debounce for event-triggered saves. A fight is a BURST of
+  /// events; saving on the first one both spams the disk (the 2026-07-14
+  /// incident) and cuts the clip before the fight ends, while a plain
+  /// cooldown DROPS the follow-up kills (the maintainer's complaint: a kill
+  /// at second 25 must extend the clip, not vanish). So: events accumulate
+  /// per game, and the save fires once the action goes quiet for
+  /// [burstQuiet] — one clip covering the whole fight, labeled with the
+  /// burst's best event ([clipPriority]) and killCount for all of it. If
+  /// waiting any longer would age the burst's FIRST event out of the replay
+  /// buffer, the save fires immediately instead — extension must never turn
+  /// into loss. Manual saves are exempt: an explicit ask always saves now.
+  final Duration burstQuiet;
+  final Map<String, List<GameEvent>> _pendingBurst = {};
+  final Map<String, Timer> _burstTimers = {};
+
+  /// Safety margin between "the burst's first event is this close to
+  /// falling out of the buffer" and flushing.
+  static const _burstAgeMargin = Duration(seconds: 5);
 
   void start({bool supervise = true}) {
     // Auto-detection: when a game becomes active, apply its buffer length.
@@ -121,6 +144,9 @@ class ClipCoordinator {
         engine?.setBufferSeconds(cfg.bufferSeconds);
         _autoSwitchCaptureFor(a);
       } else {
+        // The match ended with events still pending? Save them before the
+        // buffer moves on to desktop footage.
+        _flushBurst(a.gameId);
         if (activeGame.value == a.gameId) {
           activeGame.value = null;
           engine?.setBufferSeconds(settings.defaultBufferSeconds);
@@ -131,28 +157,33 @@ class ClipCoordinator {
       }
     });
 
-    // Auto-clip: save when an enabled event fires for the active game —
-    // rate-limited (see [_autoSaveCooldown]): a 44 MB replay dump per event
-    // with events possibly arriving every few seconds once filled a disk to
-    // 99% (the 2026-07-14 Arena incident). A skipped event is not lost
-    // footage — the buffer covers the last N seconds, so it's already
-    // inside the previous clip.
+    // Auto-clip: accumulate enabled events into a per-game burst and save
+    // once the action goes quiet (see [burstQuiet]'s doc) — one clip per
+    // fight, nothing dropped, nothing spammed.
     registry.events.listen((e) {
-      // Remembered unconditionally (even when auto-clip is off/cooling
-      // down): kill counts on clips must reflect what HAPPENED, not what
-      // triggered a save.
+      // Remembered unconditionally (even when auto-clip is off): kill
+      // counts on clips must reflect what HAPPENED, not what triggered a
+      // save.
       _rememberEvent(e);
       final cfg = settings.configFor(e.gameId);
       if (!(cfg.autoClip && cfg.enabledEvents.contains(e.kind))) return;
-      final now = DateTime.now();
-      final last = _lastAutoSaveAt;
-      if (last != null && now.difference(last) < _autoSaveCooldown) {
-        talker.info('Auto-clip skipped (cooldown, already in previous clip): '
-            '${e.kind.name}');
-        return;
+
+      final pending = _pendingBurst.putIfAbsent(e.gameId, () => []);
+      pending.add(e);
+      final bufferLen = Duration(seconds: settings.bufferSecondsFor(e.gameId));
+      final oldestAge = DateTime.now().difference(pending.first.time);
+      if (oldestAge >= bufferLen - burstQuiet - _burstAgeMargin) {
+        // Waiting out another quiet period would push the burst's first
+        // event past the replay buffer's reach — save now.
+        talker.info('Burst flush (buffer limit): ${pending.length} event(s)');
+        _flushBurst(e.gameId);
+      } else {
+        talker.info(
+            'Event queued (${e.kind.name}); clip extends while the action '
+            'continues');
+        _burstTimers[e.gameId]?.cancel();
+        _burstTimers[e.gameId] = Timer(burstQuiet, () => _flushBurst(e.gameId));
       }
-      _lastAutoSaveAt = now;
-      _save(e);
     });
 
     if (supervise) registry.startSupervising();
@@ -232,6 +263,33 @@ class ClipCoordinator {
     autoSwitchedAppName.value = null;
     engine?.setCaptureApp(settings.captureAppBundleId);
     talker.info('Reverted capture after ${a.displayName} exited');
+  }
+
+  /// Cancels pending burst timers without flushing. For tests — in the app
+  /// the coordinator lives as long as the process, and shutdown-with-a-
+  /// pending-burst is covered by the deactivation flush.
+  void dispose() {
+    for (final t in _burstTimers.values) {
+      t.cancel();
+    }
+    _burstTimers.clear();
+    _pendingBurst.clear();
+  }
+
+  /// Saves the pending event burst for [gameId] as ONE clip, labeled with
+  /// the burst's highest-priority kind. No-op when nothing is pending.
+  void _flushBurst(String gameId) {
+    _burstTimers.remove(gameId)?.cancel();
+    final pending = _pendingBurst.remove(gameId);
+    if (pending == null || pending.isEmpty) return;
+    final best = pending
+        .reduce((a, b) => clipPriority(b.kind) > clipPriority(a.kind) ? b : a);
+    talker.info('Saving clip for ${pending.length} event(s), best: '
+        '${best.kind.name}');
+    // A fresh event carrying the burst's best kind, timed NOW: the clip's
+    // footage window ends at save time, and its killCount is computed from
+    // the window — which spans the whole burst.
+    _save(GameEvent(gameId: gameId, kind: best.kind, meta: best.meta));
   }
 
   /// Manual hotkey entry point: store the last N seconds (per active game's
@@ -387,6 +445,21 @@ class ClipCoordinator {
         return;
       }
       await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
+    // Existing is not finished: wait for the size to stop growing (see
+    // [fileSettleInterval]) so thumbnails/size are read from a COMPLETE
+    // file. Bounded by a fresh grace budget; if it's somehow still growing
+    // then, index what's there rather than dropping the clip.
+    if (indexFileGrace > Duration.zero) {
+      final settleDeadline = DateTime.now().add(indexFileGrace);
+      var lastLen = await file.length();
+      while (DateTime.now().isBefore(settleDeadline)) {
+        await Future<void>.delayed(fileSettleInterval);
+        final len = await file.length();
+        if (len == lastLen && len > 0) break;
+        lastLen = len;
+      }
     }
 
     final windowEnd = e.time;

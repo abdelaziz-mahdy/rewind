@@ -16,6 +16,7 @@ import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/hotkey/hotkey_service.dart';
+import 'src/log/file_log.dart';
 import 'src/log/log.dart';
 import 'src/obs/app_info.dart';
 import 'src/obs/capture_engine.dart';
@@ -54,7 +55,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
 
-  final store = SettingsStore(await getApplicationSupportDirectory());
+  final supportDir = await getApplicationSupportDirectory();
+  // File logging FIRST: everything after this line leaves a crash-proof
+  // trail under <support>/logs/ (talker's own history is memory-only).
+  startFileLogging(supportDir);
+  final store = SettingsStore(supportDir);
   final settings = await store.load();
   // Custom recordings folder (Settings → Storage), falling back to the
   // per-OS default when unset — or when the override can't be created

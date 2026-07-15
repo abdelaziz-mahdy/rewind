@@ -60,8 +60,16 @@ void main() {
       settings: settings,
       outDir: tmp.path,
       engine: engine,
+      // Real-time knobs shrunk so tests exercise the burst debounce and the
+      // file-completeness settle without real-world waits.
+      burstQuiet: const Duration(milliseconds: 60),
+      fileSettleInterval: const Duration(milliseconds: 5),
     )..start(supervise: false); // subscribes to streams, no periodic timer
   });
+
+  /// Waits out the burst debounce (plus save latency) after emitting events.
+  Future<void> settleBurst() async =>
+      Future<void>.delayed(const Duration(milliseconds: 150));
 
   tearDown(() => tmp.deleteSync(recursive: true));
 
@@ -202,24 +210,76 @@ void main() {
     expect(errorNotifications, 2);
   });
 
-  test('event-triggered saves are rate-limited; the manual hotkey is exempt',
-      () async {
-    // Defense in depth after the 2026-07-14 spam incident: a burst of
-    // events must not become a burst of 44 MB replay dumps — the buffer
-    // already contains the whole burst in one clip.
-    league.running = true;
-    await registry.tickNow();
-    await Future<void>.delayed(Duration.zero);
+  group('burst debounce (no drops, no spam)', () {
+    test('a burst of events becomes ONE clip labeled with the BEST event',
+        () async {
+      // A fight: kill, then a double, then the penta. One clip, badged
+      // pentaKill — never a burst of 44 MB dumps (the 2026-07-14 incident)
+      // and never a dropped follow-up kill (the old cooldown's flaw).
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
 
-    league.emit(GameEventKind.kill);
-    league.emit(GameEventKind.kill);
-    league.emit(GameEventKind.ace);
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+      league.emit(GameEventKind.kill);
+      league.emit(GameEventKind.doubleKill);
+      league.emit(GameEventKind.pentaKill);
+      // Nothing saves while the action is hot...
+      expect(engine.calls.where((c) => c == 'save'), isEmpty);
 
-    // An explicit ask always saves, cooldown or not.
-    await coordinator.onHotkey();
-    expect(engine.calls.where((c) => c == 'save'), hasLength(2));
+      await settleBurst();
+      expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(library.all.single.event, GameEventKind.pentaKill);
+      expect(library.all.single.killCount, 1);
+    });
+
+    test('a fresh event RESETS the quiet timer (clip extends with action)',
+        () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      league.emit(GameEventKind.kill);
+      // Keep the action alive across two would-be quiet windows.
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      league.emit(GameEventKind.kill);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      league.emit(GameEventKind.kill);
+      expect(engine.calls.where((c) => c == 'save'), isEmpty,
+          reason: 'still extending — no save mid-action');
+
+      await settleBurst();
+      expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(library.all.single.killCount, 3,
+          reason: 'every kill of the burst lands in the ONE clip');
+    });
+
+    test('the manual hotkey saves immediately, burst pending or not', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      league.emit(GameEventKind.kill);
+      await coordinator.onHotkey();
+      expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+      await settleBurst(); // pending burst still flushes on its own
+      expect(engine.calls.where((c) => c == 'save'), hasLength(2));
+    });
+
+    test(
+        'game deactivation flushes a pending burst before the buffer moves '
+        'on', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      league.emit(GameEventKind.kill);
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(library.all.single.event, GameEventKind.kill);
+    });
   });
 
   test('successful save persists the library index', () async {

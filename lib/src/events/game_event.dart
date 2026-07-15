@@ -26,6 +26,30 @@ enum GameEventKind {
   other,
 }
 
+/// Ranks event kinds by clip-worthiness, higher = better. When a burst of
+/// events collapses into ONE clip (see `ClipCoordinator`'s burst debounce),
+/// the clip is labeled with the burst's highest-ranked kind — a penta kill
+/// must never be badged as a plain "KILL" because the penta came second.
+int clipPriority(GameEventKind kind) => switch (kind) {
+      GameEventKind.pentaKill => 100,
+      GameEventKind.quadraKill => 90,
+      GameEventKind.ace => 85,
+      GameEventKind.tripleKill => 80,
+      GameEventKind.doubleKill => 70,
+      GameEventKind.baronSteal => 65,
+      GameEventKind.dragonSteal => 60,
+      GameEventKind.baronKill => 55,
+      GameEventKind.dragonKill => 50,
+      GameEventKind.kill => 40,
+      GameEventKind.victory => 35,
+      GameEventKind.defeat => 30,
+      GameEventKind.turretKill => 25,
+      GameEventKind.inhibitorKill => 20,
+      GameEventKind.manual => 10,
+      GameEventKind.recording => 10,
+      GameEventKind.other => 0,
+    };
+
 class GameEvent {
   final String gameId;
   final GameEventKind kind;
