@@ -390,8 +390,8 @@ class _RewindAppState extends State<RewindApp> {
       theme: rewindTheme(),
       home: _showOnboarding
           ? OnboardingScreen(
-              hotkey: widget.settings.hotkey,
-              recordHotkey: widget.settings.recordHotkey,
+              settings: widget.settings,
+              onChanged: widget.onSettingsChanged,
               onDone: _completeOnboarding,
             )
           : Shell(

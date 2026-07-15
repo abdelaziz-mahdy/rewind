@@ -467,8 +467,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => OnboardingScreen(
-                      hotkey: widget.settings.hotkey,
-                      recordHotkey: widget.settings.recordHotkey,
+                      settings: widget.settings,
+                      onChanged: widget.onChanged,
                       onDone: () => Navigator.of(context).pop(),
                     ),
                   ),

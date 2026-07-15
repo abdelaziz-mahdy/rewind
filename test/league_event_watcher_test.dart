@@ -110,7 +110,8 @@ void main() {
   });
 
   test('a 2-team mode (CLASSIC) splits into your team vs enemies', () async {
-    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'CLASSIC'});
+    responses['/liveclientdata/gamestats'] =
+        jsonEncode({'gameMode': 'CLASSIC'});
     responses['/liveclientdata/playerlist'] = jsonEncode([
       {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'},
       {'riotId': 'Mate#EUW', 'championName': 'Lux', 'team': 'ORDER'},

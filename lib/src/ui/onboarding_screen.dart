@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../settings/app_settings.dart';
 import 'system_settings.dart';
 import 'theme.dart';
 
-/// One getting-started step.
+/// One getting-started step: an icon + headline + body, plus an optional
+/// inline action button and/or an interactive control (a setup choice).
 class _Step {
   final IconData icon;
   final String title;
   final String body;
-
-  /// Optional inline action (e.g. "Open Screen Recording Settings").
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// An interactive control rendered under the body — the setup choices
+  /// (buffer length, mic, follow-the-game) that make onboarding configure
+  /// the app, not just describe it.
+  final Widget? control;
 
   const _Step({
     required this.icon,
@@ -19,20 +24,22 @@ class _Step {
     required this.body,
     this.actionLabel,
     this.onAction,
+    this.control,
   });
 }
 
 /// First-run getting-started guide (also re-openable from Settings): a short
-/// swipeable walkthrough of what Rewind does, the one permission it needs,
-/// the hotkeys, and how games are captured — so a new user isn't dropped
-/// into the app with no idea what to do or which settings matter.
+/// swipeable walkthrough that both explains what Rewind does AND collects
+/// the first-time setup choices — instant-replay length, microphone, and
+/// follow-the-game — writing each straight to [settings] and persisting via
+/// [onChanged], so a new user leaves it already configured.
 ///
-/// Pure UI: the save/record hotkey labels are passed in, and [onDone] is
-/// what both "Skip" and the final "Get started" invoke — first-run wiring
-/// persists `onboardingComplete`; the Settings re-open just pops the route.
+/// [onDone] is what both "Skip" and the final "Get started" invoke —
+/// first-run wiring persists `onboardingComplete`; the Settings re-open just
+/// pops the route.
 class OnboardingScreen extends StatefulWidget {
-  final String hotkey;
-  final String recordHotkey;
+  final AppSettings settings;
+  final Future<void> Function(AppSettings) onChanged;
   final VoidCallback onDone;
 
   /// Opens macOS Screen Recording settings; null uses the real opener,
@@ -40,8 +47,8 @@ class OnboardingScreen extends StatefulWidget {
   final Future<void> Function()? onOpenScreenRecording;
 
   const OnboardingScreen({
-    required this.hotkey,
-    required this.recordHotkey,
+    required this.settings,
+    required this.onChanged,
     required this.onDone,
     this.onOpenScreenRecording,
     super.key,
@@ -59,6 +66,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  AppSettings get _s => widget.settings;
+
+  void _persist() {
+    setState(() {}); // reflect the new value in the control
+    widget.onChanged(_s);
   }
 
   List<_Step> get _steps => [
@@ -80,21 +94,56 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               (widget.onOpenScreenRecording ?? openScreenRecordingSettings)(),
         ),
         _Step(
-          icon: Icons.keyboard_outlined,
-          title: 'Your controls',
-          body: 'Save the last few seconds: ${widget.hotkey}.\n'
-              'Start / stop a full recording: ${widget.recordHotkey}.\n\n'
-              'Pick what to capture — a display or a specific app — from the '
-              'source menu at the bottom-left. Turn on your microphone in '
-              'Settings → Capture.',
+          icon: Icons.timer_outlined,
+          title: 'How much to keep',
+          body: 'When you save a clip, Rewind keeps the last few seconds. '
+              'Pick the instant-replay length — you can change it any time.',
+          control: _BufferChoice(
+            seconds: _s.defaultBufferSeconds,
+            onPick: (v) {
+              _s.defaultBufferSeconds = v;
+              _persist();
+            },
+          ),
         ),
-        const _Step(
-          icon: Icons.sports_esports_outlined,
-          title: 'Games clip themselves',
-          body: 'Rewind auto-detects popular games. For League of Legends it '
-              'clips your kills automatically and tracks each match\'s K/D. '
-              'Any other app can be added from the source menu — its clips '
-              'get their own place in the sidebar.',
+        _Step(
+          icon: Icons.tune_outlined,
+          title: 'Your preferences',
+          body: 'A couple of choices to start with — both live in Settings '
+              'later.',
+          control: Column(
+            children: [
+              _ToggleRow(
+                label: 'Capture microphone',
+                sub: 'Mix your voice into clips (macOS asks for permission '
+                    'the first time)',
+                value: _s.captureMicrophone,
+                onChanged: (v) {
+                  _s.captureMicrophone = v;
+                  _persist();
+                },
+              ),
+              const SizedBox(height: 16),
+              _ToggleRow(
+                label: 'Follow the game',
+                sub: "Switch capture to a game's window when it launches",
+                value: _s.autoSwitchCapture,
+                onChanged: (v) {
+                  _s.autoSwitchCapture = v;
+                  _persist();
+                },
+              ),
+            ],
+          ),
+        ),
+        _Step(
+          icon: Icons.keyboard_outlined,
+          title: 'Controls & games',
+          body: 'Save the last few seconds: ${_s.hotkey}.\n'
+              'Start / stop a full recording: ${_s.recordHotkey}.\n\n'
+              'Rewind auto-detects popular games — League clips your kills '
+              'automatically. Pick what to capture from the source menu at '
+              'the bottom-left.',
         ),
       ];
 
@@ -206,36 +255,102 @@ class _StepView extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(step.icon, size: 64, color: tokens.accent),
-              const SizedBox(height: 24),
-              Text(step.title,
-                  textAlign: TextAlign.center, style: theme.textTheme.display),
-              const SizedBox(height: 16),
-              Text(
-                step.body,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.body.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant, height: 1.5),
-              ),
-              if (step.actionLabel != null) ...[
-                const SizedBox(height: 24),
-                OutlinedButton(
-                  key: const ValueKey('onboardingStepAction'),
-                  onPressed: step.onAction,
-                  child: Text(step.actionLabel!),
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(step.icon, size: 60, color: tokens.accent),
+                const SizedBox(height: 20),
+                Text(step.title,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.display),
+                const SizedBox(height: 14),
+                Text(
+                  step.body,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.body.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant, height: 1.5),
                 ),
+                if (step.actionLabel != null) ...[
+                  const SizedBox(height: 20),
+                  OutlinedButton(
+                    key: const ValueKey('onboardingStepAction'),
+                    onPressed: step.onAction,
+                    child: Text(step.actionLabel!),
+                  ),
+                ],
+                if (step.control != null) ...[
+                  const SizedBox(height: 24),
+                  step.control!,
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The buffer-length choice: 15 / 30 / 60 seconds.
+class _BufferChoice extends StatelessWidget {
+  final int seconds;
+  final ValueChanged<int> onPick;
+
+  const _BufferChoice({required this.seconds, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    // Snap an off-list custom value to the nearest segment for display.
+    final selected = const [15, 30, 60].contains(seconds) ? seconds : 30;
+    return SegmentedButton<int>(
+      segments: const [
+        ButtonSegment(value: 15, label: Text('15 s')),
+        ButtonSegment(value: 30, label: Text('30 s')),
+        ButtonSegment(value: 60, label: Text('60 s')),
+      ],
+      selected: {selected},
+      onSelectionChanged: (s) => onPick(s.first),
+    );
+  }
+}
+
+/// A labelled switch row used by the preferences step.
+class _ToggleRow extends StatelessWidget {
+  final String label;
+  final String sub;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleRow({
+    required this.label,
+    required this.sub,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: theme.textTheme.body),
+              const SizedBox(height: 2),
+              Text(sub, style: theme.textTheme.bodyMuted),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Switch(value: value, onChanged: onChanged),
+      ],
     );
   }
 }
