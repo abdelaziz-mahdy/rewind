@@ -492,6 +492,60 @@ void main() {
     });
   });
 
+  group('kill counts on clips (Clip.killCount)', () {
+    test('a buffer save counts the player kills inside its buffer window',
+        () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // Three kills land (well within the default 30 s buffer window),
+      // then the user saves manually.
+      league.emit(GameEventKind.kill);
+      league.emit(GameEventKind.kill);
+      league.emit(GameEventKind.kill);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      await coordinator.onHotkey();
+      final manual =
+          library.all.firstWhere((c) => c.event == GameEventKind.manual);
+      expect(manual.killCount, 3);
+    });
+
+    test('a manual recording counts kills across its whole session', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      await coordinator.toggleRecording(); // start
+      league.emit(GameEventKind.kill);
+      league.emit(GameEventKind.kill);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await coordinator.toggleRecording(); // stop + save
+
+      final rec =
+          library.all.firstWhere((c) => c.event == GameEventKind.recording);
+      expect(rec.killCount, 2);
+    });
+
+    test('desktop clips with no game events carry killCount 0', () async {
+      await coordinator.onHotkey();
+      expect(library.all.single.killCount, 0);
+    });
+
+    test('killCount round-trips through JSON', () {
+      final clip = Clip(
+        path: 'x',
+        gameId: 'league_of_legends',
+        event: GameEventKind.kill,
+        createdAt: DateTime(2026, 7, 14),
+        sizeBytes: 1,
+        killCount: 4,
+      );
+      expect(Clip.fromJson(clip.toJson()).killCount, 4);
+    });
+  });
+
   group('auto-switch capture', () {
     test(
         'activation with a matching running app switches capture without '

@@ -51,6 +51,9 @@ external int _setCaptureApp(Pointer<Utf8> bundleId);
 @Native<Int32 Function(Uint32)>(symbol: 'rewind_set_capture_window')
 external int _setCaptureWindow(int windowId);
 
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_enabled')
+external int _setMicEnabled(int enabled);
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
@@ -170,4 +173,8 @@ class RewindObs {
   /// Selects a specific window (CGWindowID) to capture; 0 reverts to the
   /// remaining app/display preference.
   int setCaptureWindow(int windowId) => _setCaptureWindow(windowId);
+
+  /// Enables/disables microphone capture (mixed into clips alongside the
+  /// always-on system audio).
+  int setMicEnabled(bool enabled) => _setMicEnabled(enabled ? 1 : 0);
 }

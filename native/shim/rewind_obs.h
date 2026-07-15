@@ -109,6 +109,14 @@ int rewind_set_capture_app(const char *bundle_id);
  * clears the window target. Returns 0 on success. */
 int rewind_set_capture_window(uint32_t window_id);
 
+/* Enable/disable microphone capture (CoreAudio default input device),
+ * mixed into every clip and recording alongside the always-on system
+ * audio. Safe to call before rewind_obs_init (the preference is applied at
+ * init); after init the mic source is created/torn down live. First use
+ * triggers the macOS microphone permission prompt (the app bundle must
+ * declare NSMicrophoneUsageDescription). Returns 0 on success. */
+int rewind_set_mic_enabled(int enabled);
+
 #ifdef __cplusplus
 }
 #endif

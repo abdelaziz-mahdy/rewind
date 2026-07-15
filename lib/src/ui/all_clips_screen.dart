@@ -1,11 +1,36 @@
 import 'package:flutter/material.dart';
 
+import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/thumbnail_cache.dart';
+import '../events/game_catalog.dart';
 import '../events/game_event.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
+import 'widgets/game_tile_avatar.dart';
+
+/// One All-Clips section: a game's clips, newest first.
+class _GameGroup {
+  final String gameId;
+  final String displayName;
+  final List<Clip> clips;
+  const _GameGroup(this.gameId, this.displayName, this.clips);
+}
+
+/// Groups [clips] (already sorted newest-first) into per-game sections,
+/// keyed by DISPLAY name so gameIds that render as the same game (League's
+/// vendor id + its catalog process entry) share one section — the same
+/// merge the rail and hubs apply. Section order = order of first
+/// appearance, i.e. the game with the newest clip comes first.
+List<_GameGroup> _groupByGame(List<Clip> clips) {
+  final groups = <String, _GameGroup>{};
+  for (final c in clips) {
+    final name = displayNameFor(c.gameId);
+    (groups[name] ??= _GameGroup(c.gameId, name, [])).clips.add(c);
+  }
+  return groups.values.toList();
+}
 
 /// The cross-game clip library (§3.3): header (title + count + size + open-
 /// folder), an event-kind filter row, and a clip grid — newest first (index
@@ -128,22 +153,70 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       hotkeyLabel: widget.hotkeyLabel,
                       onOpenClipsFolder: widget.onOpenClipsFolder,
                     )
-                  : GridView.builder(
+                  // Sectioned per game, newest game first (order of first
+                  // appearance in the newest-first clip list). Grouped by
+                  // DISPLAY name so League's two gameIds (vendor + catalog
+                  // process entry) merge here exactly like they do in the
+                  // rail/hub.
+                  : ListView(
                       key: const ValueKey('clipsList'),
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                        mainAxisSpacing: clipGridSpacing,
-                        crossAxisSpacing: clipGridSpacing,
-                        childAspectRatio: clipGridChildAspectRatio,
-                      ),
-                      itemCount: clips.length,
-                      itemBuilder: (context, i) => ClipTile(
-                        clip: clips[i],
-                        library: widget.library,
-                        thumbnails: widget.thumbnails,
-                      ),
+                      padding: const EdgeInsets.only(bottom: 24),
+                      children: [
+                        for (final group in _groupByGame(clips)) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+                            child: Row(
+                              children: [
+                                GameTileAvatar(
+                                  gameId: group.gameId,
+                                  displayName: group.displayName,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  group.displayName.toUpperCase(),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .micro
+                                      .copyWith(
+                                          color:
+                                              context.rewindTokens.textMuted),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${group.clips.length}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .micro
+                                      .copyWith(
+                                          color:
+                                              context.rewindTokens.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                              mainAxisSpacing: clipGridSpacing,
+                              crossAxisSpacing: clipGridSpacing,
+                              childAspectRatio: clipGridChildAspectRatio,
+                            ),
+                            itemCount: group.clips.length,
+                            itemBuilder: (context, i) => ClipTile(
+                              clip: group.clips[i],
+                              library: widget.library,
+                              thumbnails: widget.thumbnails,
+                              // The section header already names the game.
+                              showGameName: false,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
             ),
           ],

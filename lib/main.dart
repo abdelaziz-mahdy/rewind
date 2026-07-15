@@ -112,6 +112,9 @@ Future<void> main() async {
   if (settings.captureAppBundleId != null) {
     engine.setCaptureApp(settings.captureAppBundleId);
   }
+  // Mic preference before init, mirroring the display/app pattern — the
+  // shim applies it while building the audio pipeline.
+  engine.setMicEnabled(settings.captureMicrophone);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
     captureError = engine.lastError;
@@ -286,6 +289,7 @@ Future<void> main() async {
       // meaningful choice here ("Entire display") that the engine must be
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
+      engine?.setMicEnabled(s.captureMicrophone);
       await bindBothHotkeys();
       registerCustomDisplayNames(_customDisplayNamesOf(s));
       // A config added mid-session (picked app, Supported Games' Add) gets

@@ -19,6 +19,13 @@ class Clip {
   /// `lib/src/ui/clip_sessions.dart`).
   final DateTime? sessionAt;
 
+  /// How many of the player's kills fall inside this clip's footage window
+  /// (the buffer length before an event save, or the whole session for a
+  /// manual recording) — counted by `ClipCoordinator` from the live event
+  /// stream at save time. 0 when nothing was counted (desktop clips, games
+  /// without an event API, older clips).
+  final int killCount;
+
   Clip({
     required this.path,
     required this.gameId,
@@ -27,6 +34,7 @@ class Clip {
     required this.sizeBytes,
     this.protected = false,
     this.sessionAt,
+    this.killCount = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +45,7 @@ class Clip {
         'sizeBytes': sizeBytes,
         'protected': protected,
         'sessionAt': sessionAt?.toIso8601String(),
+        'killCount': killCount,
       };
 
   factory Clip.fromJson(Map<String, dynamic> j) => Clip(
@@ -50,5 +59,6 @@ class Clip {
         sessionAt: j['sessionAt'] != null
             ? DateTime.parse(j['sessionAt'] as String)
             : null,
+        killCount: j['killCount'] as int? ?? 0,
       );
 }

@@ -173,6 +173,12 @@ void main() {
     });
   });
 
+  test('captureMicrophone defaults to OFF and round-trips', () {
+    expect(AppSettings().captureMicrophone, isFalse);
+    final s = AppSettings(captureMicrophone: true);
+    expect(AppSettings.fromJson(s.toJson()).captureMicrophone, isTrue);
+  });
+
   test('corrupt file is backed up and defaults returned', () async {
     final store = SettingsStore(tmp);
     store.file.writeAsStringSync('{not json');

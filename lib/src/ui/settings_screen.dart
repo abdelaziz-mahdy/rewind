@@ -174,6 +174,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  void _handleMicrophoneChanged(bool value) {
+    widget.settings.captureMicrophone = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   /// The uuid the dropdown should show as selected: the explicit choice if
   /// one was saved, else whichever display libobs reports as main, else the
   /// first display — never null while [widget.displays] is non-empty, since
@@ -312,6 +318,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       key: const ValueKey('autoSwitchCaptureSwitch'),
                       value: widget.settings.autoSwitchCapture,
                       onChanged: _handleAutoSwitchChanged,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Capture microphone',
+                              style: Theme.of(context).textTheme.body),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Mix your mic into clips and recordings, '
+                            'alongside system audio',
+                            style: Theme.of(context).textTheme.bodyMuted,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      key: const ValueKey('captureMicrophoneSwitch'),
+                      value: widget.settings.captureMicrophone,
+                      onChanged: _handleMicrophoneChanged,
                     ),
                   ],
                 ),

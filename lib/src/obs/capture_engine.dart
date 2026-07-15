@@ -76,6 +76,13 @@ abstract class CaptureEngine {
   /// false on failure.
   bool setCaptureWindow(int windowId);
 
+  /// Enable/disable microphone capture (default input device), mixed into
+  /// every clip and recording alongside the always-on system audio. Safe to
+  /// call before [init] (the preference is applied at init). First use
+  /// triggers the macOS microphone permission prompt. Returns false on
+  /// failure.
+  bool setMicEnabled(bool enabled);
+
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;

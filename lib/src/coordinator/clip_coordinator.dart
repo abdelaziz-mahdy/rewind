@@ -138,6 +138,10 @@ class ClipCoordinator {
     // footage — the buffer covers the last N seconds, so it's already
     // inside the previous clip.
     registry.events.listen((e) {
+      // Remembered unconditionally (even when auto-clip is off/cooling
+      // down): kill counts on clips must reflect what HAPPENED, not what
+      // triggered a save.
+      _rememberEvent(e);
       final cfg = settings.configFor(e.gameId);
       if (!(cfg.autoClip && cfg.enabledEvents.contains(e.kind))) return;
       final now = DateTime.now();
@@ -306,6 +310,9 @@ class ClipCoordinator {
     }
 
     final gameId = activeGame.value ?? 'desktop';
+    // The recording's kill count spans its whole session, not the buffer
+    // window — grab the start before clearing it below.
+    final startedAt = recordingStartedAt.value;
     // The engine-side session ends with this call either way (success or
     // failure) — clear local state up front so a failed save below doesn't
     // leave the deck stuck showing "recording".
@@ -323,20 +330,49 @@ class ClipCoordinator {
       }
 
       await _indexClip(
-          path, GameEvent(gameId: gameId, kind: GameEventKind.recording));
+          path, GameEvent(gameId: gameId, kind: GameEventKind.recording),
+          windowStart: startedAt);
     } catch (err, stack) {
       talker.handle(err, stack);
       _reportSaveError(err.toString());
     }
   }
 
+  /// Recent game events (every kind, unfiltered), kept so a clip can be
+  /// annotated with what happened INSIDE its footage window — e.g. how many
+  /// kills a recording covers ([Clip.killCount]). Pruned to the last 20
+  /// minutes; long recordings just count the retained tail.
+  final List<GameEvent> _recentEvents = [];
+  static const _recentEventsRetention = Duration(minutes: 20);
+
+  void _rememberEvent(GameEvent e) {
+    _recentEvents.add(e);
+    final cutoff = DateTime.now().subtract(_recentEventsRetention);
+    _recentEvents.removeWhere((ev) => ev.time.isBefore(cutoff));
+  }
+
+  /// Kills by the player inside [start]..[end] for [gameId] — the clip
+  /// annotation. Counts only `kill` events: each Multikill arrives WITH its
+  /// ChampionKill, so counting both would double-count.
+  int _killsInWindow(String gameId, DateTime start, DateTime end) =>
+      _recentEvents
+          .where((ev) =>
+              ev.gameId == gameId &&
+              ev.kind == GameEventKind.kill &&
+              !ev.time.isBefore(start) &&
+              !ev.time.isAfter(end))
+          .length;
+
   /// Shared "wrap a capture-engine-reported path into the clip library"
   /// logic for both [_save] (replay buffer) and [toggleRecording] (manual
   /// recording): guards against a reported path with no file on disk (the
   /// stub shim reports a path without writing anything), indexes the clip,
   /// persists the library, enforces the storage cap, and clears the last
-  /// save error.
-  Future<void> _indexClip(String path, GameEvent e) async {
+  /// save error. [windowStart] overrides the footage window's start for
+  /// kill counting (a manual recording's session start); buffer clips
+  /// default to the game's replay-buffer length before the event.
+  Future<void> _indexClip(String path, GameEvent e,
+      {DateTime? windowStart}) async {
     final file = File(path);
     // The shim's save can report the path slightly before the mux helper
     // finishes writing the file, especially with the encoder under load —
@@ -353,6 +389,10 @@ class ClipCoordinator {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
 
+    final windowEnd = e.time;
+    final start = windowStart ??
+        windowEnd
+            .subtract(Duration(seconds: settings.bufferSecondsFor(e.gameId)));
     final clip = Clip(
       path: path,
       gameId: e.gameId,
@@ -360,6 +400,7 @@ class ClipCoordinator {
       createdAt: e.time,
       sizeBytes: await file.length(),
       sessionAt: _sessionStartedAt[e.gameId],
+      killCount: _killsInWindow(e.gameId, start, windowEnd),
     );
     library.add(clip);
     await library.save();

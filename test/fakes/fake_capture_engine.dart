@@ -149,4 +149,14 @@ class FakeCaptureEngine implements CaptureEngine {
     captureWindowCalls.add(windowId);
     return true;
   }
+
+  @override
+  bool setMicEnabled(bool enabled) {
+    calls.add('setMic:$enabled');
+    micEnabled = enabled;
+    return true;
+  }
+
+  /// Last value passed to [setMicEnabled].
+  bool? micEnabled;
 }

@@ -40,6 +40,12 @@ class AppSettings {
   /// preference; see `ClipCoordinator`. Defaults to on.
   bool autoSwitchCapture;
 
+  /// Whether the microphone is mixed into clips/recordings alongside the
+  /// always-on system audio. Default OFF: capturing voice without an
+  /// explicit opt-in is a privacy trap. First enable triggers the macOS
+  /// microphone permission prompt.
+  bool captureMicrophone;
+
   /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
   /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
   /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
@@ -67,6 +73,7 @@ class AppSettings {
     this.captureAppBundleId,
     this.captureAppName,
     this.autoSwitchCapture = true,
+    this.captureMicrophone = false,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.clipsDirPath,
@@ -100,6 +107,7 @@ class AppSettings {
         'captureAppBundleId': captureAppBundleId,
         'captureAppName': captureAppName,
         'autoSwitchCapture': autoSwitchCapture,
+        'captureMicrophone': captureMicrophone,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'clipsDirPath': clipsDirPath,
@@ -114,6 +122,7 @@ class AppSettings {
         captureAppBundleId: j['captureAppBundleId'] as String?,
         captureAppName: j['captureAppName'] as String?,
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
+        captureMicrophone: j['captureMicrophone'] as bool? ?? false,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
         // falls back to the 20 GB default.

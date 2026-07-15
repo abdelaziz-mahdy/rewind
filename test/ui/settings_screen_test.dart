@@ -155,6 +155,11 @@ void main() {
   testWidgets(
       'recording a combo in the record hotkey field updates '
       'settings.recordHotkey without touching settings.hotkey', (t) async {
+    // The record field sits below the (mic-toggle-taller) Capture section —
+    // off the default viewport's ListView build extent.
+    t.view.physicalSize = const Size(1200, 3000);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
     final calls = <AppSettings>[];
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -181,6 +186,9 @@ void main() {
   testWidgets(
       'onHotkeyRecording fires for the record field too, same as the '
       'save field', (t) async {
+    t.view.physicalSize = const Size(1200, 3000);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
     final recording = <bool>[];
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),

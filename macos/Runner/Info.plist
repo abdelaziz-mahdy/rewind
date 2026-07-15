@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Rewind mixes your microphone into game clips and recordings when the "Capture microphone" setting is on.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

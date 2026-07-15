@@ -268,7 +268,9 @@ class _ClipTileState extends State<ClipTile> {
                               Flexible(
                                 child: Text(
                                   '${relativeAge(clip.createdAt)} · '
-                                  '${formatSize(clip.sizeBytes)}',
+                                  '${formatSize(clip.sizeBytes)}'
+                                  '${clip.killCount > 0 ? ' · ${clip.killCount} '
+                                      '${clip.killCount == 1 ? 'kill' : 'kills'}' : ''}',
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
                                   style: theme.textTheme.bodyMuted,

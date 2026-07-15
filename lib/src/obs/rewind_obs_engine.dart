@@ -69,4 +69,7 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setCaptureWindow(int windowId) => _obs.setCaptureWindow(windowId) == 0;
+
+  @override
+  bool setMicEnabled(bool enabled) => _obs.setMicEnabled(enabled) == 0;
 }

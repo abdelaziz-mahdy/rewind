@@ -92,6 +92,16 @@ static char g_app_bundle_id[256] = "";
  * enumeration doc), but their windows are ordinary CGWindows. */
 static uint32_t g_window_id = 0;
 
+/* Audio sources. Channel 0 carries the (video-only) screen capture;
+ * without explicit audio SOURCES every clip's AAC track encodes silence.
+ * Channel 1: system/desktop audio (sck_audio_capture, macOS 13+) — always
+ * created at init. Channel 2: the microphone (coreaudio_input_capture),
+ * toggled by rewind_set_mic_enabled (user preference; also needs the
+ * NSMicrophoneUsageDescription TCC prompt on first use). */
+static obs_source_t *g_sysaudio = NULL;
+static obs_source_t *g_mic = NULL;
+static int g_mic_enabled = 0; /* preference; applied at init if set early */
+
 static int fail(const char *msg) { set_error(msg); return 1; }
 
 /* ---- SDK / module path discovery -----------------------------------
@@ -752,6 +762,24 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     }
     obs_set_output_source(0, g_capture);
 
+    /* System (game) audio. screen_capture on channel 0 provides VIDEO
+     * only — without this source every clip's AAC track is silence.
+     * Default settings = desktop audio stream. Non-fatal if unavailable
+     * (macOS < 13): video-only capture is better than no capture. */
+    g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
+    if (g_sysaudio) {
+        obs_set_output_source(1, g_sysaudio);
+    } else {
+        blog(LOG_WARNING, "rewind: sck_audio_capture unavailable; clips will have no system audio");
+    }
+
+    /* Microphone, if the preference was set before init. */
+    if (g_mic_enabled) {
+        g_mic = obs_source_create("coreaudio_input_capture", "rewind-mic", NULL, NULL);
+        if (g_mic) obs_set_output_source(2, g_mic);
+        else blog(LOG_WARNING, "rewind: coreaudio_input_capture unavailable (mic permission?)");
+    }
+
     /* Encoders: VideoToolbox H.264 + CoreAudio AAC. NOTE: the VideoToolbox
      * encoder id is registered by the mac-videotoolbox plugin, which is a
      * SEPARATE module from mac-capture/obs-ffmpeg/coreaudio-encoder — see
@@ -799,6 +827,16 @@ cleanup:
     if (g_replay) { obs_output_release(g_replay); g_replay = NULL; }
     if (g_venc) { obs_encoder_release(g_venc); g_venc = NULL; }
     if (g_aenc) { obs_encoder_release(g_aenc); g_aenc = NULL; }
+    if (g_mic) {
+        obs_set_output_source(2, NULL);
+        obs_source_release(g_mic);
+        g_mic = NULL;
+    }
+    if (g_sysaudio) {
+        obs_set_output_source(1, NULL);
+        obs_source_release(g_sysaudio);
+        g_sysaudio = NULL;
+    }
     if (g_capture) {
         obs_set_output_source(0, NULL);
         obs_source_release(g_capture);
@@ -1021,10 +1059,36 @@ int rewind_obs_shutdown(void) {
     obs_output_release(g_recording);  g_recording = NULL;
     obs_encoder_release(g_venc);    g_venc = NULL;
     obs_encoder_release(g_aenc);    g_aenc = NULL;
+    obs_set_output_source(2, NULL);
+    obs_source_release(g_mic);      g_mic = NULL;
+    obs_set_output_source(1, NULL);
+    obs_source_release(g_sysaudio); g_sysaudio = NULL;
     obs_set_output_source(0, NULL);
     obs_source_release(g_capture);  g_capture = NULL;
     obs_shutdown();
     g_initialized = 0;
+    return 0;
+}
+
+int rewind_set_mic_enabled(int enabled) {
+    g_mic_enabled = enabled ? 1 : 0;
+
+    /* Before init the preference is just remembered (applied by
+     * rewind_obs_init); after init, create/tear down the mic source live. */
+    if (!g_initialized) {
+        set_error("");
+        return 0;
+    }
+    if (g_mic_enabled && !g_mic) {
+        g_mic = obs_source_create("coreaudio_input_capture", "rewind-mic", NULL, NULL);
+        if (!g_mic) return fail("microphone source failed (permission not granted?)");
+        obs_set_output_source(2, g_mic);
+    } else if (!g_mic_enabled && g_mic) {
+        obs_set_output_source(2, NULL);
+        obs_source_release(g_mic);
+        g_mic = NULL;
+    }
+    set_error("");
     return 0;
 }
 
@@ -1262,6 +1326,12 @@ int rewind_set_capture_app(const char *bundle_id) {
 
 int rewind_set_capture_window(uint32_t window_id) {
     (void)window_id;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_enabled(int enabled) {
+    (void)enabled;
     set_error("");
     return 0;
 }

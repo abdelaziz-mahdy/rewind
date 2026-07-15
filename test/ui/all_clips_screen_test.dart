@@ -176,6 +176,24 @@ void main() {
     });
   });
 
+  testWidgets('clips are sectioned per game, newest game first', (t) async {
+    library
+        .add(clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
+    library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
+        DateTime(2026, 7, 2)));
+    library.add(clip(
+        'c', 'league_of_legends', GameEventKind.kill, DateTime(2026, 7, 3)));
+    await t.pumpWidget(_app(screen()));
+
+    // Section headers (uppercased display names) with per-section counts.
+    expect(inList(find.text('LEAGUE OF LEGENDS')), findsOneWidget);
+    expect(inList(find.text('DESKTOP')), findsOneWidget);
+    // League has the newest clip, so its section comes first.
+    final leagueY = t.getTopLeft(inList(find.text('LEAGUE OF LEGENDS'))).dy;
+    final desktopY = t.getTopLeft(inList(find.text('DESKTOP'))).dy;
+    expect(leagueY, lessThan(desktopY));
+  });
+
   testWidgets('folder button sits flush right at wide widths', (t) async {
     t.view.physicalSize = const Size(1600, 900);
     t.view.devicePixelRatio = 1.0;
