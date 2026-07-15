@@ -36,6 +36,10 @@ jobs:
         env:
           FLUTTER_XCODE_ARCHS: arm64
           FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "YES"
+          # No local Apple Development cert on CI runners; build unsigned and
+          # let bundle_obs_macos.sh ad-hoc re-sign (matches the "unsigned for
+          # now — right-click → Open" note in the README).
+          FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
         run: flutter build macos --release
 
       # The Xcode "Bundle libobs runtime" phase runs this during the build,

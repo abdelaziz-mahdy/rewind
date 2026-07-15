@@ -79,6 +79,14 @@ Turn the tag-driven release into real, downloadable installers.
       arm64 via `FLUTTER_XCODE_ARCHS=arm64` +
       `FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES` (the fetched libobs is arm64-only,
       so a universal link fails on the x86_64 slice).
+- [x] **CI code-signing workaround**: the Xcode project pins a local Apple
+      Development identity (team `YBLFC373J5`) so Screen-Recording (TCC)
+      grants survive dev rebuilds. CI runners don't have that certificate, so
+      the macOS build/release jobs pass `FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO`
+      and rely on the mandatory arm64 **ad-hoc** signature (the bundle step
+      formalizes it). Result: CI ships **unsigned/ad-hoc** artifacts
+      (right-click → Open on first run). Proper fix — a CI secret holding a
+      real Developer ID cert + notarization — is the v1.0 signing item below.
 - [ ] **Universal / x86_64 macOS build** (follow-up): build a universal
       libobs in `tools/fetch_libobs.sh` (or ship a separate x86_64 DMG) so
       Intel Macs are covered. Currently arm64-only.
