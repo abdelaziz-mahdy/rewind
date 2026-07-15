@@ -182,14 +182,15 @@ class LeagueEventWatcher implements GameEventSource {
     final listBody = await _fetch('/liveclientdata/playerlist');
     if (listBody == null) return;
 
-    String? gameMode;
+    String? rawMode;
     final statsBody = await _fetch('/liveclientdata/gamestats');
     if (statsBody != null) {
       try {
         final stats = jsonDecode(statsBody) as Map<String, dynamic>;
-        gameMode = _friendlyGameMode(stats['gameMode'] as String?);
+        rawMode = stats['gameMode'] as String?;
       } catch (_) {}
     }
+    final gameMode = _friendlyGameMode(rawMode);
 
     try {
       final players =
@@ -207,15 +208,22 @@ class LeagueEventWatcher implements GameEventSource {
       final myChampion = me?['championName'] as String?;
       final myTeam = me?['team'];
 
+      // The ORDER/CHAOS `team` field is only a real 2-team split for
+      // standard modes. In Arena (CHERRY) it buckets everyone into two
+      // arbitrary, unbalanced halves (verified live: 12 ORDER / 6 CHAOS in
+      // an 18-player game) — NOT the actual duos, which the API doesn't
+      // expose. So for anything that isn't a clean 2-team mode, we don't
+      // fake a "your team": every other champion goes into a single flat
+      // list (carried in `enemies`, with `allies` empty — the UI renders
+      // that as a neutral "champions in this game").
+      final twoTeam = _isTwoTeamMode(rawMode) && myTeam != null;
       final allies = <String>[];
       final enemies = <String>[];
       for (final p in players) {
         if (identical(p, me)) continue;
         final champ = p['championName'] as String?;
         if (champ == null || champ.isEmpty) continue;
-        // Same team = ally. With no resolvable "me" (myTeam null), everyone
-        // lands in enemies — still useful ("who's in this game").
-        if (myTeam != null && p['team'] == myTeam) {
+        if (twoTeam && p['team'] == myTeam) {
           allies.add(champ);
         } else {
           enemies.add(champ);
@@ -223,7 +231,7 @@ class LeagueEventWatcher implements GameEventSource {
       }
 
       talker.info('League match: champion=$myChampion mode=$gameMode '
-          'allies=${allies.length} enemies=${enemies.length}');
+          'twoTeam=$twoTeam allies=${allies.length} others=${enemies.length}');
       _controller
           .add(GameEvent(gameId: gameId, kind: GameEventKind.matchInfo, meta: {
         'gameMode': gameMode,
@@ -236,6 +244,22 @@ class LeagueEventWatcher implements GameEventSource {
       talker.handle(err, stack);
     }
   }
+
+  /// Whether [rawMode] is a mode where the ORDER/CHAOS `team` field is a
+  /// genuine two-team split (so "your team" vs "enemies" is meaningful).
+  /// Arena (CHERRY) and other free-for-all/multi-team modes are NOT — see
+  /// [_emitMatchInfo].
+  static bool _isTwoTeamMode(String? rawMode) => const {
+        'CLASSIC', // Summoner's Rift 5v5
+        'ARAM',
+        'URF',
+        'ARURF',
+        'ONEFORALL',
+        'ULTBOOK',
+        'NEXUSBLITZ',
+        'TUTORIAL',
+        'PRACTICETOOL',
+      }.contains(rawMode);
 
   /// Maps Riot's internal gameMode codes to friendly names, falling back to
   /// a title-cased version of the raw code for modes not listed.

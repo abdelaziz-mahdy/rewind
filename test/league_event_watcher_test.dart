@@ -109,9 +109,8 @@ void main() {
     expect(emitted, hasLength(2));
   });
 
-  test('emits a matchInfo event with champion, teams, and friendly mode',
-      () async {
-    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'CHERRY'});
+  test('a 2-team mode (CLASSIC) splits into your team vs enemies', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'CLASSIC'});
     responses['/liveclientdata/playerlist'] = jsonEncode([
       {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'},
       {'riotId': 'Mate#EUW', 'championName': 'Lux', 'team': 'ORDER'},
@@ -125,9 +124,33 @@ void main() {
 
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
     expect(info.meta['champion'], 'Ahri');
-    expect(info.meta['gameMode'], 'Arena'); // CHERRY -> friendly
+    expect(info.meta['gameMode'], "Summoner's Rift");
     expect(info.meta['allies'], ['Lux']); // same team, excludes me
     expect(info.meta['enemies'], ['Zed', 'Yasuo']);
+  });
+
+  test(
+      'Arena (CHERRY) has no reliable teams: allies empty, everyone else in '
+      'one flat list', () async {
+    // Verified live 2026-07-15: Arena\'s ORDER/CHAOS split is arbitrary
+    // (12/6 in an 18-player game), NOT the duos — so we never fake a team.
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'CHERRY'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Leona', 'team': 'ORDER'},
+      {'riotId': 'A#EUW', 'championName': 'Vex', 'team': 'ORDER'},
+      {'riotId': 'B#EUW', 'championName': 'Jax', 'team': 'ORDER'},
+      {'riotId': 'C#EUW', 'championName': 'Lux', 'team': 'CHAOS'},
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(info.meta['champion'], 'Leona');
+    expect(info.meta['gameMode'], 'Arena');
+    expect(info.meta['allies'], isEmpty);
+    expect(info.meta['enemies'], ['Vex', 'Jax', 'Lux']); // all others, flat
   });
 
   test('matchInfo is emitted only once per match', () async {

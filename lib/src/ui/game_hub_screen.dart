@@ -465,8 +465,18 @@ class _GameHubScreenState extends State<GameHubScreen> {
         children: [
           Text('LIVE EVENTS',
               style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-          const SizedBox(height: 8),
-          for (final e in _liveEvents) _LiveEventRow(event: e),
+          const SizedBox(height: 10),
+          // Compact wrap of chips instead of one full-width row per event —
+          // fills the card's width and stays short (the old list left most
+          // of the card empty and grew tall). Cap the visible count; the
+          // full history lives in each clip anyway.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in _liveEvents.take(12)) _LiveEventChip(event: e),
+            ],
+          ),
         ],
       ),
     );
@@ -679,23 +689,25 @@ class _StatusPill extends StatelessWidget {
 
 /// One row in the v0.2 live-events feed slot: badge + relative age, styled
 /// like `ClipTile`'s own event badge.
-class _LiveEventRow extends StatelessWidget {
+/// A compact live-event chip: the event badge with its age tucked to the
+/// right, wrapped into a flowing row so the feed stays short and dense.
+class _LiveEventChip extends StatelessWidget {
   final GameEvent event;
 
-  const _LiveEventRow({required this.event});
+  const _LiveEventChip({required this.event});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          EventBadge(kind: event.kind),
-          const SizedBox(width: 8),
-          Text(relativeAge(event.time), style: theme.textTheme.bodyMuted),
-        ],
-      ),
+    final tokens = context.rewindTokens;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EventBadge(kind: event.kind),
+        const SizedBox(width: 6),
+        Text(relativeAge(event.time),
+            style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
+      ],
     );
   }
 }

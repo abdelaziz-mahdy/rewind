@@ -50,24 +50,30 @@ class MediaKitThumbnailGenerator implements ThumbnailGenerator {
       // subscriber that starts listening only after open() completes can
       // miss that event entirely (broadcast streams never replay past
       // events), hanging until the timeout on every single call.
+      //
+      // The duration is now a HINT, not a gate: with an AAC audio track
+      // present (added 2026-07-14), mpv frequently never emits a positive
+      // duration on the headless stream even though the file is perfectly
+      // valid (ffprobe/mdls read it fine) — which was silently killing
+      // every clip's thumbnail. So we no longer fail when it's missing; we
+      // just blind-seek to a fixed 1 s (every Rewind clip is far longer
+      // than that — the replay buffer is ≥15 s and recordings are longer),
+      // past any black leader frame.
       final durationFuture = player.stream.duration
           .firstWhere((d) => d > Duration.zero)
-          .timeout(timeout, onTimeout: () => Duration.zero);
+          .timeout(const Duration(seconds: 3), onTimeout: () => Duration.zero);
       await player.open(Media(videoPath), play: false);
 
       final duration = await durationFuture;
-      if (duration <= Duration.zero) {
-        talker.warning(
-            'Thumbnail: no duration reported for $videoPath (giving up)');
-        return false;
+      // Target a little past the start; when the duration is known and the
+      // clip is very short, cap at 10% of it, else a fixed 1 s.
+      final Duration target;
+      if (duration > Duration.zero &&
+          duration * 0.1 < const Duration(seconds: 1)) {
+        target = duration * 0.1;
+      } else {
+        target = const Duration(seconds: 1);
       }
-
-      // A little past the start (past any black leader/fade-in frame), but
-      // never past a very short clip: min(1s, 10% of duration).
-      final tenPercent = duration * 0.1;
-      final target = tenPercent < const Duration(seconds: 1)
-          ? tenPercent
-          : const Duration(seconds: 1);
       await player.seek(target);
       // Wait for the VideoController's render target to actually produce a
       // frame at the seeked position before grabbing a screenshot of it.

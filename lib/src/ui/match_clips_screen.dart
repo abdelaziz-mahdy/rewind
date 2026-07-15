@@ -62,13 +62,20 @@ class _MatchInfoCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (headline.isNotEmpty) Text(headline, style: theme.textTheme.title),
+          // A real 2-team split (Summoner's Rift, ARAM) shows YOUR TEAM vs
+          // ENEMIES. Arena and other multi-team modes have no reliable team
+          // data (see LeagueEventWatcher), so allies is empty and every
+          // other champion lands in one neutral list.
           if (stats.allies.isNotEmpty) ...[
             const SizedBox(height: 16),
             team('YOUR TEAM', stats.allies, tokens.accent),
-          ],
-          if (stats.enemies.isNotEmpty) ...[
+            if (stats.enemies.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              team('ENEMIES', stats.enemies, theme.colorScheme.error),
+            ],
+          ] else if (stats.enemies.isNotEmpty) ...[
             const SizedBox(height: 16),
-            team('ENEMIES', stats.enemies, theme.colorScheme.error),
+            team('CHAMPIONS IN THIS GAME', stats.enemies, tokens.textMuted),
           ],
         ],
       ),
