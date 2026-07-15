@@ -4,11 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/league_event_watcher.dart';
 
-Map<String, dynamic> _kill(int id, String killer) => {
+Map<String, dynamic> _kill(int id, String killer,
+        [String victim = 'someone']) =>
+    {
       'EventID': id,
       'EventName': 'ChampionKill',
       'KillerName': killer,
-      'VictimName': 'someone',
+      'VictimName': victim,
     };
 
 String _events(List<Map<String, dynamic>> events) =>
@@ -88,6 +90,23 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(emitted, hasLength(1));
+  });
+
+  test('a ChampionKill where the player is the VICTIM emits a death', () async {
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+
+    responses['/liveclientdata/eventdata'] = _events([
+      _kill(0, 'Enemy#1', 'Me#EUW'), // player killed -> death
+      _kill(1, 'Me#EUW', 'Enemy#1'), // player killed someone -> kill
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(emitted.map((e) => e.kind),
+        containsAll([GameEventKind.death, GameEventKind.kill]));
+    // Someone else killing someone else is neither.
+    expect(emitted, hasLength(2));
   });
 
   test('an already-seen EventID never re-emits (poll after poll)', () async {

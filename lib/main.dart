@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'src/clip/clip_library.dart';
 import 'src/clip/clips_dir.dart';
+import 'src/clip/match_stats.dart';
 import 'src/clip/storage_manager.dart';
 import 'src/clip/thumbnail_cache.dart';
 import 'src/clip/thumbnail_generator.dart';
@@ -79,6 +80,9 @@ Future<void> main() async {
     clipsDir,
     onClipDeleted: (clip) => thumbnailCache.invalidate(clip),
   );
+  // Per-match kills/deaths (matches.json beside the clips), for the match
+  // cards' K/D summaries.
+  final matchStats = await MatchStatsStore.load(clipsDir);
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
   // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
   unawaited(removeOrphanThumbnails(library.all, clipsDir));
@@ -160,6 +164,7 @@ Future<void> main() async {
     settings: settings,
     outDir: clipsDir.path,
     engine: engine,
+    matchStats: matchStats,
     onClipIndexed: (clip) async {
       await thumbnailCache.ensure(clip);
     },

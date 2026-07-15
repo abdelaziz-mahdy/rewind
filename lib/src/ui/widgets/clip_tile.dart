@@ -42,6 +42,7 @@ Color eventColor(BuildContext context, GameEventKind kind) {
     case GameEventKind.victory:
       return scheme.primary;
     case GameEventKind.defeat:
+    case GameEventKind.death:
       return scheme.error;
     case GameEventKind.other:
       return scheme.outline;
@@ -208,7 +209,7 @@ class _ClipTileState extends State<ClipTile> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        _ClipThumbnail(
+                        ClipThumbnail(
                             clip: clip, thumbnails: widget.thumbnails),
                         Positioned(
                           left: 8,
@@ -416,11 +417,12 @@ class _OverflowMenu extends StatelessWidget {
 /// moment generation completes, with no extra listenable plumbing needed.
 /// Fills whatever space its parent [Expanded]/[Stack] gives it — sizing
 /// and corner-rounding are the card's job, not this widget's.
-class _ClipThumbnail extends StatelessWidget {
+class ClipThumbnail extends StatelessWidget {
   final Clip clip;
   final ThumbnailCache? thumbnails;
 
-  const _ClipThumbnail({required this.clip, required this.thumbnails});
+  const ClipThumbnail(
+      {required this.clip, required this.thumbnails, super.key});
 
   @override
   Widget build(BuildContext context) {

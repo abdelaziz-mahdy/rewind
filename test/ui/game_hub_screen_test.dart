@@ -11,10 +11,21 @@ import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_hub_screen.dart';
+import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
+import 'package:rewind/src/ui/widgets/match_card.dart';
 import '../fakes/fake_capture_engine.dart';
 import '../fakes/fake_game_source.dart';
+
+/// Records pushed routes so a match-card tap can be asserted by route name
+/// without building MatchClipsScreen (whose ClipTiles need media_kit).
+class _RouteObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushed = [];
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      pushed.add(route);
+}
 
 Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
@@ -120,10 +131,12 @@ void main() {
           sessionAt: match2));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
+      // Each session is one MATCH card, labeled "MATCH · <age>", with a
+      // clip count in its summary line.
       final headers = inList(find.textContaining('MATCH · '));
       expect(headers, findsNWidgets(2));
-      expect(inList(find.textContaining('2 CLIPS')), findsOneWidget);
-      expect(inList(find.textContaining('· 1 CLIP')), findsOneWidget);
+      expect(inList(find.text('2 clips')), findsOneWidget);
+      expect(inList(find.text('1 clip')), findsOneWidget);
     });
 
     testWidgets('a process-detected game labels its groups SESSION, not MATCH',
@@ -343,21 +356,44 @@ void main() {
       expect(inList(find.text('MANUAL')), findsOneWidget);
     });
 
-    testWidgets('an event-kind chip filters the scoped list', (t) async {
-      library.add(
-          clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
-      library
-          .add(clip('b', 'app:cs2', GameEventKind.other, DateTime(2026, 7, 2)));
-      await _pump(t, _app(hub(gameId: 'app:cs2')));
+    testWidgets(
+        'a match card badges its BEST event and tapping opens the match',
+        (t) async {
+      // One session with a manual and a penta clip; the card badges the
+      // penta (highest clipPriority), not whichever came last.
+      final stamp = DateTime(2026, 7, 14, 20);
+      library.add(Clip(
+          path: '${tmp.path}/a.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.manual,
+          createdAt: DateTime(2026, 7, 14, 20, 5),
+          sizeBytes: 1,
+          sessionAt: stamp));
+      library.add(Clip(
+          path: '${tmp.path}/b.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.pentaKill,
+          createdAt: DateTime(2026, 7, 14, 20, 8),
+          sizeBytes: 1,
+          sessionAt: stamp));
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('OTHER')), findsOneWidget);
+      final observer = _RouteObserver();
+      await _pump(
+          t,
+          MaterialApp(
+            theme: rewindTheme(),
+            navigatorObservers: [observer],
+            home: Scaffold(body: hub(gameId: 'league_of_legends')),
+          ));
 
-      await t.tap(find.byKey(const ValueKey('eventFilterChip:manual')));
-      await t.pump();
+      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      expect(inList(find.text('MANUAL')), findsNothing);
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('OTHER')), findsNothing);
+      observer.pushed.clear();
+      await t.tap(find.byType(MatchCard));
+      // No pump: the pushed route's builder (MatchClipsScreen → ClipTile →
+      // media_kit) only runs next frame; assert the push happened first.
+      expect(observer.pushed.single.settings.name, matchClipsScreenRouteName);
     });
 
     testWidgets('empty scope shows the game-specific empty state', (t) async {

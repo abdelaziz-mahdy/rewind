@@ -11,10 +11,11 @@ import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
 import 'clip_sessions.dart';
 import 'game_directory.dart';
+import 'match_clips_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
-import 'widgets/event_filter_chips.dart';
 import 'widgets/game_tile_avatar.dart';
+import 'widgets/match_card.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -101,9 +102,6 @@ class _GameHubScreenState extends State<GameHubScreen> {
   late final TextEditingController _bufferController;
   late bool _autoClip;
   late Set<GameEventKind> _enabledEvents;
-
-  /// Selected event-kind filter for the clip list below; null means "All".
-  GameEventKind? _filterKind;
 
   /// Whether the "Capture settings" disclosure is open. Collapsed by
   /// default (§ progressive disclosure) and deliberately not persisted —
@@ -254,8 +252,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final listenable =
-        Listenable.merge([widget.library, widget.coordinator.activeGameIds]);
+    final listenable = Listenable.merge([
+      widget.library,
+      widget.coordinator.activeGameIds,
+      // Live K/D: match cards must re-render as kills/deaths land.
+      if (widget.coordinator.matchStats != null) widget.coordinator.matchStats!,
+    ]);
     return ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
@@ -267,24 +269,15 @@ class _GameHubScreenState extends State<GameHubScreen> {
         final entry = _resolveEntry(entries);
 
         final matchIds = _matchIdsFor(widget.gameId);
-        final scoped = widget.library.all
+        final clips = widget.library.all
             .where((c) => matchIds.contains(c.gameId))
-            .toList();
-        // Self-healing filter: rather than a separate library listener to
-        // reset stale state (as `AllClipsScreen` does), derive the filter
-        // actually applied from the current scope — this whole screen
-        // already rebuilds off `widget.library`, so a kind that's lost its
-        // last clip just quietly stops filtering next frame instead of
-        // needing its own prune callback.
-        final effectiveKind =
-            (_filterKind != null && scoped.any((c) => c.event == _filterKind))
-                ? _filterKind
-                : null;
-        final visible = effectiveKind == null
-            ? scoped
-            : scoped.where((c) => c.event == effectiveKind).toList();
-        final clips = List.of(visible)
+            .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        // One card per play session (match). A game with an in-match API
+        // (League) labels them MATCH and can show K/D; process-detected
+        // games and desktop label them SESSION.
+        final sessions = groupClipsIntoSessions(clips);
+        final isMatch = entry.detection.contains(DetectionMethod.liveClientApi);
 
         return ListView(
           padding: EdgeInsets.zero,
@@ -296,7 +289,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
                 child: _liveEventsCard(context),
               ),
             // Collapsed by default and placed right under the header, not
-            // at the bottom: the clip list can grow unbounded, and burying
+            // at the bottom: the match list can grow unbounded, and burying
             // settings behind it would hurt discoverability far more than a
             // single ~40px closed disclosure row costs the "clips first"
             // goal (see the class doc).
@@ -304,74 +297,63 @@ class _GameHubScreenState extends State<GameHubScreen> {
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
               child: _captureSettingsDisclosure(context),
             ),
-            // Top inset tuned against the disclosure's own trailing padding
-            // (12 collapsed / 4 expanded, see `_captureSettingsDisclosure`
-            // and `_captureSettingsBody`) so the combined gap lands at a
-            // normal 16-24 px rhythm either way, instead of stacking to ~36
-            // px collapsed — probed empirically in game_hub_screen_test.dart.
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-              child: Text('Clips', style: Theme.of(context).textTheme.title),
+              child: Text(isMatch ? 'Matches' : 'Sessions',
+                  style: Theme.of(context).textTheme.title),
             ),
-            EventFilterChips(
-              clips: scoped,
-              selected: effectiveKind,
-              onSelected: (k) => setState(() => _filterKind = k),
-            ),
-            if (clips.isEmpty)
+            if (sessions.isEmpty)
               _EmptyGameClips(
                   displayName: entry.displayName,
                   hotkeyLabel: widget.hotkeyLabel)
             else
-              // Grouped by play session (match): clips saved during one
-              // continuous game activation share a Clip.sessionAt stamp;
-              // older/desktop clips gap-cluster (see clip_sessions.dart).
-              // Keyed 'clipsList' as a whole so list-scoped test finders
-              // keep working across the flat-grid → sectioned change.
-              Column(
+              // Keyed 'clipsList' so the pre-existing list-scoped test
+              // finders keep working across the clip-grid → match-grid
+              // change.
+              Padding(
                 key: const ValueKey('clipsList'),
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final session in groupClipsIntoSessions(clips)) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-                      child: Text(
-                        _sessionLabel(entry, session),
-                        style: Theme.of(context)
-                            .textTheme
-                            .micro
-                            .copyWith(color: context.rewindTokens.textMuted),
-                      ),
-                    ),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                        mainAxisSpacing: clipGridSpacing,
-                        crossAxisSpacing: clipGridSpacing,
-                        childAspectRatio: clipGridChildAspectRatio,
-                      ),
-                      itemCount: session.clips.length,
-                      itemBuilder: (context, i) => ClipTile(
-                        clip: session.clips[i],
-                        library: widget.library,
-                        thumbnails: widget.thumbnails,
-                        // Redundant here: the hub is already scoped to one
-                        // game (§ redesign spec change 1) — All Clips shows
-                        // it instead.
-                        showGameName: false,
-                      ),
-                    ),
-                  ],
-                ],
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                    mainAxisSpacing: clipGridSpacing,
+                    crossAxisSpacing: clipGridSpacing,
+                    childAspectRatio: matchCardAspectRatio,
+                  ),
+                  itemCount: sessions.length,
+                  itemBuilder: (context, i) {
+                    final session = sessions[i];
+                    return MatchCard(
+                      session: session,
+                      isMatch: isMatch,
+                      stats: widget.coordinator.matchStats
+                          ?.statsFor(widget.gameId, session.startedAt),
+                      thumbnails: widget.thumbnails,
+                      onTap: () => _openMatch(context, entry, session),
+                    );
+                  },
+                ),
               ),
           ],
         );
       },
     );
+  }
+
+  void _openMatch(BuildContext context, GameEntry entry, ClipSession session) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: matchClipsScreenRouteName),
+      builder: (_) => MatchClipsScreen(
+        session: session,
+        matchLabel: _sessionLabel(entry, session),
+        stats: widget.coordinator.matchStats
+            ?.statsFor(widget.gameId, session.startedAt),
+        library: widget.library,
+        thumbnails: widget.thumbnails,
+      ),
+    ));
   }
 
   Widget _header(BuildContext context, GameEntry entry) {

@@ -12,6 +12,7 @@ enum GameEventKind {
   quadraKill,
   pentaKill,
   ace,
+  death, // the player died — never auto-clipped, but counted for match K/D
   // Objectives (League-style, but reusable)
   dragonKill,
   dragonSteal,
@@ -47,6 +48,9 @@ int clipPriority(GameEventKind kind) => switch (kind) {
       GameEventKind.inhibitorKill => 20,
       GameEventKind.manual => 10,
       GameEventKind.recording => 10,
+      // Deaths are counted for match K/D but never win a clip label — a
+      // fight the player also got a kill in should badge the kill.
+      GameEventKind.death => 5,
       GameEventKind.other => 0,
     };
 

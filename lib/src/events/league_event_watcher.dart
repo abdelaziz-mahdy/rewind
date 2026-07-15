@@ -145,13 +145,15 @@ class LeagueEventWatcher implements GameEventSource {
         _lastEventId = id;
 
         final name = map['EventName'] as String? ?? '';
-        final kind = _mapEvent(name);
-        if (kind == null) continue;
-        if (!_involvesActivePlayer(name, map)) continue;
-
-        talker.info('League: ${kind.name} (event #$id, $name)');
-        _controller
-            .add(GameEvent(gameId: gameId, kind: kind, meta: {'raw': map}));
+        // One raw event can yield more than one GameEvent: a ChampionKill
+        // where the active player is BOTH killer and victim can't happen,
+        // but keeping this a list means deaths and kills share one code
+        // path and future many-to-one mappings stay simple.
+        for (final kind in _kindsFor(name, map)) {
+          talker.info('League: ${kind.name} (event #$id, $name)');
+          _controller
+              .add(GameEvent(gameId: gameId, kind: kind, meta: {'raw': map}));
+        }
       }
     } catch (err, stack) {
       // Match likely ended mid-body or the payload changed shape; log once
@@ -174,15 +176,49 @@ class LeagueEventWatcher implements GameEventSource {
     }
   }
 
-  /// Whether [map]'s event involves the active player as the actor.
-  /// Match-wide events (GameEnd) always pass; everything player-attributed
-  /// requires the KillerName/Acer to be us — being someone else's victim is
-  /// not a highlight.
-  bool _involvesActivePlayer(String eventName, Map<String, dynamic> map) {
-    if (eventName == 'GameEnd') return true;
-    final actor =
-        (eventName == 'Ace' ? map['Acer'] : map['KillerName']) as String?;
-    return _isActivePlayer(actor);
+  /// The [GameEventKind]s to emit for a raw event, scoped to the active
+  /// player. `eventdata` is match-global (all players), so every
+  /// player-attributed mapping checks the actor is us — being someone
+  /// else's victim is not a highlight, but being the VICTIM ourselves is a
+  /// death (counted for match K/D, never clipped).
+  List<GameEventKind> _kindsFor(String name, Map<String, dynamic> map) {
+    switch (name) {
+      case 'ChampionKill':
+        return [
+          if (_isActivePlayer(map['KillerName'] as String?)) GameEventKind.kill,
+          if (_isActivePlayer(map['VictimName'] as String?))
+            GameEventKind.death,
+        ];
+      case 'Multikill':
+        // TODO: read KillStreak for exact tier (triple/quadra/penta).
+        return _isActivePlayer(map['KillerName'] as String?)
+            ? const [GameEventKind.doubleKill]
+            : const [];
+      case 'Ace':
+        return _isActivePlayer(map['Acer'] as String?)
+            ? const [GameEventKind.ace]
+            : const [];
+      case 'DragonKill':
+        return _isActivePlayer(map['KillerName'] as String?)
+            ? const [GameEventKind.dragonKill]
+            : const [];
+      case 'BaronKill':
+        return _isActivePlayer(map['KillerName'] as String?)
+            ? const [GameEventKind.baronKill]
+            : const [];
+      case 'TurretKilled':
+        return _isActivePlayer(map['KillerName'] as String?)
+            ? const [GameEventKind.turretKill]
+            : const [];
+      case 'InhibKilled':
+        return _isActivePlayer(map['KillerName'] as String?)
+            ? const [GameEventKind.inhibitorKill]
+            : const [];
+      case 'GameEnd':
+        return const [GameEventKind.other];
+      default:
+        return const [];
+    }
   }
 
   /// True when [actor] names the active player. `activeplayername` returns
@@ -199,28 +235,5 @@ class LeagueEventWatcher implements GameEventSource {
     if (actor == me) return true;
     final hash = me.indexOf('#');
     return hash > 0 && actor == me.substring(0, hash);
-  }
-
-  GameEventKind? _mapEvent(String name) {
-    switch (name) {
-      case 'ChampionKill':
-        return GameEventKind.kill;
-      case 'Multikill':
-        return GameEventKind.doubleKill; // TODO: read KillStreak for exact tier
-      case 'Ace':
-        return GameEventKind.ace;
-      case 'DragonKill':
-        return GameEventKind.dragonKill;
-      case 'BaronKill':
-        return GameEventKind.baronKill;
-      case 'TurretKilled':
-        return GameEventKind.turretKill;
-      case 'InhibKilled':
-        return GameEventKind.inhibitorKill;
-      case 'GameEnd':
-        return GameEventKind.other;
-      default:
-        return null;
-    }
   }
 }

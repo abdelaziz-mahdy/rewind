@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
@@ -549,6 +550,62 @@ void main() {
           library.all.firstWhere((c) => c.sessionAt != first).sessionAt;
       expect(second, isNotNull);
       expect(second, isNot(first));
+    });
+  });
+
+  group('match K/D (MatchStatsStore)', () {
+    test('kills and deaths during an active game accrue to its session',
+        () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emit(GameEventKind.kill);
+      localLeague.emit(GameEventKind.kill);
+      localLeague.emit(GameEventKind.death);
+      await Future<void>.delayed(Duration.zero);
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.kills, 2);
+      expect(s.deaths, 1);
+    });
+
+    test('a death never triggers a clip save (not in enabledEvents)', () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final c = ClipCoordinator(
+        registry: registry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      league.emit(GameEventKind.death);
+      await settleBurst();
+      expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
     });
   });
 

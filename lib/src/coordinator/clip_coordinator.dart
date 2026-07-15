@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
+import '../clip/match_stats.dart';
 import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
@@ -31,6 +32,10 @@ class ClipCoordinator {
   /// existing "pure Dart, testable" shape (§ CLAUDE.md's event-watcher
   /// principle, extended here to the save path).
   final Future<void> Function(Clip)? onClipIndexed;
+
+  /// Per-match kills/deaths, updated as combat events arrive (see
+  /// [_rememberEvent]). Null in tests/dev that don't care about K/D.
+  final MatchStatsStore? matchStats;
 
   /// The most-recently-activated game, used to attribute manual hotkey clips,
   /// pick the buffer length, and let the UI show what's being captured. Null
@@ -99,6 +104,7 @@ class ClipCoordinator {
     required this.outDir,
     this.engine,
     this.onClipIndexed,
+    this.matchStats,
     this.indexFileGrace = const Duration(seconds: 5),
     this.fileSettleInterval = const Duration(milliseconds: 250),
     this.burstQuiet = const Duration(seconds: 8),
@@ -109,6 +115,11 @@ class ClipCoordinator {
   /// [Clip.sessionAt]). Cleared on deactivation, so the next match gets a
   /// fresh key.
   final Map<String, DateTime> _sessionStartedAt = {};
+
+  /// The current session-start stamp for [gameId] (the key its clips and
+  /// match stats share), or null when the game isn't active. For tests and
+  /// any UI that needs to line clips up with `MatchStatsStore`.
+  DateTime? sessionStartedAtFor(String gameId) => _sessionStartedAt[gameId];
 
   /// Burst debounce for event-triggered saves. A fight is a BURST of
   /// events; saving on the first one both spams the disk (the 2026-07-14
@@ -407,6 +418,20 @@ class ClipCoordinator {
     _recentEvents.add(e);
     final cutoff = DateTime.now().subtract(_recentEventsRetention);
     _recentEvents.removeWhere((ev) => ev.time.isBefore(cutoff));
+
+    // Match K/D: attribute kills/deaths to the game's CURRENT session (the
+    // same stamp its clips carry, see [Clip.sessionAt]). Counted for the
+    // whole match regardless of clip settings — a death is never clipped
+    // but still counts toward the match summary.
+    final sessionStart = _sessionStartedAt[e.gameId];
+    final stats = matchStats;
+    if (sessionStart != null && stats != null) {
+      if (e.kind == GameEventKind.kill) {
+        stats.recordKill(e.gameId, sessionStart);
+      } else if (e.kind == GameEventKind.death) {
+        stats.recordDeath(e.gameId, sessionStart);
+      }
+    }
   }
 
   /// Kills by the player inside [start]..[end] for [gameId] — the clip
