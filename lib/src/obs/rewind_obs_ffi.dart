@@ -54,6 +54,12 @@ external int _setCaptureWindow(int windowId);
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_enabled')
 external int _setMicEnabled(int enabled);
 
+@Native<Int32 Function(Int32, Int32)>(symbol: 'rewind_set_capture_quality')
+external int _setCaptureQuality(int fps, int maxHeight);
+
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_system_audio')
+external int _setSystemAudio(int enabled);
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
@@ -177,4 +183,12 @@ class RewindObs {
   /// Enables/disables microphone capture (mixed into clips alongside the
   /// always-on system audio).
   int setMicEnabled(bool enabled) => _setMicEnabled(enabled ? 1 : 0);
+
+  /// Sets capture framerate and output-height cap (0 = source). Applied at
+  /// init; call before it.
+  int setCaptureQuality(int fps, int maxHeight) =>
+      _setCaptureQuality(fps, maxHeight);
+
+  /// Enables/disables system (desktop) audio capture.
+  int setSystemAudio(bool enabled) => _setSystemAudio(enabled ? 1 : 0);
 }

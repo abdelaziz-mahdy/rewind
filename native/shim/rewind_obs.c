@@ -92,6 +92,15 @@ static char g_app_bundle_id[256] = "";
  * enumeration doc), but their windows are ordinary CGWindows. */
 static uint32_t g_window_id = 0;
 
+/* Capture quality (see rewind_set_capture_quality). Applied at init via
+ * obs_reset_video — changing them needs a fresh init (the video pipeline +
+ * encoders are built around them), so the setter only stores when already
+ * initialised; the UI applies the change on next launch. g_fps: capture
+ * framerate. g_max_height: output is downscaled to this height (aspect
+ * preserved) when the display is taller; 0 = source resolution. */
+static int g_fps = 60;
+static int g_max_height = 0;
+
 /* Audio sources. Channel 0 carries the (video-only) screen capture;
  * without explicit audio SOURCES every clip's AAC track encodes silence.
  * Channel 1: system/desktop audio (sck_audio_capture, macOS 13+) — always
@@ -100,7 +109,8 @@ static uint32_t g_window_id = 0;
  * NSMicrophoneUsageDescription TCC prompt on first use). */
 static obs_source_t *g_sysaudio = NULL;
 static obs_source_t *g_mic = NULL;
-static int g_mic_enabled = 0; /* preference; applied at init if set early */
+static int g_mic_enabled = 0;     /* preference; applied at init if set early */
+static int g_sysaudio_enabled = 1; /* desktop audio on by default */
 
 static int fail(const char *msg) { set_error(msg); return 1; }
 
@@ -706,15 +716,29 @@ int rewind_obs_init(const char *out_dir, int seconds) {
         goto cleanup;
     }
 
+    /* Output resolution: source unless g_max_height caps it, in which case
+     * scale down preserving aspect ratio (round width to an even number —
+     * H.264 chroma subsampling requires even dimensions). */
+    uint32_t out_w = width, out_h = height;
+    if (g_max_height > 0 && height > (uint32_t)g_max_height) {
+        out_h = (uint32_t)g_max_height;
+        out_w = (uint32_t)((double)width * out_h / height + 0.5);
+        out_w &= ~1u;
+        if (out_w == 0) out_w = 2;
+    }
+    int fps = g_fps > 0 ? g_fps : 60;
+
     struct obs_video_info ovi = {
         .graphics_module = graphics_module,
-        .fps_num = 60, .fps_den = 1,
+        .fps_num = (uint32_t)fps, .fps_den = 1,
         .base_width = width, .base_height = height,
-        .output_width = width, .output_height = height,
+        .output_width = out_w, .output_height = out_h,
         .output_format = VIDEO_FORMAT_NV12,
         .colorspace = VIDEO_CS_709, .range = VIDEO_RANGE_PARTIAL,
         .adapter = 0, .gpu_conversion = true, .scale_type = OBS_SCALE_BICUBIC,
     };
+    blog(LOG_INFO, "rewind: capture %ux%u @%dfps (source %ux%u)",
+         out_w, out_h, fps, width, height);
     if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) { set_error("obs_reset_video failed"); goto cleanup; }
 
     struct obs_audio_info oai = { .samples_per_sec = 48000, .speakers = SPEAKERS_STEREO };
@@ -762,15 +786,18 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     }
     obs_set_output_source(0, g_capture);
 
-    /* System (game) audio. screen_capture on channel 0 provides VIDEO
-     * only — without this source every clip's AAC track is silence.
-     * Default settings = desktop audio stream. Non-fatal if unavailable
-     * (macOS < 13): video-only capture is better than no capture. */
-    g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
-    if (g_sysaudio) {
-        obs_set_output_source(1, g_sysaudio);
-    } else {
-        blog(LOG_WARNING, "rewind: sck_audio_capture unavailable; clips will have no system audio");
+    /* System (game) audio on channel 1. screen_capture on channel 0
+     * provides VIDEO only — without this source a clip's AAC track is
+     * silence. Default settings = desktop audio stream. Skipped when the
+     * user turned system audio off (voice-only setups). Non-fatal if
+     * unavailable (macOS < 13). */
+    if (g_sysaudio_enabled) {
+        g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
+        if (g_sysaudio) {
+            obs_set_output_source(1, g_sysaudio);
+        } else {
+            blog(LOG_WARNING, "rewind: sck_audio_capture unavailable; clips will have no system audio");
+        }
     }
 
     /* Microphone, if the preference was set before init. */
@@ -1070,6 +1097,36 @@ int rewind_obs_shutdown(void) {
     return 0;
 }
 
+int rewind_set_system_audio(int enabled) {
+    g_sysaudio_enabled = enabled ? 1 : 0;
+    /* Live toggle on channel 1, mirroring the mic on channel 2 (create when
+     * turning on, tear down when off). Before init this just stores the
+     * preference (applied when the pipeline is built). */
+    if (!g_initialized) { set_error(""); return 0; }
+    if (g_sysaudio_enabled && !g_sysaudio) {
+        g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
+        if (!g_sysaudio) return fail("sck_audio_capture unavailable");
+        obs_set_output_source(1, g_sysaudio);
+    } else if (!g_sysaudio_enabled && g_sysaudio) {
+        obs_set_output_source(1, NULL);
+        obs_source_release(g_sysaudio);
+        g_sysaudio = NULL;
+    }
+    set_error("");
+    return 0;
+}
+
+int rewind_set_capture_quality(int fps, int max_height) {
+    /* Store for the next init; a running pipeline can't change resolution/
+     * fps without a full obs_reset_video (which would tear down the live
+     * encoders/outputs), so this deliberately does NOT re-apply live — the
+     * UI tells the user it takes effect on next launch. */
+    g_fps = fps > 0 ? fps : 60;
+    g_max_height = max_height > 0 ? max_height : 0;
+    set_error("");
+    return 0;
+}
+
 int rewind_set_mic_enabled(int enabled) {
     g_mic_enabled = enabled ? 1 : 0;
 
@@ -1331,6 +1388,18 @@ int rewind_set_capture_window(uint32_t window_id) {
 }
 
 int rewind_set_mic_enabled(int enabled) {
+    (void)enabled;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_capture_quality(int fps, int max_height) {
+    (void)fps; (void)max_height;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_system_audio(int enabled) {
     (void)enabled;
     set_error("");
     return 0;

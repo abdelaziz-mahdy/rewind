@@ -117,6 +117,19 @@ int rewind_set_capture_window(uint32_t window_id);
  * declare NSMicrophoneUsageDescription). Returns 0 on success. */
 int rewind_set_mic_enabled(int enabled);
 
+/* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
+ * `max_height` caps the output height (aspect preserved) when the display
+ * is taller, or 0 for source resolution. Applied at rewind_obs_init — call
+ * before init. After init it only stores the values (the UI applies the
+ * change on next launch), since changing resolution/fps needs a full video
+ * pipeline rebuild. Returns 0 on success. */
+int rewind_set_capture_quality(int fps, int max_height);
+
+/* Enable/disable system (desktop) audio capture — every app's sound. On by
+ * default; turn off for voice-only (mic) clips. Safe to call before init
+ * (stored) or after (toggles the source live, like the mic). Returns 0. */
+int rewind_set_system_audio(int enabled);
+
 #ifdef __cplusplus
 }
 #endif

@@ -83,6 +83,19 @@ abstract class CaptureEngine {
   /// failure.
   bool setMicEnabled(bool enabled);
 
+  /// Set capture framerate ([fps], e.g. 30 or 60) and output-height cap
+  /// ([maxHeight], 0 = source resolution). Applied at [init] — call before
+  /// it; after init it only stores the values (a resolution/fps change needs
+  /// a fresh capture pipeline, so it takes effect on next launch). Returns
+  /// false on failure.
+  bool setCaptureQuality(int fps, int maxHeight);
+
+  /// Enable/disable system (desktop) audio — every app's sound. On by
+  /// default; off gives voice-only clips (with [setMicEnabled]). Safe to
+  /// call before or after [init] (toggles live like the mic). Returns false
+  /// on failure.
+  bool setSystemAudio(bool enabled);
+
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;

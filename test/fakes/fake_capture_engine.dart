@@ -159,4 +159,20 @@ class FakeCaptureEngine implements CaptureEngine {
 
   /// Last value passed to [setMicEnabled].
   bool? micEnabled;
+
+  @override
+  bool setCaptureQuality(int fps, int maxHeight) {
+    calls.add('setCaptureQuality:$fps:$maxHeight');
+    return true;
+  }
+
+  @override
+  bool setSystemAudio(bool enabled) {
+    calls.add('setSystemAudio:$enabled');
+    systemAudio = enabled;
+    return true;
+  }
+
+  /// Last value passed to [setSystemAudio].
+  bool? systemAudio;
 }

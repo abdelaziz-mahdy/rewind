@@ -40,6 +40,20 @@ class AppSettings {
   /// preference; see `ClipCoordinator`. Defaults to on.
   bool autoSwitchCapture;
 
+  /// Capture framerate (30 or 60). Higher = smoother clips but more CPU and
+  /// disk. Applied when capture starts (next launch).
+  int captureFps;
+
+  /// Output-height cap: null/0 = source resolution, else 720/1080/1440.
+  /// Downscales tall displays to save CPU and disk (aspect preserved).
+  /// Applied when capture starts (next launch).
+  int? captureMaxHeight;
+
+  /// Whether system/desktop audio (every app's sound) is captured. Default
+  /// on. Turn off if you don't want other apps (Discord, music) in your
+  /// clips — pair with [captureMicrophone] for voice-only.
+  bool captureSystemAudio;
+
   /// Whether the microphone is mixed into clips/recordings alongside the
   /// always-on system audio. Default OFF: capturing voice without an
   /// explicit opt-in is a privacy trap. First enable triggers the macOS
@@ -78,6 +92,9 @@ class AppSettings {
     this.captureAppBundleId,
     this.captureAppName,
     this.autoSwitchCapture = true,
+    this.captureFps = 60,
+    this.captureMaxHeight,
+    this.captureSystemAudio = true,
     this.captureMicrophone = false,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
@@ -113,6 +130,9 @@ class AppSettings {
         'captureAppBundleId': captureAppBundleId,
         'captureAppName': captureAppName,
         'autoSwitchCapture': autoSwitchCapture,
+        'captureFps': captureFps,
+        'captureMaxHeight': captureMaxHeight,
+        'captureSystemAudio': captureSystemAudio,
         'captureMicrophone': captureMicrophone,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
@@ -129,6 +149,9 @@ class AppSettings {
         captureAppBundleId: j['captureAppBundleId'] as String?,
         captureAppName: j['captureAppName'] as String?,
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
+        captureFps: j['captureFps'] as int? ?? 60,
+        captureMaxHeight: j['captureMaxHeight'] as int?,
+        captureSystemAudio: j['captureSystemAudio'] as bool? ?? true,
         captureMicrophone: j['captureMicrophone'] as bool? ?? false,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)

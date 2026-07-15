@@ -72,4 +72,11 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setMicEnabled(bool enabled) => _obs.setMicEnabled(enabled) == 0;
+
+  @override
+  bool setCaptureQuality(int fps, int maxHeight) =>
+      _obs.setCaptureQuality(fps, maxHeight) == 0;
+
+  @override
+  bool setSystemAudio(bool enabled) => _obs.setSystemAudio(enabled) == 0;
 }

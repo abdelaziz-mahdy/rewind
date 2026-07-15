@@ -177,6 +177,20 @@ void main() {
       final s = AppSettings(onboardingComplete: true);
       expect(AppSettings.fromJson(s.toJson()).onboardingComplete, isTrue);
     });
+
+    test('capture quality + audio defaults and round-trip', () {
+      final d = AppSettings();
+      expect(d.captureFps, 60);
+      expect(d.captureMaxHeight, isNull); // source
+      expect(d.captureSystemAudio, isTrue);
+
+      final s = AppSettings(
+          captureFps: 30, captureMaxHeight: 1080, captureSystemAudio: false);
+      final loaded = AppSettings.fromJson(s.toJson());
+      expect(loaded.captureFps, 30);
+      expect(loaded.captureMaxHeight, 1080);
+      expect(loaded.captureSystemAudio, isFalse);
+    });
   });
 
   test('captureMicrophone defaults to OFF and round-trips', () {

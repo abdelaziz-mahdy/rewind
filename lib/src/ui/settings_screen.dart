@@ -181,6 +181,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  void _handleSystemAudioChanged(bool value) {
+    widget.settings.captureSystemAudio = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
+  void _handleFpsChanged(int fps) {
+    widget.settings.captureFps = fps;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
+  /// [maxHeight] null = source resolution.
+  void _handleResolutionChanged(int? maxHeight) {
+    widget.settings.captureMaxHeight = maxHeight;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   /// The uuid the dropdown should show as selected: the explicit choice if
   /// one was saved, else whichever display libobs reports as main, else the
   /// first display — never null while [widget.displays] is non-empty, since
@@ -371,6 +390,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: widget.settings.recordHotkey,
                   onChanged: _handleRecordHotkeyChanged,
                   onRecording: widget.onHotkeyRecording,
+                ),
+              ],
+            ),
+          ),
+          _Section(
+            title: 'Recording quality',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Framerate', style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                SegmentedButton<int>(
+                  key: const ValueKey('fpsSegments'),
+                  segments: const [
+                    ButtonSegment(value: 30, label: Text('30 fps')),
+                    ButtonSegment(value: 60, label: Text('60 fps')),
+                  ],
+                  selected: {widget.settings.captureFps},
+                  onSelectionChanged: (s) => _handleFpsChanged(s.first),
+                ),
+                const SizedBox(height: 20),
+                Text('Resolution', style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                SegmentedButton<int>(
+                  key: const ValueKey('resolutionSegments'),
+                  // 0 stands for "source" (null maxHeight); the segments map
+                  // to the output-height cap.
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('Source')),
+                    ButtonSegment(value: 1440, label: Text('1440p')),
+                    ButtonSegment(value: 1080, label: Text('1080p')),
+                    ButtonSegment(value: 720, label: Text('720p')),
+                  ],
+                  selected: {widget.settings.captureMaxHeight ?? 0},
+                  onSelectionChanged: (s) =>
+                      _handleResolutionChanged(s.first == 0 ? null : s.first),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Higher framerate and resolution mean smoother, sharper '
+                  'clips but more CPU and disk. Applies on next launch.',
+                  style: Theme.of(context).textTheme.bodyMuted,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('System audio',
+                              style: Theme.of(context).textTheme.body),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Capture every app's sound. Turn off for "
+                            'voice-only clips (mic).',
+                            style: Theme.of(context).textTheme.bodyMuted,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      key: const ValueKey('systemAudioSwitch'),
+                      value: widget.settings.captureSystemAudio,
+                      onChanged: _handleSystemAudioChanged,
+                    ),
+                  ],
                 ),
               ],
             ),

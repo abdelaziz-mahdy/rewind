@@ -434,16 +434,48 @@ void main() {
         isFalse);
   });
 
-  group('Storage section', () {
-    Future<void> pumpTall(WidgetTester t, Widget child) async {
-      // The settings ListView is long; without a tall viewport the Storage
-      // section never builds (see CLAUDE.md's testing gotchas).
-      t.view.physicalSize = const Size(1200, 3000);
-      t.view.devicePixelRatio = 1.0;
-      addTearDown(t.view.reset);
-      await t.pumpWidget(child);
-    }
+  Future<void> pumpTall(WidgetTester t, Widget child) async {
+    // The settings ListView is long; without a tall viewport lower sections
+    // never build (see CLAUDE.md's testing gotchas).
+    t.view.physicalSize = const Size(1200, 4000);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(child);
+  }
 
+  group('Recording quality section', () {
+    testWidgets('framerate, resolution, and system audio commit + persist',
+        (t) async {
+      final settings = AppSettings();
+      final calls = <AppSettings>[];
+      await pumpTall(
+          t,
+          _app(SettingsScreen(
+            settings: settings,
+            onChanged: (s) async => calls.add(s),
+            displays: const [],
+          )));
+
+      await t.tap(find.text('30 fps'));
+      await t.pump();
+      expect(settings.captureFps, 30);
+
+      await t.tap(find.text('1080p'));
+      await t.pump();
+      expect(settings.captureMaxHeight, 1080);
+
+      await t.tap(find.text('Source'));
+      await t.pump();
+      expect(settings.captureMaxHeight, isNull);
+
+      await t.tap(find.byKey(const ValueKey('systemAudioSwitch')));
+      await t.pump();
+      expect(settings.captureSystemAudio, isFalse);
+      expect(calls, isNotEmpty);
+    });
+  });
+
+  group('Storage section', () {
     testWidgets('max storage commits ints; blank commits null (unlimited)',
         (t) async {
       final calls = <AppSettings>[];

@@ -122,9 +122,11 @@ Future<void> main() async {
   if (settings.captureAppBundleId != null) {
     engine.setCaptureApp(settings.captureAppBundleId);
   }
-  // Mic preference before init, mirroring the display/app pattern — the
-  // shim applies it while building the audio pipeline.
+  // Audio + quality preferences before init, mirroring the display/app
+  // pattern — the shim applies them while building the pipeline.
   engine.setMicEnabled(settings.captureMicrophone);
+  engine.setSystemAudio(settings.captureSystemAudio);
+  engine.setCaptureQuality(settings.captureFps, settings.captureMaxHeight ?? 0);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
     captureError = engine.lastError;
@@ -302,6 +304,9 @@ Future<void> main() async {
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
       engine?.setMicEnabled(s.captureMicrophone);
+      engine?.setSystemAudio(s.captureSystemAudio);
+      // Quality stored for next launch (a live pipeline can't change fps/res).
+      engine?.setCaptureQuality(s.captureFps, s.captureMaxHeight ?? 0);
       await bindBothHotkeys();
       registerCustomDisplayNames(_customDisplayNamesOf(s));
       // A config added mid-session (picked app, Supported Games' Add) gets
