@@ -1,7 +1,7 @@
 import 'dart:io';
 
 /// The project's GitHub repo (badges/links). Update if the repo moves.
-const String kRepoUrl = 'https://github.com/AbdelazizMahdy/rewind';
+const String kRepoUrl = 'https://github.com/abdelaziz-mahdy/rewind';
 
 /// Opens a URL in the default browser (best-effort, no extra dependency —
 /// `open` on macOS, `explorer`/`start` on Windows).

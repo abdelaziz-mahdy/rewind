@@ -3,9 +3,9 @@
 **Open-source, cross-platform instant-replay and automatic game-clip capture for Windows and macOS.**
 
 <!-- Update the slug below if your repo lives elsewhere. -->
-[![CI](https://github.com/AbdelazizMahdy/rewind/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdelazizMahdy/rewind/actions/workflows/ci.yml)
-[![Release](https://github.com/AbdelazizMahdy/rewind/actions/workflows/release.yml/badge.svg)](https://github.com/AbdelazizMahdy/rewind/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/AbdelazizMahdy/rewind?include_prereleases&sort=semver)](https://github.com/AbdelazizMahdy/rewind/releases)
+[![CI](https://github.com/abdelaziz-mahdy/rewind/actions/workflows/ci.yml/badge.svg)](https://github.com/abdelaziz-mahdy/rewind/actions/workflows/ci.yml)
+[![Release](https://github.com/abdelaziz-mahdy/rewind/actions/workflows/release.yml/badge.svg)](https://github.com/abdelaziz-mahdy/rewind/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/abdelaziz-mahdy/rewind?include_prereleases&sort=semver)](https://github.com/abdelaziz-mahdy/rewind/releases)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Made with Flutter](https://img.shields.io/badge/Flutter-Dart-02569B?logo=flutter)
@@ -15,7 +15,7 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 ![Rewind — game-centric clip library with per-match cards](docs/images/screenshot.png)
 
 > **Get it:** grab the macOS `.dmg` or Windows installer from the
-> [latest release](https://github.com/AbdelazizMahdy/rewind/releases) — built
+> [latest release](https://github.com/abdelaziz-mahdy/rewind/releases) — built
 > automatically on every tag by the [release workflow](.github/workflows/release.yml).
 > First macOS launch: right-click → Open (unsigned for now).
 
