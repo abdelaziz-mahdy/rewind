@@ -179,11 +179,25 @@ class LeagueEventWatcher implements GameEventSource {
   /// not a highlight.
   bool _involvesActivePlayer(String eventName, Map<String, dynamic> map) {
     if (eventName == 'GameEnd') return true;
-    final me = _activeName;
-    if (me == null) return false; // fail closed (see _poll)
     final actor =
         (eventName == 'Ace' ? map['Acer'] : map['KillerName']) as String?;
-    return actor == me;
+    return _isActivePlayer(actor);
+  }
+
+  /// True when [actor] names the active player. `activeplayername` returns
+  /// the full riot id ("zezo12321#EUW") but events name players by GAME
+  /// NAME with no tag ("Tjl77") — verified live 2026-07-14, where the
+  /// mismatch made the fail-closed filter reject the player's OWN kills.
+  /// Accept both forms; a future patch flipping event names to riot ids
+  /// must not re-break this.
+  bool _isActivePlayer(String? actor) {
+    final me = _activeName;
+    if (me == null || actor == null || actor.isEmpty) {
+      return false; // fail closed (see _poll)
+    }
+    if (actor == me) return true;
+    final hash = me.indexOf('#');
+    return hash > 0 && actor == me.substring(0, hash);
   }
 
   GameEventKind? _mapEvent(String name) {

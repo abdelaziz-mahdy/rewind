@@ -71,6 +71,25 @@ void main() {
     expect(emitted.single.kind, GameEventKind.kill);
   });
 
+  test(
+      'events naming the player by tagless GAME NAME still match the riot-id '
+      'activeplayername', () async {
+    // Live-verified 2026-07-14: activeplayername returns "zezo12321#EUW"
+    // while KillerName is the bare game name — the exact-match filter
+    // rejected the player's own kills.
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+
+    responses['/liveclientdata/eventdata'] = _events([
+      _kill(0, 'Me'), // tagless
+      _kill(1, 'Meow'), // must NOT match by prefix
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(emitted, hasLength(1));
+  });
+
   test('an already-seen EventID never re-emits (poll after poll)', () async {
     responses['/liveclientdata/eventdata'] = _events([]);
     await watcher.pollNow(); // seed on empty history
