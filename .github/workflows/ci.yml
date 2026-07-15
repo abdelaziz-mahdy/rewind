@@ -40,6 +40,11 @@ jobs:
       - run: flutter test
         if: matrix.target == 'windows'
       - run: flutter build ${{ matrix.target }} --debug
+        # CI runners lack the local Apple Development cert pinned in the Xcode
+        # project (used on dev machines so TCC grants survive rebuilds). Disable
+        # code signing for the build check — no-op on the Windows matrix leg.
+        env:
+          FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
 
   build-macos-libobs:
     name: Build macOS (real libobs)
@@ -58,4 +63,6 @@ jobs:
       - run: bash tools/fetch_libobs.sh
       - run: flutter pub get
       - run: flutter build macos --debug
+        env:
+          FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
       - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Debug/rewind.app
