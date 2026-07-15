@@ -242,7 +242,9 @@ void main() {
       await t.pump(const Duration(milliseconds: 200));
 
       expect(find.text('League of Legends'), findsWidgets);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      // The hub is now a match grid: League's session shows as one card
+      // (1 clip); the desktop clip is filtered out entirely.
+      expect(inList(find.text('1 clip')), findsOneWidget);
       expect(inList(find.text('MANUAL')), findsNothing);
     });
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
@@ -332,45 +333,56 @@ void main() {
     });
   });
 
-  group('clip list', () {
-    testWidgets('scopes the list to this game only', (t) async {
+  group('match grid', () {
+    testWidgets('scopes to this game only (one card, one clip)', (t) async {
       library.add(
           clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
       library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
           DateTime(2026, 7, 2)));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsNothing);
-    });
-
-    testWidgets('League\'s hub also includes the catalog gameId\'s clips',
-        (t) async {
-      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
-          DateTime(2026, 7, 1)));
-      library.add(clip('b', 'app:league_of_legends', GameEventKind.manual,
-          DateTime(2026, 7, 2)));
-      await _pump(t, _app(hub(gameId: 'league_of_legends')));
-
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsOneWidget);
+      // Only the cs2 session shows — one card, and it holds only cs2's clip.
+      expect(find.byType(MatchCard), findsOneWidget);
+      expect(inList(find.text('1 clip')), findsOneWidget);
     });
 
     testWidgets(
-        'a match card badges its BEST event and tapping opens the match',
+        'League\'s hub merges the vendor + catalog gameIds into one session',
         (t) async {
-      // One session with a manual and a penta clip; the card badges the
-      // penta (highest clipPriority), not whichever came last.
+      // Two clips minutes apart (same gap-cluster) under the two League
+      // gameIds — if the merge dropped the catalog clip, the card would say
+      // "1 clip".
+      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
+          DateTime(2026, 7, 2, 20, 0)));
+      library.add(clip('b', 'app:league_of_legends', GameEventKind.manual,
+          DateTime(2026, 7, 2, 20, 5)));
+      await _pump(t, _app(hub(gameId: 'league_of_legends')));
+
+      expect(find.byType(MatchCard), findsOneWidget);
+      expect(inList(find.text('2 clips')), findsOneWidget);
+    });
+
+    testWidgets(
+        'a match card shows its K/D scoreboard and tapping opens the match',
+        (t) async {
       final stamp = DateTime(2026, 7, 14, 20);
+      final statsStore = MatchStatsStore(dir: tmp);
+      statsStore.recordKill('league_of_legends', stamp);
+      statsStore.recordKill('league_of_legends', stamp);
+      statsStore.recordKill('league_of_legends', stamp);
+      statsStore.recordDeath('league_of_legends', stamp);
+      final leagueCoordinator = ClipCoordinator(
+        registry: GameRegistry(sources: []),
+        library: library,
+        storage: StorageManager(library),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: FakeCaptureEngine(),
+        matchStats: statsStore,
+      )..start(supervise: false);
+
       library.add(Clip(
           path: '${tmp.path}/a.mp4',
-          gameId: 'league_of_legends',
-          event: GameEventKind.manual,
-          createdAt: DateTime(2026, 7, 14, 20, 5),
-          sizeBytes: 1,
-          sessionAt: stamp));
-      library.add(Clip(
-          path: '${tmp.path}/b.mp4',
           gameId: 'league_of_legends',
           event: GameEventKind.pentaKill,
           createdAt: DateTime(2026, 7, 14, 20, 8),
@@ -383,11 +395,19 @@ void main() {
           MaterialApp(
             theme: rewindTheme(),
             navigatorObservers: [observer],
-            home: Scaffold(body: hub(gameId: 'league_of_legends')),
+            home: Scaffold(
+                body: hub(
+                    gameId: 'league_of_legends',
+                    coordinatorOverride: leagueCoordinator)),
           ));
 
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsNothing);
+      // K/D scoreboard: 3 K, 1 D. The footer's " K"/" D" labels are unique;
+      // the "3"/"1" numbers appear in both the thumbnail badge and the
+      // footer, so they render at least once.
+      expect(inList(find.text(' K')), findsOneWidget);
+      expect(inList(find.text(' D')), findsOneWidget);
+      expect(inList(find.text('3')), findsWidgets);
+      expect(inList(find.text('1')), findsWidgets);
 
       observer.pushed.clear();
       await t.tap(find.byType(MatchCard));

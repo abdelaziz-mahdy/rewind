@@ -2,23 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../../clip/match_stats.dart';
 import '../../clip/thumbnail_cache.dart';
-import '../../events/game_event.dart';
 import '../clip_sessions.dart';
 import '../theme.dart';
 import 'clip_tile.dart';
 
 /// Match cards tile in the same column-count grid as clip tiles, but with a
-/// taller footer (two info lines instead of one), so they get their own
-/// aspect ratio derived from that geometry — same width, taller card.
-const double _matchFooterHeight = 72;
+/// taller footer (a label line plus a prominent K/D readout), so they get
+/// their own aspect ratio derived from that geometry — same width, taller
+/// card.
+const double _matchFooterHeight = 76;
 const double matchCardAspectRatio = clipGridMaxCrossAxisExtent /
     (clipGridMaxCrossAxisExtent * 9 / 16 + _matchFooterHeight);
 
 /// One card in a game's match grid: a play session summarized. The
-/// thumbnail is the session's newest clip; overlays give the best moment's
-/// event badge and the clip count; the footer gives the match label + age
-/// and a kills/deaths summary (from [stats], when the game reports combat).
-/// Tapping opens the session's clips (see [onTap]).
+/// thumbnail is the session's newest clip; the headline indicator is the
+/// match's KILLS / DEATHS (a bold scoreboard, shown both over the thumbnail
+/// and in the footer) when the game reports combat — deliberately NOT an
+/// event-type badge, which read as a misleading "1 kill" count. Games/old
+/// matches with no recorded K/D fall back to a clip count. Tapping opens the
+/// session's clips (see [onTap]).
 class MatchCard extends StatelessWidget {
   final ClipSession session;
 
@@ -41,10 +43,8 @@ class MatchCard extends StatelessWidget {
     super.key,
   });
 
-  /// The session's most clip-worthy event — what the card badges.
-  GameEventKind get _bestEvent => session.clips
-      .map((c) => c.event)
-      .reduce((a, b) => clipPriority(b) > clipPriority(a) ? b : a);
+  /// Whether there's a real K/D to show (recorded, non-empty).
+  bool get _hasKd => stats != null && (stats!.kills > 0 || stats!.deaths > 0);
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +74,12 @@ class MatchCard extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       ClipThumbnail(clip: newest, thumbnails: thumbnails),
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: EventBadge(kind: _bestEvent),
-                      ),
+                      if (_hasKd)
+                        Positioned(
+                          left: 8,
+                          top: 8,
+                          child: _KdBadge(stats: stats!, large: true),
+                        ),
                       Positioned(
                         right: 8,
                         top: 8,
@@ -104,8 +105,15 @@ class MatchCard extends StatelessWidget {
                           style: theme.textTheme.micro
                               .copyWith(color: tokens.textMuted),
                         ),
-                        const SizedBox(height: 6),
-                        _SummaryLine(stats: stats, clipCount: count),
+                        const SizedBox(height: 8),
+                        if (_hasKd)
+                          _KdLine(stats: stats!, clipCount: count)
+                        else
+                          Text(
+                            '$count ${count == 1 ? 'clip' : 'clips'}',
+                            style: theme.textTheme.body
+                                .copyWith(color: tokens.textMuted),
+                          ),
                       ],
                     ),
                   ),
@@ -119,42 +127,70 @@ class MatchCard extends StatelessWidget {
   }
 }
 
-/// The card's second footer line: a K/D readout when [stats] exists
-/// (kills tinted with the accent, deaths with the error color, like a
-/// scoreboard), otherwise a plain clip count.
-class _SummaryLine extends StatelessWidget {
-  final MatchStats? stats;
+/// The prominent footer K/D: big bold kills (accent) and deaths (error)
+/// numbers with muted labels — a scoreboard, the card's headline indicator.
+class _KdLine extends StatelessWidget {
+  final MatchStats stats;
   final int clipCount;
 
-  const _SummaryLine({required this.stats, required this.clipCount});
+  const _KdLine({required this.stats, required this.clipCount});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final clipsText = '$clipCount ${clipCount == 1 ? 'clip' : 'clips'}';
-    final s = stats;
-    if (s == null || (s.kills == 0 && s.deaths == 0)) {
-      return Text(clipsText,
-          style: theme.textTheme.body.copyWith(color: tokens.textMuted));
-    }
+    final num = theme.textTheme.title.copyWith(fontWeight: FontWeight.w800);
+    final label = theme.textTheme.body.copyWith(color: tokens.textMuted);
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
       children: [
-        Text('${s.kills}',
-            style: theme.textTheme.body
-                .copyWith(color: tokens.accent, fontWeight: FontWeight.w700)),
-        Text(' K',
-            style: theme.textTheme.body.copyWith(color: tokens.textMuted)),
-        const SizedBox(width: 8),
-        Text('${s.deaths}',
-            style: theme.textTheme.body.copyWith(
-                color: theme.colorScheme.error, fontWeight: FontWeight.w700)),
-        Text(' D',
-            style: theme.textTheme.body.copyWith(color: tokens.textMuted)),
+        Text('${stats.kills}', style: num.copyWith(color: tokens.accent)),
+        Text(' K', style: label),
+        const SizedBox(width: 10),
+        Text('${stats.deaths}',
+            style: num.copyWith(color: theme.colorScheme.error)),
+        Text(' D', style: label),
         const Spacer(),
-        Text(clipsText,
+        Text('$clipCount ${clipCount == 1 ? 'clip' : 'clips'}',
             style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
       ],
+    );
+  }
+}
+
+/// The K/D scoreboard chip over the thumbnail's top-left: a dark scrim so it
+/// stays legible over any frame, kills tinted with the accent and deaths
+/// with the error color. [large] bumps the type for the on-thumbnail copy.
+class _KdBadge extends StatelessWidget {
+  final MatchStats stats;
+  final bool large;
+
+  const _KdBadge({required this.stats, this.large = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    final base = large ? theme.textTheme.body : theme.textTheme.micro;
+    final numStyle = base.copyWith(fontWeight: FontWeight.w800);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${stats.kills}',
+              style: numStyle.copyWith(color: tokens.accent)),
+          Text('/',
+              style: base.copyWith(color: Colors.white.withValues(alpha: 0.6))),
+          Text('${stats.deaths}',
+              style: numStyle.copyWith(color: theme.colorScheme.error)),
+        ],
+      ),
     );
   }
 }
@@ -172,7 +208,7 @@ class _CountPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
       ),
       child: Row(
