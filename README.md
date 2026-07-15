@@ -12,7 +12,15 @@
 
 Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a clip the moment something worth keeping happens — either when you press a hotkey, or automatically when your game reports an in-game event (a kill, an ace, a dragon steal). It's the ShadowPlay / Medal-style experience that Windows has always had, brought to macOS too, in a single app.
 
-![Rewind — game-centric clip library with per-match cards](docs/images/screenshot.png)
+![Rewind — the clip library, grouped by game](docs/images/screenshot.png)
+
+<p align="center">
+  <img src="docs/images/matches.png" width="49%" alt="Per-match cards showing kills / deaths, champion, and mode" />
+  &nbsp;
+  <img src="docs/images/settings.png" width="49%" alt="Capture settings — buffer length, display/app target, follow-the-game, mic" />
+</p>
+
+<p align="center"><sub>Left: a game hub — clips grouped into match cards with your K/D, champion, and mode. Right: capture settings.</sub></p>
 
 > **Get it:** grab the macOS `.dmg` or Windows installer from the
 > [latest release](https://github.com/abdelaziz-mahdy/rewind/releases) — built
