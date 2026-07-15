@@ -2,12 +2,37 @@
 
 **Open-source, cross-platform instant-replay and automatic game-clip capture for Windows and macOS.**
 
-Rewind keeps a rolling buffer of your last N seconds of gameplay in memory and saves a clip the moment something worth keeping happens — either when you press a hotkey, or automatically when your game reports an in-game event (a kill, an ace, a dragon steal). It's the ShadowPlay / Medal-style experience that Windows has always had, brought to macOS too, in a single app.
+<!-- Update the slug below if your repo lives elsewhere. -->
+[![CI](https://github.com/AbdelazizMahdy/rewind/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdelazizMahdy/rewind/actions/workflows/ci.yml)
+[![Release](https://github.com/AbdelazizMahdy/rewind/actions/workflows/release.yml/badge.svg)](https://github.com/AbdelazizMahdy/rewind/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/AbdelazizMahdy/rewind?include_prereleases&sort=semver)](https://github.com/AbdelazizMahdy/rewind/releases)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
+![Made with Flutter](https://img.shields.io/badge/Flutter-Dart-02569B?logo=flutter)
 
-> Status: **alpha.** Real capture works on macOS (replay buffer, hotkey and
-> in-app saves, per-display/per-app targeting, auto-follow of detected games,
-> game-centric library UI). League event auto-clipping is next (v0.2); Windows
-> builds in stub-capture mode pending native bring-up. See [ROADMAP.md](ROADMAP.md).
+Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a clip the moment something worth keeping happens — either when you press a hotkey, or automatically when your game reports an in-game event (a kill, an ace, a dragon steal). It's the ShadowPlay / Medal-style experience that Windows has always had, brought to macOS too, in a single app.
+
+![Rewind — game-centric clip library with per-match cards](docs/images/screenshot.png)
+
+> **Get it:** grab the macOS `.dmg` or Windows installer from the
+> [latest release](https://github.com/AbdelazizMahdy/rewind/releases) — built
+> automatically on every tag by the [release workflow](.github/workflows/release.yml).
+> First macOS launch: right-click → Open (unsigned for now).
+
+> Status: **alpha.** Real capture + League auto-clipping work on macOS
+> (replay buffer, hotkey/in-app saves, per-display/app/window targeting,
+> auto-follow of detected games, kills/deaths + champion/mode per match,
+> game-centric library UI). Windows builds in stub-capture mode pending
+> native bring-up. See [ROADMAP.md](ROADMAP.md).
+
+## Highlights
+
+- **Instant replay, always on.** The last 15–60 s are always buffered; save with a hotkey or a button.
+- **Games clip themselves.** League of Legends auto-clips your kills/aces from the Live Client API — only *your* plays — and records each match's **kills / deaths, champion, and mode**.
+- **Auto-detect & follow.** Popular games are detected on launch; capture follows the game's window. Any app (including CrossOver/Wine games) can be added.
+- **A library built around games.** Each game gets a hub; clips group into **match cards** you can drill into.
+- **You're in control.** Framerate/resolution, audio source (none / game-only / all apps) + mic, storage limits with auto-cleanup, a custom recordings folder, and rebindable hotkeys.
+- **Mac-first, honest about it.** Native ScreenCaptureKit + VideoToolbox; ~17 % CPU idle for always-on capture, tunable down via the quality settings.
 
 ---
 

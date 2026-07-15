@@ -7,6 +7,10 @@ import 'log.dart';
 /// How many session log files to keep; older ones are pruned at startup.
 const _keepLogFiles = 10;
 
+/// The log file the current session is writing to, or null before
+/// [startFileLogging] runs. The Logs screen surfaces its path.
+File? activeLogFile;
+
 /// Mirrors every talker entry into a per-session log file under
 /// `<supportDir>/logs/`, so crashes and post-mortem debugging don't depend
 /// on talker's in-memory history (gone with the process) or on the user
@@ -49,6 +53,7 @@ File startFileLogging(Directory supportDir) {
     }
   });
 
+  activeLogFile = file;
   talker.info('Logging to ${file.path}');
   return file;
 }

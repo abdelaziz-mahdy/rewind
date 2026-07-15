@@ -2,13 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:talker_flutter/talker_flutter.dart';
+import 'logs_screen.dart';
 
 import '../clip/clip_library.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
-import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
@@ -165,10 +164,7 @@ class _ShellState extends State<Shell> {
 
   void _openLogs() {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => TalkerScreen(
-        talker: talker,
-        theme: TalkerScreenTheme.fromTheme(Theme.of(context)),
-      ),
+      builder: (context) => const LogsScreen(),
     ));
   }
 

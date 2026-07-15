@@ -188,11 +188,13 @@ void main() {
         find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
   });
 
-  testWidgets('the Logs rail item opens the Talker screen', (t) async {
+  testWidgets('the Logs rail item opens the custom Logs screen', (t) async {
     await t.pumpWidget(_app(shell()));
     await t.tap(navItem('logs'));
     await t.pumpAndSettle();
-    expect(find.text('Talker'), findsOneWidget);
+    // Rewind's own logs viewer (its AppBar title), not the third-party
+    // TalkerScreen.
+    expect(find.widgetWithText(AppBar, 'Logs'), findsOneWidget);
   });
 
   testWidgets('rendering the shell does not pre-seed a game config', (t) async {
