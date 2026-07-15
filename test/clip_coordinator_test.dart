@@ -586,6 +586,48 @@ void main() {
       expect(s.deaths, 1);
     });
 
+    test('a matchInfo event records champion/teams/mode, never a clip',
+        () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emitEvent(GameEvent(
+        gameId: 'league_of_legends',
+        kind: GameEventKind.matchInfo,
+        meta: const {
+          'gameMode': 'Arena',
+          'champion': 'Ahri',
+          'allies': ['Lux'],
+          'enemies': ['Zed'],
+        },
+      ));
+      await settleBurst();
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.champion, 'Ahri');
+      expect(s.gameMode, 'Arena');
+      expect(s.allies, ['Lux']);
+      expect(s.enemies, ['Zed']);
+      expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
+    });
+
     test('a death never triggers a clip save (not in enabledEvents)', () async {
       final statsStore = MatchStatsStore(dir: tmp);
       final c = ClipCoordinator(

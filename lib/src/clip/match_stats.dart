@@ -16,18 +16,35 @@ class MatchStats {
   int kills;
   int deaths;
 
+  /// League match metadata, captured once from the Live Client API when the
+  /// match is first seen (see `LeagueEventWatcher`). All null/empty for
+  /// games without a vendor API.
+  String? gameMode; // friendly, e.g. "Arena", "ARAM", "Summoner's Rift"
+  String? champion; // the champion the player is on
+  List<String> allies; // teammates' champions (excludes the player)
+  List<String> enemies; // opponents' champions
+
   MatchStats({
     required this.gameId,
     required this.startedAt,
     this.kills = 0,
     this.deaths = 0,
-  });
+    this.gameMode,
+    this.champion,
+    List<String>? allies,
+    List<String>? enemies,
+  })  : allies = allies ?? [],
+        enemies = enemies ?? [];
 
   Map<String, dynamic> toJson() => {
         'gameId': gameId,
         'startedAt': startedAt.toIso8601String(),
         'kills': kills,
         'deaths': deaths,
+        'gameMode': gameMode,
+        'champion': champion,
+        'allies': allies,
+        'enemies': enemies,
       };
 
   factory MatchStats.fromJson(Map<String, dynamic> j) => MatchStats(
@@ -35,6 +52,10 @@ class MatchStats {
         startedAt: DateTime.parse(j['startedAt'] as String),
         kills: j['kills'] as int? ?? 0,
         deaths: j['deaths'] as int? ?? 0,
+        gameMode: j['gameMode'] as String?,
+        champion: j['champion'] as String?,
+        allies: (j['allies'] as List?)?.cast<String>() ?? [],
+        enemies: (j['enemies'] as List?)?.cast<String>() ?? [],
       );
 }
 
@@ -69,6 +90,25 @@ class MatchStatsStore extends ChangeNotifier {
 
   void recordDeath(String gameId, DateTime startedAt) {
     _ensure(gameId, startedAt).deaths++;
+    _persist();
+  }
+
+  /// Records the League match metadata (captured once per match). Only
+  /// overwrites fields that are provided and non-empty, so a later poll
+  /// can't blank out an earlier capture.
+  void recordMatchInfo(
+    String gameId,
+    DateTime startedAt, {
+    String? gameMode,
+    String? champion,
+    List<String>? allies,
+    List<String>? enemies,
+  }) {
+    final m = _ensure(gameId, startedAt);
+    if (gameMode != null && gameMode.isNotEmpty) m.gameMode = gameMode;
+    if (champion != null && champion.isNotEmpty) m.champion = champion;
+    if (allies != null && allies.isNotEmpty) m.allies = allies;
+    if (enemies != null && enemies.isNotEmpty) m.enemies = enemies;
     _persist();
   }
 

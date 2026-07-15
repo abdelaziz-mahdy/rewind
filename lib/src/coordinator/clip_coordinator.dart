@@ -172,6 +172,12 @@ class ClipCoordinator {
     // once the action goes quiet (see [burstQuiet]'s doc) — one clip per
     // fight, nothing dropped, nothing spammed.
     registry.events.listen((e) {
+      // Per-match metadata (champion, teams, mode) — recorded onto the
+      // active session's MatchStats, never a clip trigger.
+      if (e.kind == GameEventKind.matchInfo) {
+        _recordMatchInfo(e);
+        return;
+      }
       // Remembered unconditionally (even when auto-clip is off): kill
       // counts on clips must reflect what HAPPENED, not what triggered a
       // save.
@@ -413,6 +419,22 @@ class ClipCoordinator {
   /// minutes; long recordings just count the retained tail.
   final List<GameEvent> _recentEvents = [];
   static const _recentEventsRetention = Duration(minutes: 20);
+
+  /// Writes a [GameEventKind.matchInfo] event's metadata onto the active
+  /// session's MatchStats (same session key its clips/kills share).
+  void _recordMatchInfo(GameEvent e) {
+    final sessionStart = _sessionStartedAt[e.gameId];
+    final stats = matchStats;
+    if (sessionStart == null || stats == null) return;
+    stats.recordMatchInfo(
+      e.gameId,
+      sessionStart,
+      gameMode: e.meta['gameMode'] as String?,
+      champion: e.meta['champion'] as String?,
+      allies: (e.meta['allies'] as List?)?.cast<String>(),
+      enemies: (e.meta['enemies'] as List?)?.cast<String>(),
+    );
+  }
 
   void _rememberEvent(GameEvent e) {
     _recentEvents.add(e);

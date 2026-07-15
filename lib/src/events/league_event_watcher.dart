@@ -82,6 +82,10 @@ class LeagueEventWatcher implements GameEventSource {
   /// double-emit every event.
   bool _polling = false;
 
+  /// Whether the one-shot [GameEventKind.matchInfo] event (champion, teams,
+  /// mode) has been emitted for this match. Reset per session in [stop].
+  bool _infoSent = false;
+
   @override
   String get gameId => 'league_of_legends';
 
@@ -107,6 +111,7 @@ class LeagueEventWatcher implements GameEventSource {
     _lastEventId = -1;
     _seeded = false;
     _activeName = null;
+    _infoSent = false;
   }
 
   /// Visible for tests: one poll cycle, exactly what the periodic timer
@@ -138,6 +143,10 @@ class LeagueEventWatcher implements GameEventSource {
       // event may emit. Fail closed: no name, no clips (never spam).
       _activeName ??= await _fetchActiveName();
 
+      // Capture the match metadata (champion, teams, mode) once — it's
+      // stable for the whole match.
+      if (!_infoSent) await _emitMatchInfo();
+
       for (final e in events) {
         final map = (e as Map).cast<String, dynamic>();
         final id = (map['EventID'] as num?)?.toInt() ?? -1;
@@ -162,6 +171,89 @@ class LeagueEventWatcher implements GameEventSource {
     } finally {
       _polling = false;
     }
+  }
+
+  /// Fetches the player list + game stats and emits a one-shot
+  /// [GameEventKind.matchInfo] with the active player's champion, their
+  /// teammates' and enemies' champions, and a friendly game-mode name.
+  /// Best-effort: if either endpoint is unavailable it just doesn't send
+  /// (and will retry next poll, since [_infoSent] stays false).
+  Future<void> _emitMatchInfo() async {
+    final listBody = await _fetch('/liveclientdata/playerlist');
+    if (listBody == null) return;
+
+    String? gameMode;
+    final statsBody = await _fetch('/liveclientdata/gamestats');
+    if (statsBody != null) {
+      try {
+        final stats = jsonDecode(statsBody) as Map<String, dynamic>;
+        gameMode = _friendlyGameMode(stats['gameMode'] as String?);
+      } catch (_) {}
+    }
+
+    try {
+      final players =
+          (jsonDecode(listBody) as List).cast<Map<String, dynamic>>();
+      // Find "me": match by riotId (preferred) or the tagless summoner name.
+      Map<String, dynamic>? me;
+      for (final p in players) {
+        final riotId = p['riotId'] as String?;
+        final summoner = p['summonerName'] as String?;
+        if (_isActivePlayer(riotId) || _isActivePlayer(summoner)) {
+          me = p;
+          break;
+        }
+      }
+      final myChampion = me?['championName'] as String?;
+      final myTeam = me?['team'];
+
+      final allies = <String>[];
+      final enemies = <String>[];
+      for (final p in players) {
+        if (identical(p, me)) continue;
+        final champ = p['championName'] as String?;
+        if (champ == null || champ.isEmpty) continue;
+        // Same team = ally. With no resolvable "me" (myTeam null), everyone
+        // lands in enemies — still useful ("who's in this game").
+        if (myTeam != null && p['team'] == myTeam) {
+          allies.add(champ);
+        } else {
+          enemies.add(champ);
+        }
+      }
+
+      talker.info('League match: champion=$myChampion mode=$gameMode '
+          'allies=${allies.length} enemies=${enemies.length}');
+      _controller
+          .add(GameEvent(gameId: gameId, kind: GameEventKind.matchInfo, meta: {
+        'gameMode': gameMode,
+        'champion': myChampion,
+        'allies': allies,
+        'enemies': enemies,
+      }));
+      _infoSent = true;
+    } catch (err, stack) {
+      talker.handle(err, stack);
+    }
+  }
+
+  /// Maps Riot's internal gameMode codes to friendly names, falling back to
+  /// a title-cased version of the raw code for modes not listed.
+  static String? _friendlyGameMode(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    const known = {
+      'CLASSIC': "Summoner's Rift",
+      'ARAM': 'ARAM',
+      'CHERRY': 'Arena',
+      'URF': 'URF',
+      'ARURF': 'ARURF',
+      'NEXUSBLITZ': 'Nexus Blitz',
+      'ONEFORALL': 'One for All',
+      'ULTBOOK': 'Ultimate Spellbook',
+      'TUTORIAL': 'Tutorial',
+      'PRACTICETOOL': 'Practice Tool',
+    };
+    return known[raw] ?? '${raw[0]}${raw.substring(1).toLowerCase()}';
   }
 
   Future<String?> _fetchActiveName() async {

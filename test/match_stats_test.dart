@@ -46,6 +46,40 @@ void main() {
     expect(n, 2);
   });
 
+  test('recordMatchInfo stores metadata and never blanks it on empty', () {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordMatchInfo('league_of_legends', start,
+        gameMode: 'Arena',
+        champion: 'Ahri',
+        allies: ['Lux'],
+        enemies: ['Zed', 'Yasuo']);
+    var s = store.statsFor('league_of_legends', start)!;
+    expect(s.gameMode, 'Arena');
+    expect(s.champion, 'Ahri');
+    expect(s.allies, ['Lux']);
+    expect(s.enemies, ['Zed', 'Yasuo']);
+
+    // A later empty poll must not wipe the earlier capture.
+    store.recordMatchInfo('league_of_legends', start,
+        champion: '', allies: const []);
+    s = store.statsFor('league_of_legends', start)!;
+    expect(s.champion, 'Ahri');
+    expect(s.allies, ['Lux']);
+  });
+
+  test('metadata round-trips through matches.json', () async {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordMatchInfo('league_of_legends', start,
+        gameMode: 'ARAM', champion: 'Lux', allies: ['Ahri'], enemies: ['Zed']);
+    await store.save();
+    final loaded = await MatchStatsStore.load(tmp);
+    final s = loaded.statsFor('league_of_legends', start)!;
+    expect(s.gameMode, 'ARAM');
+    expect(s.champion, 'Lux');
+    expect(s.allies, ['Ahri']);
+    expect(s.enemies, ['Zed']);
+  });
+
   test('persists and reloads through matches.json', () async {
     final store = MatchStatsStore(dir: tmp);
     store.recordKill('league_of_legends', start);

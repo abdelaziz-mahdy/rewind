@@ -109,6 +109,43 @@ void main() {
     expect(emitted, hasLength(2));
   });
 
+  test('emits a matchInfo event with champion, teams, and friendly mode',
+      () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'CHERRY'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'},
+      {'riotId': 'Mate#EUW', 'championName': 'Lux', 'team': 'ORDER'},
+      {'riotId': 'Foe1#EUW', 'championName': 'Zed', 'team': 'CHAOS'},
+      {'riotId': 'Foe2#EUW', 'championName': 'Yasuo', 'team': 'CHAOS'},
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow(); // post-seed: emits matchInfo
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(info.meta['champion'], 'Ahri');
+    expect(info.meta['gameMode'], 'Arena'); // CHERRY -> friendly
+    expect(info.meta['allies'], ['Lux']); // same team, excludes me
+    expect(info.meta['enemies'], ['Zed', 'Yasuo']);
+  });
+
+  test('matchInfo is emitted only once per match', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'}
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await watcher.pollNow();
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+        emitted.where((e) => e.kind == GameEventKind.matchInfo), hasLength(1));
+  });
+
   test('an already-seen EventID never re-emits (poll after poll)', () async {
     responses['/liveclientdata/eventdata'] = _events([]);
     await watcher.pollNow(); // seed on empty history

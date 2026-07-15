@@ -15,6 +15,9 @@ class FakeGameSource implements GameEventSource {
   void emit(GameEventKind kind) =>
       _events.add(GameEvent(gameId: gameId, kind: kind));
 
+  /// Emit a fully-formed event (e.g. a matchInfo carrying meta).
+  void emitEvent(GameEvent event) => _events.add(event);
+
   @override
   Future<bool> isGameRunning() async => running;
   @override

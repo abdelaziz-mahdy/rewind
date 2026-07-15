@@ -7,6 +7,75 @@ import 'clip_sessions.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 
+/// The League match metadata card at the top of the drill-down: champion +
+/// mode headline, then teammates' and enemies' champions.
+class _MatchInfoCard extends StatelessWidget {
+  final MatchStats stats;
+
+  const _MatchInfoCard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    final headline = [
+      if (stats.champion != null) stats.champion!,
+      if (stats.gameMode != null) stats.gameMode!,
+    ].join(' · ');
+
+    Widget team(String label, List<String> champs, Color color) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final c in champs)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(tokens.radiusChip),
+                      border: Border.all(color: color.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(c,
+                        style: theme.textTheme.micro.copyWith(color: color)),
+                  ),
+              ],
+            ),
+          ],
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(tokens.radiusCard),
+        border: Border.fromBorderSide(hairlineBorder()),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (headline.isNotEmpty) Text(headline, style: theme.textTheme.title),
+          if (stats.allies.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            team('YOUR TEAM', stats.allies, tokens.accent),
+          ],
+          if (stats.enemies.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            team('ENEMIES', stats.enemies, theme.colorScheme.error),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Route name for the match drill-down, so navigation can be asserted in
 /// widget tests without building the screen (which needs media_kit for its
 /// [ClipTile] thumbnails, same pattern as `playerScreenRouteName`).
@@ -50,6 +119,12 @@ class MatchClipsScreen extends StatelessWidget {
                 style: theme.textTheme.bodyMuted,
               ),
             ),
+          if (s != null &&
+              (s.champion != null ||
+                  s.gameMode != null ||
+                  s.allies.isNotEmpty ||
+                  s.enemies.isNotEmpty))
+            _MatchInfoCard(stats: s),
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
             child: GridView.builder(

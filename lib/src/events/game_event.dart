@@ -24,6 +24,9 @@ enum GameEventKind {
   victory,
   defeat,
   recording, // a manual recording session (deck button / record hotkey)
+  // Not a clip trigger: carries per-match metadata (champion, teams, mode)
+  // in [GameEvent.meta] for the coordinator to record onto MatchStats.
+  matchInfo,
   other,
 }
 
@@ -51,6 +54,7 @@ int clipPriority(GameEventKind kind) => switch (kind) {
       // Deaths are counted for match K/D but never win a clip label — a
       // fight the player also got a kill in should badge the kill.
       GameEventKind.death => 5,
+      GameEventKind.matchInfo => 0,
       GameEventKind.other => 0,
     };
 

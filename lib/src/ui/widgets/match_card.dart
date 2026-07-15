@@ -46,6 +46,23 @@ class MatchCard extends StatelessWidget {
   /// Whether there's a real K/D to show (recorded, non-empty).
   bool get _hasKd => stats != null && (stats!.kills > 0 || stats!.deaths > 0);
 
+  /// The muted top line: "MATCH · 2 H AGO", enriched with the League match's
+  /// champion and mode when captured — e.g. "AHRI · ARENA · 2 H AGO".
+  String _labelLine() {
+    final parts = <String>[];
+    if (stats?.champion case final c? when c.isNotEmpty) {
+      parts.add(c.toUpperCase());
+    }
+    if (stats?.gameMode case final m? when m.isNotEmpty) {
+      parts.add(m.toUpperCase());
+    }
+    parts.add(relativeAge(session.startedAt).toUpperCase());
+    // "MATCH"/"SESSION" prefix stays only when there's no champion/mode to
+    // lead with — champion + mode already reads as a match.
+    if (parts.length == 1) parts.insert(0, isMatch ? 'MATCH' : 'SESSION');
+    return parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -98,8 +115,7 @@ class MatchCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${isMatch ? 'MATCH' : 'SESSION'} · '
-                          '${relativeAge(session.startedAt).toUpperCase()}',
+                          _labelLine(),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                           style: theme.textTheme.micro

@@ -124,7 +124,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
     _initLocalConfigState();
     if (_isLeague) {
       _eventsSub = widget.coordinator.registry.events
-          .where((e) => e.gameId == widget.gameId)
+          .where((e) =>
+              e.gameId == widget.gameId &&
+              // matchInfo is metadata, not a live moment for the feed.
+              e.kind != GameEventKind.matchInfo)
           .listen((e) {
         setState(() {
           _liveEvents.insert(0, e);
