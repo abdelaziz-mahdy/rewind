@@ -9,6 +9,7 @@ import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import 'onboarding_screen.dart';
+import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
 
@@ -548,23 +549,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _Section(
-            title: 'Help',
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const ValueKey('showOnboardingButton'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => OnboardingScreen(
-                      settings: widget.settings,
-                      onChanged: widget.onChanged,
-                      onDone: () => Navigator.of(context).pop(),
-                    ),
-                  ),
+            title: 'About & help',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Rewind — open-source instant replay for macOS & Windows. '
+                  'GPLv3.',
+                  style: Theme.of(context).textTheme.bodyMuted,
                 ),
-                icon: const Icon(Icons.school_outlined, size: 18),
-                label: const Text('Show the getting-started guide'),
-              ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const ValueKey('showOnboardingButton'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => OnboardingScreen(
+                            settings: widget.settings,
+                            onChanged: widget.onChanged,
+                            onDone: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.school_outlined, size: 18),
+                      label: const Text('Getting-started guide'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('githubRepoButton'),
+                      onPressed: () => openUrl(kRepoUrl),
+                      icon: const Icon(Icons.code_outlined, size: 18),
+                      label: const Text('GitHub repo'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('reportIssueButton'),
+                      onPressed: () => openUrl('$kRepoUrl/issues'),
+                      icon: const Icon(Icons.bug_report_outlined, size: 18),
+                      label: const Text('Report an issue'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],

@@ -115,23 +115,78 @@ See `CLAUDE.md` for the full map. Short version:
 - `tools/` — libobs fetch/bundle, icon gen, e2e smoke, **DMG + installer packaging**
 - `.github/workflows/` — CI + releases
 
-## Adding a new game integration (the extensible path)
+## Adding support for a new game
 
-You should **not** need to touch the capture engine. To add a game:
+This is designed to be a **small, self-contained PR** — you never touch the
+capture engine, the UI, or the coordinator. Pick the path that matches what
+your game exposes.
 
-1. Create `lib/src/events/<game>_event_watcher.dart` implementing `GameEventSource`.
-2. Emit `GameEvent`s on its stream when notable things happen.
-3. Register it in `lib/src/events/game_registry.dart`.
-4. Add the game to the supported-games table in `README.md`.
-5. Add a test under `test/`.
+> **Non-negotiable rule (read first):** you may read events only from
+> **sanctioned** sources — an official local API (like League's `127.0.0.1:2999`
+> Live Client Data API), official log files, or a vendor SDK. **Never** read
+> game memory, inject into the game, hook it, or sniff packets. A PR that does
+> is rejected on sight — it risks getting users banned. See `docs/COMPLIANCE.md`.
 
-That's it — the `ClipCoordinator` and capture engine handle the rest.
+### Path A — the game just needs to be *detected* (most games)
 
-**Legal / anti-cheat rule (mandatory):** an integration may read events only
-from *sanctioned* sources — official local APIs (e.g. League's `2999` API),
-official logs, or vendor SDKs — or fall back to manual-hotkey capture. Never
-read game memory, inject, hook, or capture packets. See `docs/COMPLIANCE.md` and
-its PR checklist.
+If there's no per-event API, Rewind still auto-detects the game running and
+lets the user hotkey-clip. You only add one row to the catalog:
+
+1. Open `lib/src/events/game_catalog.dart` and add a `CatalogGame` to
+   `popularGamesCatalog`:
+   ```dart
+   CatalogGame(
+     gameId: 'app:valorant',          // 'app:<slug>' — must be unique
+     displayName: 'VALORANT',
+     processMatch: 'VALORANT-Win64-Shipping', // case-insensitive substring of
+                                              // the process name (see below)
+   ),
+   ```
+2. Find the real process name: run the game, then `ps -axo comm= | grep -i <name>`
+   on macOS (or Task Manager → Details on Windows). Use a substring that's
+   unique to this game.
+3. **Test** in `test/game_catalog_test.dart` — the catalog already has
+   invariant tests (unique ids, non-empty fields); add a `displayNameFor`
+   assertion if your slug needs a friendly name.
+
+That's the whole PR. `ProcessWatcherSource` + `buildSources` pick it up
+automatically; the game appears in the rail and Supported Games.
+
+### Path B — the game has an official event API (auto-clip highlights)
+
+Like League: a local API that reports kills/objectives so Rewind can clip them
+automatically. This is a `GameEventSource`.
+
+1. Create `lib/src/events/<game>_event_watcher.dart` implementing
+   `GameEventSource` (see `league_event_watcher.dart` as the reference). Key
+   points:
+   - **Inject the transport** so it's testable without a live game — take a
+     `Future<String?> Function(String path)? fetch` in the constructor,
+     defaulting to the real HTTP client. (League does exactly this.)
+   - **Poll on a timer** in `start()`, translate new events into `GameEvent`s
+     on a broadcast `StreamController`, and be robust to the API being
+     down between/around matches (connection-refused is normal — never throw).
+   - Map raw events to `GameEventKind` (add a new kind to
+     `lib/src/events/game_event.dart` if yours isn't covered, and give it a
+     `clipPriority` + an `eventColor` case).
+2. Register it in `lib/src/events/source_builder.dart` (`buildSources` — add it
+   to the initial `sources` list, like `LeagueEventWatcher()`).
+3. **Test** in `test/<game>_event_watcher_test.dart`, driving the injected
+   `fetch` with canned API bodies. Cover, at minimum:
+   - it detects a running game (`isGameRunning`);
+   - it emits the right `GameEventKind` for a real event payload;
+   - it does **not** emit for events that aren't the active player / are
+     stale / are replayed history (League's tests are a good template).
+
+### Both paths — finishing the PR
+
+- Add the game to the supported-games table in `README.md`.
+- `dart format .` and `flutter analyze` must pass; `flutter test` green.
+- Follow the PR checklist in `docs/COMPLIANCE.md` (confirm the source is
+  sanctioned).
+
+The `ClipCoordinator`, storage, thumbnails, match cards, and UI all handle the
+rest — you never touch them.
 
 ## Conventions
 
