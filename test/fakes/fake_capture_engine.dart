@@ -167,12 +167,12 @@ class FakeCaptureEngine implements CaptureEngine {
   }
 
   @override
-  bool setSystemAudio(bool enabled) {
-    calls.add('setSystemAudio:$enabled');
-    systemAudio = enabled;
+  bool setAudioMode(int mode) {
+    calls.add('setAudioMode:$mode');
+    audioMode = mode;
     return true;
   }
 
-  /// Last value passed to [setSystemAudio].
-  bool? systemAudio;
+  /// Last value passed to [setAudioMode].
+  int? audioMode;
 }

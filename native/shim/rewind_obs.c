@@ -109,8 +109,16 @@ static int g_max_height = 0;
  * NSMicrophoneUsageDescription TCC prompt on first use). */
 static obs_source_t *g_sysaudio = NULL;
 static obs_source_t *g_mic = NULL;
-static int g_mic_enabled = 0;     /* preference; applied at init if set early */
-static int g_sysaudio_enabled = 1; /* desktop audio on by default */
+static int g_mic_enabled = 0; /* preference; applied at init if set early */
+
+/* System/app audio mode (see rewind_set_audio_mode): 0 = off, 1 = all
+ * desktop audio (every app), 2 = only the captured app's audio (SCK
+ * application audio stream targeting g_app_bundle_id — needs an app capture
+ * source; falls back to off when none). Default 1. */
+#define AUDIO_MODE_OFF 0
+#define AUDIO_MODE_ALL 1
+#define AUDIO_MODE_APP 2
+static int g_audio_mode = AUDIO_MODE_ALL;
 
 static int fail(const char *msg) { set_error(msg); return 1; }
 
@@ -593,6 +601,45 @@ static int list_capturable_apps_json(char *json_out, int json_cap) {
 }
 #endif
 
+/* (Re)builds the channel-1 audio source to match g_audio_mode:
+ *   OFF -> no source.
+ *   ALL -> sck_audio_capture desktop stream (every app).
+ *   APP -> sck_audio_capture application stream for g_app_bundle_id; if no
+ *          app capture source is set (display capture, or a bundle-less Wine
+ *          game), there's nothing to target, so it falls back to silence
+ *          (logged) rather than leaking all desktop audio the user opted out
+ *          of.
+ * Safe to call before or after the pipeline exists. */
+static void rebuild_system_audio(void) {
+    if (g_sysaudio) {
+        obs_set_output_source(1, NULL);
+        obs_source_release(g_sysaudio);
+        g_sysaudio = NULL;
+    }
+    if (g_audio_mode == AUDIO_MODE_OFF) return;
+
+    obs_data_t *s = obs_data_create();
+    if (g_audio_mode == AUDIO_MODE_APP) {
+        if (!g_app_bundle_id[0]) {
+            blog(LOG_WARNING, "rewind: app audio selected but no app capture "
+                              "source is set; capturing no audio");
+            obs_data_release(s);
+            return;
+        }
+        obs_data_set_int(s, "type", 1); /* ScreenCaptureAudioApplicationStream */
+        obs_data_set_string(s, "application", g_app_bundle_id);
+    } else {
+        obs_data_set_int(s, "type", 0); /* ScreenCaptureAudioDesktopStream */
+    }
+    g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", s, NULL);
+    obs_data_release(s);
+    if (g_sysaudio) {
+        obs_set_output_source(1, g_sysaudio);
+    } else {
+        blog(LOG_WARNING, "rewind: sck_audio_capture unavailable; no system audio");
+    }
+}
+
 static void setup_module_paths(const char *sdk_dir) {
     char plugins_bin[PATH_MAX];
     char plugins_data[PATH_MAX];
@@ -786,19 +833,10 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     }
     obs_set_output_source(0, g_capture);
 
-    /* System (game) audio on channel 1. screen_capture on channel 0
-     * provides VIDEO only — without this source a clip's AAC track is
-     * silence. Default settings = desktop audio stream. Skipped when the
-     * user turned system audio off (voice-only setups). Non-fatal if
-     * unavailable (macOS < 13). */
-    if (g_sysaudio_enabled) {
-        g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
-        if (g_sysaudio) {
-            obs_set_output_source(1, g_sysaudio);
-        } else {
-            blog(LOG_WARNING, "rewind: sck_audio_capture unavailable; clips will have no system audio");
-        }
-    }
+    /* System/app audio on channel 1 (screen_capture on channel 0 is VIDEO
+     * only — without an audio source a clip's AAC track is silence). Built
+     * per g_audio_mode; see rebuild_system_audio(). */
+    rebuild_system_audio();
 
     /* Microphone, if the preference was set before init. */
     if (g_mic_enabled) {
@@ -1097,21 +1135,14 @@ int rewind_obs_shutdown(void) {
     return 0;
 }
 
-int rewind_set_system_audio(int enabled) {
-    g_sysaudio_enabled = enabled ? 1 : 0;
-    /* Live toggle on channel 1, mirroring the mic on channel 2 (create when
-     * turning on, tear down when off). Before init this just stores the
-     * preference (applied when the pipeline is built). */
-    if (!g_initialized) { set_error(""); return 0; }
-    if (g_sysaudio_enabled && !g_sysaudio) {
-        g_sysaudio = obs_source_create("sck_audio_capture", "rewind-sysaudio", NULL, NULL);
-        if (!g_sysaudio) return fail("sck_audio_capture unavailable");
-        obs_set_output_source(1, g_sysaudio);
-    } else if (!g_sysaudio_enabled && g_sysaudio) {
-        obs_set_output_source(1, NULL);
-        obs_source_release(g_sysaudio);
-        g_sysaudio = NULL;
-    }
+int rewind_set_audio_mode(int mode) {
+    /* 0 = off (silence, unless the mic is on), 1 = all desktop audio, 2 =
+     * only the captured app's audio. Live on channel 1 (rebuild_system_audio
+     * tears down/recreates); before init it just stores for the pipeline. */
+    g_audio_mode = (mode == AUDIO_MODE_APP || mode == AUDIO_MODE_ALL)
+                       ? mode
+                       : AUDIO_MODE_OFF;
+    if (g_initialized) rebuild_system_audio();
     set_error("");
     return 0;
 }
@@ -1209,6 +1240,9 @@ int rewind_set_capture_app(const char *bundle_id) {
         obs_source_update(g_capture, cs);
         obs_data_release(cs);
     }
+    /* App-audio mode targets the captured app by bundle id — follow the new
+     * app (or fall back to silence if this cleared it). */
+    if (g_initialized && g_audio_mode == AUDIO_MODE_APP) rebuild_system_audio();
     set_error("");
     return 0;
 }
@@ -1399,8 +1433,8 @@ int rewind_set_capture_quality(int fps, int max_height) {
     return 0;
 }
 
-int rewind_set_system_audio(int enabled) {
-    (void)enabled;
+int rewind_set_audio_mode(int mode) {
+    (void)mode;
     set_error("");
     return 0;
 }

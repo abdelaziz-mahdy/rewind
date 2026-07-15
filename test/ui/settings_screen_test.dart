@@ -468,9 +468,13 @@ void main() {
       await t.pump();
       expect(settings.captureMaxHeight, isNull);
 
-      await t.tap(find.byKey(const ValueKey('systemAudioSwitch')));
+      await t.tap(find.text('Game only'));
       await t.pump();
-      expect(settings.captureSystemAudio, isFalse);
+      expect(settings.audioMode, AudioMode.app);
+
+      await t.tap(find.text('None'));
+      await t.pump();
+      expect(settings.audioMode, AudioMode.off);
       expect(calls, isNotEmpty);
     });
   });

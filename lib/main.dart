@@ -125,7 +125,7 @@ Future<void> main() async {
   // Audio + quality preferences before init, mirroring the display/app
   // pattern — the shim applies them while building the pipeline.
   engine.setMicEnabled(settings.captureMicrophone);
-  engine.setSystemAudio(settings.captureSystemAudio);
+  engine.setAudioMode(audioModeToShim(settings.audioMode));
   engine.setCaptureQuality(settings.captureFps, settings.captureMaxHeight ?? 0);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
@@ -304,7 +304,7 @@ Future<void> main() async {
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
       engine?.setMicEnabled(s.captureMicrophone);
-      engine?.setSystemAudio(s.captureSystemAudio);
+      engine?.setAudioMode(audioModeToShim(s.audioMode));
       // Quality stored for next launch (a live pipeline can't change fps/res).
       engine?.setCaptureQuality(s.captureFps, s.captureMaxHeight ?? 0);
       await bindBothHotkeys();

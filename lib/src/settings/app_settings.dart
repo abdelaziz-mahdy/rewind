@@ -1,5 +1,26 @@
 import 'game_config.dart';
 
+/// What system/app sound is mixed into clips (separate from the microphone,
+/// which is its own [AppSettings.captureMicrophone] toggle).
+enum AudioMode {
+  /// No system/app audio — silent clips unless the mic is on.
+  off,
+
+  /// Only the captured game/app's audio (excludes Discord, music, etc.).
+  /// Needs an app/window capture source; falls back to silence without one.
+  app,
+
+  /// All desktop audio — every app's sound.
+  all,
+}
+
+/// The shim's audio-mode int (see `rewind_set_audio_mode`).
+int audioModeToShim(AudioMode m) => switch (m) {
+      AudioMode.off => 0,
+      AudioMode.all => 1,
+      AudioMode.app => 2,
+    };
+
 /// Global settings + per-game overrides.
 class AppSettings {
   /// Default replay-buffer length when a game has no specific override.
@@ -49,10 +70,9 @@ class AppSettings {
   /// Applied when capture starts (next launch).
   int? captureMaxHeight;
 
-  /// Whether system/desktop audio (every app's sound) is captured. Default
-  /// on. Turn off if you don't want other apps (Discord, music) in your
-  /// clips — pair with [captureMicrophone] for voice-only.
-  bool captureSystemAudio;
+  /// What system/app audio is captured — none, game/app only, or all
+  /// desktop audio. Separate from [captureMicrophone]. Default [AudioMode.all].
+  AudioMode audioMode;
 
   /// Whether the microphone is mixed into clips/recordings alongside the
   /// always-on system audio. Default OFF: capturing voice without an
@@ -94,7 +114,7 @@ class AppSettings {
     this.autoSwitchCapture = true,
     this.captureFps = 60,
     this.captureMaxHeight,
-    this.captureSystemAudio = true,
+    this.audioMode = AudioMode.all,
     this.captureMicrophone = false,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
@@ -132,7 +152,7 @@ class AppSettings {
         'autoSwitchCapture': autoSwitchCapture,
         'captureFps': captureFps,
         'captureMaxHeight': captureMaxHeight,
-        'captureSystemAudio': captureSystemAudio,
+        'audioMode': audioMode.name,
         'captureMicrophone': captureMicrophone,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
@@ -151,7 +171,7 @@ class AppSettings {
         autoSwitchCapture: j['autoSwitchCapture'] as bool? ?? true,
         captureFps: j['captureFps'] as int? ?? 60,
         captureMaxHeight: j['captureMaxHeight'] as int?,
-        captureSystemAudio: j['captureSystemAudio'] as bool? ?? true,
+        audioMode: _audioModeFromJson(j),
         captureMicrophone: j['captureMicrophone'] as bool? ?? false,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
@@ -166,4 +186,17 @@ class AppSettings {
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),
         ),
       );
+
+  /// Reads [audioMode], migrating the old boolean `captureSystemAudio`
+  /// (false → off, true → all) so existing settings files keep working.
+  static AudioMode _audioModeFromJson(Map<String, dynamic> j) {
+    final name = j['audioMode'] as String?;
+    if (name != null) {
+      return AudioMode.values
+          .firstWhere((m) => m.name == name, orElse: () => AudioMode.all);
+    }
+    final legacy = j['captureSystemAudio'] as bool?;
+    if (legacy != null) return legacy ? AudioMode.all : AudioMode.off;
+    return AudioMode.all;
+  }
 }

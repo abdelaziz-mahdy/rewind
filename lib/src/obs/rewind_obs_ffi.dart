@@ -57,8 +57,8 @@ external int _setMicEnabled(int enabled);
 @Native<Int32 Function(Int32, Int32)>(symbol: 'rewind_set_capture_quality')
 external int _setCaptureQuality(int fps, int maxHeight);
 
-@Native<Int32 Function(Int32)>(symbol: 'rewind_set_system_audio')
-external int _setSystemAudio(int enabled);
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_audio_mode')
+external int _setAudioMode(int mode);
 
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
@@ -189,6 +189,6 @@ class RewindObs {
   int setCaptureQuality(int fps, int maxHeight) =>
       _setCaptureQuality(fps, maxHeight);
 
-  /// Enables/disables system (desktop) audio capture.
-  int setSystemAudio(bool enabled) => _setSystemAudio(enabled ? 1 : 0);
+  /// Sets the system/app audio mode (0 = off, 1 = all, 2 = app).
+  int setAudioMode(int mode) => _setAudioMode(mode);
 }

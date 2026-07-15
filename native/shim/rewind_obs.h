@@ -125,10 +125,12 @@ int rewind_set_mic_enabled(int enabled);
  * pipeline rebuild. Returns 0 on success. */
 int rewind_set_capture_quality(int fps, int max_height);
 
-/* Enable/disable system (desktop) audio capture — every app's sound. On by
- * default; turn off for voice-only (mic) clips. Safe to call before init
- * (stored) or after (toggles the source live, like the mic). Returns 0. */
-int rewind_set_system_audio(int enabled);
+/* Set the system/app audio mode: 0 = none (silence, unless the mic is on),
+ * 1 = all desktop audio (every app), 2 = only the captured app's audio.
+ * App mode needs an app capture source (see rewind_set_capture_app) — with
+ * none it captures silence rather than leaking desktop audio. Safe before
+ * init (stored) or after (rebuilds the source live). Returns 0. */
+int rewind_set_audio_mode(int mode);
 
 #ifdef __cplusplus
 }

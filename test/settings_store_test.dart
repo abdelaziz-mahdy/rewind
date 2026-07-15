@@ -182,14 +182,24 @@ void main() {
       final d = AppSettings();
       expect(d.captureFps, 60);
       expect(d.captureMaxHeight, isNull); // source
-      expect(d.captureSystemAudio, isTrue);
+      expect(d.audioMode, AudioMode.all);
 
       final s = AppSettings(
-          captureFps: 30, captureMaxHeight: 1080, captureSystemAudio: false);
+          captureFps: 30, captureMaxHeight: 1080, audioMode: AudioMode.app);
       final loaded = AppSettings.fromJson(s.toJson());
       expect(loaded.captureFps, 30);
       expect(loaded.captureMaxHeight, 1080);
-      expect(loaded.captureSystemAudio, isFalse);
+      expect(loaded.audioMode, AudioMode.app);
+    });
+
+    test('legacy captureSystemAudio migrates to an AudioMode', () {
+      // Old settings files stored a bool; false -> off, true -> all.
+      expect(AppSettings.fromJson({'captureSystemAudio': false}).audioMode,
+          AudioMode.off);
+      expect(AppSettings.fromJson({'captureSystemAudio': true}).audioMode,
+          AudioMode.all);
+      // A file with neither key defaults to all.
+      expect(AppSettings.fromJson({}).audioMode, AudioMode.all);
     });
   });
 

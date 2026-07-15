@@ -90,11 +90,11 @@ abstract class CaptureEngine {
   /// false on failure.
   bool setCaptureQuality(int fps, int maxHeight);
 
-  /// Enable/disable system (desktop) audio — every app's sound. On by
-  /// default; off gives voice-only clips (with [setMicEnabled]). Safe to
-  /// call before or after [init] (toggles live like the mic). Returns false
-  /// on failure.
-  bool setSystemAudio(bool enabled);
+  /// Set the system/app audio mode: 0 = none (silent), 1 = all desktop
+  /// audio, 2 = only the captured app's audio (see `AudioMode`). App mode
+  /// needs an app/window capture source. Safe before or after [init]
+  /// (rebuilds live). Returns false on failure.
+  bool setAudioMode(int mode);
 
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.

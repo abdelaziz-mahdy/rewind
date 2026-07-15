@@ -78,5 +78,5 @@ class RewindObsEngine implements CaptureEngine {
       _obs.setCaptureQuality(fps, maxHeight) == 0;
 
   @override
-  bool setSystemAudio(bool enabled) => _obs.setSystemAudio(enabled) == 0;
+  bool setAudioMode(int mode) => _obs.setAudioMode(mode) == 0;
 }

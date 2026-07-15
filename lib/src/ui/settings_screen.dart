@@ -181,8 +181,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
-  void _handleSystemAudioChanged(bool value) {
-    widget.settings.captureSystemAudio = value;
+  void _handleAudioModeChanged(AudioMode mode) {
+    widget.settings.audioMode = mode;
     setState(() {});
     widget.onChanged(widget.settings);
   }
@@ -434,29 +434,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: Theme.of(context).textTheme.bodyMuted,
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('System audio',
-                              style: Theme.of(context).textTheme.body),
-                          const SizedBox(height: 2),
-                          Text(
-                            "Capture every app's sound. Turn off for "
-                            'voice-only clips (mic).',
-                            style: Theme.of(context).textTheme.bodyMuted,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      key: const ValueKey('systemAudioSwitch'),
-                      value: widget.settings.captureSystemAudio,
-                      onChanged: _handleSystemAudioChanged,
-                    ),
+                Text('Game / system audio',
+                    style: Theme.of(context).textTheme.body),
+                const SizedBox(height: 8),
+                SegmentedButton<AudioMode>(
+                  key: const ValueKey('audioModeSegments'),
+                  segments: const [
+                    ButtonSegment(value: AudioMode.off, label: Text('None')),
+                    ButtonSegment(
+                        value: AudioMode.app, label: Text('Game only')),
+                    ButtonSegment(
+                        value: AudioMode.all, label: Text('All apps')),
                   ],
+                  selected: {widget.settings.audioMode},
+                  onSelectionChanged: (s) => _handleAudioModeChanged(s.first),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  switch (widget.settings.audioMode) {
+                    AudioMode.off =>
+                      'No system audio. Clips are silent unless the mic is on.',
+                    AudioMode.app =>
+                      "Only the captured game/app's sound (no Discord, music, "
+                          'etc.). Requires a specific app as the capture source.',
+                    AudioMode.all => "Every app's sound (desktop audio).",
+                  },
+                  style: Theme.of(context).textTheme.bodyMuted,
                 ),
               ],
             ),
