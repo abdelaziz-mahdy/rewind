@@ -68,9 +68,11 @@ void main() {
     )..start(supervise: false); // subscribes to streams, no periodic timer
   });
 
-  /// Waits out the burst debounce (plus save latency) after emitting events.
+  /// Waits out the burst debounce (60 ms) plus save + file-settle latency
+  /// after emitting events. Generous margin — these are real wall-clock
+  /// timers, so a tight bound flakes under load.
   Future<void> settleBurst() async =>
-      Future<void>.delayed(const Duration(milliseconds: 150));
+      Future<void>.delayed(const Duration(milliseconds: 400));
 
   tearDown(() => tmp.deleteSync(recursive: true));
 
