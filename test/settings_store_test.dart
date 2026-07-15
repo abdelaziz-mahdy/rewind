@@ -171,6 +171,12 @@ void main() {
       expect(AppSettings.fromJson(s.toJson()).clipsDirPath,
           '/Volumes/gaming/Clips');
     });
+
+    test('onboardingComplete defaults to false and round-trips', () {
+      expect(AppSettings().onboardingComplete, isFalse);
+      final s = AppSettings(onboardingComplete: true);
+      expect(AppSettings.fromJson(s.toJson()).onboardingComplete, isTrue);
+    });
   });
 
   test('captureMicrophone defaults to OFF and round-trips', () {

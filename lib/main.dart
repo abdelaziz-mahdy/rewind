@@ -26,6 +26,7 @@ import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
 import 'src/settings/settings_store.dart';
 import 'src/tray/tray_service.dart';
+import 'src/ui/onboarding_screen.dart';
 import 'src/ui/shell.dart';
 import 'src/ui/theme.dart';
 
@@ -335,7 +336,7 @@ Future<void> main() async {
   ));
 }
 
-class RewindApp extends StatelessWidget {
+class RewindApp extends StatefulWidget {
   final ClipCoordinator coordinator;
   final ClipLibrary library;
   final AppSettings settings;
@@ -370,26 +371,45 @@ class RewindApp extends StatelessWidget {
   });
 
   @override
+  State<RewindApp> createState() => _RewindAppState();
+}
+
+class _RewindAppState extends State<RewindApp> {
+  late bool _showOnboarding = !widget.settings.onboardingComplete;
+
+  Future<void> _completeOnboarding() async {
+    widget.settings.onboardingComplete = true;
+    await widget.onSettingsChanged(widget.settings);
+    if (mounted) setState(() => _showOnboarding = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Rewind',
       theme: rewindTheme(),
-      home: Shell(
-        coordinator: coordinator,
-        library: library,
-        captureError: captureError,
-        bufferActive: bufferActive,
-        hotkeyLabel: settings.hotkey,
-        displays: displays,
-        capturableApps: capturableApps,
-        listApps: listApps,
-        onSettingsChanged: onSettingsChanged,
-        onOpenClipsFolder: onOpenClipsFolder,
-        settingsRevision: settingsRevision,
-        onHotkeyRecording: onHotkeyRecording,
-        onSetCaptureApp: onSetCaptureApp,
-        thumbnails: thumbnails,
-      ),
+      home: _showOnboarding
+          ? OnboardingScreen(
+              hotkey: widget.settings.hotkey,
+              recordHotkey: widget.settings.recordHotkey,
+              onDone: _completeOnboarding,
+            )
+          : Shell(
+              coordinator: widget.coordinator,
+              library: widget.library,
+              captureError: widget.captureError,
+              bufferActive: widget.bufferActive,
+              hotkeyLabel: widget.settings.hotkey,
+              displays: widget.displays,
+              capturableApps: widget.capturableApps,
+              listApps: widget.listApps,
+              onSettingsChanged: widget.onSettingsChanged,
+              onOpenClipsFolder: widget.onOpenClipsFolder,
+              settingsRevision: widget.settingsRevision,
+              onHotkeyRecording: widget.onHotkeyRecording,
+              onSetCaptureApp: widget.onSetCaptureApp,
+              thumbnails: widget.thumbnails,
+            ),
     );
   }
 }

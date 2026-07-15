@@ -8,6 +8,7 @@ import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
+import 'onboarding_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
 
@@ -455,6 +456,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: Theme.of(context).textTheme.bodyMuted,
                 ),
               ],
+            ),
+          ),
+          _Section(
+            title: 'Help',
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('showOnboardingButton'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OnboardingScreen(
+                      hotkey: widget.settings.hotkey,
+                      recordHotkey: widget.settings.recordHotkey,
+                      onDone: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.school_outlined, size: 18),
+                label: const Text('Show the getting-started guide'),
+              ),
             ),
           ),
         ],

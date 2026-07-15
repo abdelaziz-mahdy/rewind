@@ -85,19 +85,19 @@ void main() {
       find.text(Platform.isMacOS ? 'Reveal in Finder' : 'Reveal in Explorer'),
       findsOneWidget,
     );
-    expect(find.text('Protect from auto-cleanup'), findsOneWidget);
+    expect(find.text('Keep'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
   });
 
   testWidgets(
-      'Protect toggles clip.protected, shows the lock badge, and flips the '
-      'menu label to Unprotect', (t) async {
+      'Keep toggles clip.protected, shows the kept badge, and flips the menu '
+      'label to Stop keeping', (t) async {
     await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
     expect(find.byKey(const ValueKey('protectedLock')), findsNothing);
 
     await t.tap(find.byWidgetPredicate((w) => w is PopupMenuButton));
     await t.pumpAndSettle();
-    await t.tap(find.text('Protect from auto-cleanup'));
+    await t.tap(find.text('Keep'));
     await t.pumpAndSettle();
 
     expect(clip.protected, isTrue);
@@ -105,7 +105,7 @@ void main() {
 
     await t.tap(find.byWidgetPredicate((w) => w is PopupMenuButton));
     await t.pumpAndSettle();
-    expect(find.text('Unprotect (allow auto-cleanup)'), findsOneWidget);
+    expect(find.text('Stop keeping'), findsOneWidget);
   });
 
   group('thumbnail', () {

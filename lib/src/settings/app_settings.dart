@@ -56,6 +56,11 @@ class AppSettings {
   /// Null means NEVER (age cleanup off — the default).
   int? maxClipAgeDays;
 
+  /// Whether the first-run getting-started guide has been completed (or
+  /// skipped). False shows it on launch; the guide is re-openable from
+  /// Settings regardless.
+  bool onboardingComplete;
+
   /// Custom recordings folder. Null means the per-OS default
   /// (`~/Movies/Rewind` on macOS — see `clips_dir.dart`). Applied at
   /// startup: the capture engine, clip library, and debug triggers are all
@@ -76,6 +81,7 @@ class AppSettings {
     this.captureMicrophone = false,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
+    this.onboardingComplete = false,
     this.clipsDirPath,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
@@ -110,6 +116,7 @@ class AppSettings {
         'captureMicrophone': captureMicrophone,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
+        'onboardingComplete': onboardingComplete,
         'clipsDirPath': clipsDirPath,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
@@ -129,6 +136,7 @@ class AppSettings {
         maxStorageGb:
             j.containsKey('maxStorageGb') ? j['maxStorageGb'] as int? : 20,
         maxClipAgeDays: j['maxClipAgeDays'] as int?,
+        onboardingComplete: j['onboardingComplete'] as bool? ?? false,
         clipsDirPath: j['clipsDirPath'] as String?,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,

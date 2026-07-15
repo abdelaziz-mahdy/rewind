@@ -18,6 +18,7 @@ import 'game_hub_screen.dart';
 import 'settings_screen.dart';
 import 'shell_destination.dart';
 import 'supported_games_screen.dart';
+import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
@@ -417,16 +418,8 @@ class _ErrorBanner extends StatelessWidget {
   bool get _isPermissionError =>
       Platform.isMacOS && message.toLowerCase().contains('permission');
 
-  static Future<void> _openScreenRecordingSettings() async {
-    try {
-      await Process.run('open', [
-        'x-apple.systempreferences:com.apple.preference.security'
-            '?Privacy_ScreenCapture'
-      ]);
-    } catch (_) {
-      // Best-effort: no OS handler available is not fatal.
-    }
-  }
+  static Future<void> _openScreenRecordingSettings() =>
+      openScreenRecordingSettings();
 
   @override
   Widget build(BuildContext context) {

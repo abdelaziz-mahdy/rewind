@@ -259,7 +259,7 @@ class _ClipTileState extends State<ClipTile> {
                                 // Pinned against auto-cleanup (see the
                                 // overflow menu's Protect action).
                                 Icon(
-                                  Icons.lock,
+                                  Icons.bookmark,
                                   key: const ValueKey('protectedLock'),
                                   size: 11,
                                   color: tokens.textMuted,
@@ -398,9 +398,7 @@ class _OverflowMenu extends StatelessWidget {
           ),
           PopupMenuItem(
             value: _ClipAction.protect,
-            child: Text(protected
-                ? 'Unprotect (allow auto-cleanup)'
-                : 'Protect from auto-cleanup'),
+            child: Text(protected ? 'Stop keeping' : 'Keep'),
           ),
           const PopupMenuItem(value: _ClipAction.delete, child: Text('Delete')),
         ],
