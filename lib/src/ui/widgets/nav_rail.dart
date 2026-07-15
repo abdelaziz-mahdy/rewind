@@ -246,57 +246,67 @@ class _GameRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: selected ? tokens.surfaceRaised : null,
-            border: Border(
-              left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
-                width: tokens.radiusRailIndicator,
+    // The full name in a tooltip — rail width truncates long titles
+    // ("PenguinHotel-Win64-Shipping"), and hover should still reveal them.
+    return Tooltip(
+      message: entry.displayName,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            height: 48,
+            // Tighter than the header padding to give long names more room.
+            padding: const EdgeInsets.only(left: 12, right: 12),
+            decoration: BoxDecoration(
+              color: selected ? tokens.surfaceRaised : null,
+              border: Border(
+                left: BorderSide(
+                  color: selected ? tokens.accent : Colors.transparent,
+                  width: tokens.radiusRailIndicator,
+                ),
               ),
             ),
-          ),
-          child: Row(
-            children: [
-              GameTileAvatar(
-                gameId: entry.gameId,
-                displayName: entry.displayName,
-                size: 28,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  entry.displayName,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: (selected
-                          ? theme.textTheme.title
-                          : theme.textTheme.body)
-                      .copyWith(color: selected ? tokens.accent : tokens.text),
-                ),
-              ),
-              if (entry.active) ...[
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                      color: tokens.accent, shape: BoxShape.circle),
-                  child: const SizedBox(width: 6, height: 6),
+            child: Row(
+              children: [
+                GameTileAvatar(
+                  gameId: entry.gameId,
+                  displayName: entry.displayName,
+                  size: 26,
                 ),
                 const SizedBox(width: 8),
-              ],
-              Text(
-                '${entry.clipCount}',
-                style: theme.textTheme.label.copyWith(
-                  color: tokens.textMuted,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                Expanded(
+                  child: Text(
+                    entry.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    // Selected reads prominent via color + weight, NOT a
+                    // larger font — a bigger font just truncated sooner.
+                    style: theme.textTheme.body.copyWith(
+                      color: selected ? tokens.accent : tokens.text,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                if (entry.active) ...[
+                  const SizedBox(width: 6),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: tokens.accent, shape: BoxShape.circle),
+                    child: const SizedBox(width: 6, height: 6),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                Text(
+                  '${entry.clipCount}',
+                  style: theme.textTheme.label.copyWith(
+                    color: tokens.textMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
