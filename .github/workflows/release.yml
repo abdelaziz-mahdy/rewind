@@ -8,48 +8,82 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            target: macos
-            artifact: rewind-macos
-          - os: windows-latest
-            target: windows
-            artifact: rewind-windows
-    runs-on: ${{ matrix.os }}
+  macos:
+    name: Build & package macOS (.dmg)
+    runs-on: macos-latest # Apple Silicon runner → arm64
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter config --enable-${{ matrix.target }}-desktop
-      - run: flutter pub get
-      - run: flutter build ${{ matrix.target }} --release
 
-      # TODO: bundle libobs runtime (data/ + obs-plugins/) into the app,
-      # then sign/notarize (macOS) or build an installer (Windows).
-      - name: Package (macOS)
-        if: matrix.target == 'macos'
-        run: |
-          cd build/macos/Build/Products/Release
-          zip -r ../../../../../${{ matrix.artifact }}.zip *.app
-      - name: Package (Windows)
-        if: matrix.target == 'windows'
-        run: |
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ${{ matrix.artifact }}.zip
+      # Real capture needs the pinned libobs SDK; without it the shim builds
+      # in stub mode (no clips). Cache key must match ci.yml's.
+      - name: Cache libobs SDK
+        uses: actions/cache@v4
+        with:
+          path: native/third_party/obs
+          key: libobs-${{ runner.arch }}-32.1.2-deps-2025-08-23-recipe-2
+      - run: bash tools/fetch_libobs.sh
+
+      - run: flutter config --enable-macos-desktop
+      - run: flutter pub get
+
+      # arm64-only: the fetched libobs is arm64, so a universal
+      # (arm64+x86_64) link fails on the x86_64 slice. See the Packaging &
+      # CI/CD task in ROADMAP.md for the universal-libobs follow-up.
+      - name: Build (release, arm64)
+        env:
+          FLUTTER_XCODE_ARCHS: arm64
+          FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "YES"
+        run: flutter build macos --release
+
+      # The Xcode "Bundle libobs runtime" phase runs this during the build,
+      # but re-run it explicitly (idempotent) so a toolchain change can't
+      # silently ship an app missing its libobs frameworks/plugins.
+      - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Release/rewind.app
+
+      # Dependency-free DMG (pure hdiutil) — no appdmg/Node, unlike
+      # flutter_distributor's macOS backend.
+      - name: Package DMG
+        run: bash tools/package_macos_dmg.sh build/macos/Build/Products/Release/rewind.app dist/Rewind-macos-arm64.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rewind-macos
+          path: dist/Rewind-macos-arm64.dmg
+
+  windows:
+    name: Build & package Windows (installer)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      # NOTE: the Windows capture backend is not implemented yet — this
+      # packages the functional app with capture stubbed. See ROADMAP.
+      - run: flutter build windows --release
+
+      # Inno Setup is the standard Windows installer builder (also what
+      # flutter_distributor wraps for `.exe`); used directly here.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+        shell: pwsh
+      - name: Build installer
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" tools\windows_installer.iss'
         shell: pwsh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.zip
+          name: rewind-windows
+          path: dist/Rewind-windows-setup.exe
 
   release:
     name: Draft GitHub Release
-    needs: build
+    needs: [macos, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -60,4 +94,4 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
-          files: dist/**/*.zip
+          files: dist/**/*

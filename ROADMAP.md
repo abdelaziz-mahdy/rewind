@@ -64,25 +64,27 @@ These shape every milestone:
 
 ## Packaging & CI/CD — distributable installers
 
-Turn the tag-driven release into real, downloadable installers. Tracked
-here because it spans build config, native deps, and CI.
+Turn the tag-driven release into real, downloadable installers.
 
-- [ ] **macOS `.dmg`**: package the built `.app` (with the bundled libobs
-      runtime + `obs-ffmpeg-mux` helper) into a drag-to-Applications DMG
-      (e.g. `create-dmg` or `hdiutil`).
-- [ ] **Windows installer**: package the Flutter Windows build (+ libobs
-      runtime once the Windows capture backend exists) into an installer
-      (Inno Setup or MSIX).
-- [ ] **Fix release/universal builds**: `flutter build macos --release`
-      currently fails to link because the fetched **libobs is arm64-only**
-      (`_obs_output_get_last_error` undefined for the x86_64 slice). Either
-      build a universal libobs in `tools/fetch_libobs.sh`, or produce
-      per-arch (arm64 / x86_64) release artifacts and DMGs. This also
-      unblocks profile-mode performance measurement.
-- [ ] **Wire into `release.yml`**: build → package → attach the DMG /
-      installer to the drafted GitHub Release on every `v*` tag.
-- [ ] Signing/notarization is the v1.0 item below; unsigned local
-      artifacts are fine for this task.
+- [x] **macOS `.dmg`**: `tools/package_macos_dmg.sh` packages the built
+      `.app` (bundled libobs runtime + `obs-ffmpeg-mux` helper) into a
+      drag-to-Applications DMG with pure `hdiutil` — no `appdmg`/Node
+      dependency. Validated locally.
+- [x] **Windows installer**: `tools/windows_installer.iss` (Inno Setup)
+      packages the Windows build into `Rewind-windows-setup.exe`.
+- [x] **`release.yml`**: on a `v*` tag — fetch libobs, build release,
+      bundle, package DMG (macOS, arm64) + installer (Windows), attach both
+      to the drafted GitHub Release.
+- [x] **arm64 release builds**: `flutter build macos --release` links only
+      arm64 via `FLUTTER_XCODE_ARCHS=arm64` +
+      `FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES` (the fetched libobs is arm64-only,
+      so a universal link fails on the x86_64 slice).
+- [ ] **Universal / x86_64 macOS build** (follow-up): build a universal
+      libobs in `tools/fetch_libobs.sh` (or ship a separate x86_64 DMG) so
+      Intel Macs are covered. Currently arm64-only.
+- [ ] Signing/notarization + a signed Windows installer are the v1.0 items
+      below; the CI currently ships unsigned artifacts (right-click → Open
+      on macOS first run).
 
 ## v1.0 — "It's polished"
 

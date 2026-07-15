@@ -90,12 +90,29 @@ picks the shim's implementation automatically, with **no manual flag**:
      ```
      — this is expected and not a bug; grant the permission and relaunch.
 
+## Packaging installers
+
+Tag-driven CI (`.github/workflows/release.yml`) builds these on every `v*`
+tag, but you can produce them locally too:
+
+- **macOS `.dmg`** (Apple Silicon):
+  ```
+  FLUTTER_XCODE_ARCHS=arm64 FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES \
+    flutter build macos --release
+  tools/package_macos_dmg.sh   # → dist/Rewind.dmg (pure hdiutil, no extra tools)
+  ```
+  The arm64-only flags are required: the fetched libobs is arm64, so a
+  universal link fails on the x86_64 slice (see ROADMAP's Packaging task).
+- **Windows installer**: `flutter build windows --release`, then
+  `ISCC.exe tools\windows_installer.iss` (Inno Setup) → `dist/Rewind-windows-setup.exe`.
+
 ## Project layout
 
 See `CLAUDE.md` for the full map. Short version:
 
 - `lib/` — Flutter/Dart app (UI, event watchers, coordinator, FFI bindings)
 - `native/shim/` — C shim over libobs
+- `tools/` — libobs fetch/bundle, icon gen, e2e smoke, **DMG + installer packaging**
 - `.github/workflows/` — CI + releases
 
 ## Adding a new game integration (the extensible path)

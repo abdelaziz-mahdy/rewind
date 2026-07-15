@@ -33,3 +33,6 @@ clips/
 
 # script-built libobs artifacts (tools/fetch_libobs.sh)
 native/third_party/
+
+# Packaged release artifacts (DMG / installer)
+dist/
