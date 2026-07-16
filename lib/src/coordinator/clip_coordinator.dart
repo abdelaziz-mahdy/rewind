@@ -500,14 +500,16 @@ class ClipCoordinator {
     // then, index what's there rather than dropping the clip.
     if (indexFileGrace > Duration.zero) {
       final settleDeadline = DateTime.now().add(indexFileGrace);
-      var lastLen = await file.length();
+      var lastLen = await _safeLength(file);
       while (DateTime.now().isBefore(settleDeadline)) {
         await Future<void>.delayed(fileSettleInterval);
-        final len = await file.length();
+        final len = await _safeLength(file);
         if (len == lastLen && len > 0) break;
         lastLen = len;
       }
     }
+
+    final size = await _safeLength(file);
 
     final windowEnd = e.time;
     final start = windowStart ??
@@ -518,7 +520,7 @@ class ClipCoordinator {
       gameId: e.gameId,
       event: e.kind,
       createdAt: e.time,
-      sizeBytes: await file.length(),
+      sizeBytes: size < 0 ? 0 : size,
       sessionAt: _sessionStartedAt[e.gameId],
       killCount: _killsInWindow(e.gameId, start, windowEnd),
     );
@@ -531,6 +533,19 @@ class ClipCoordinator {
     // Fire-and-forget: thumbnail generation must never delay or fail a save.
     final hook = onClipIndexed;
     if (hook != null) unawaited(hook(clip));
+  }
+
+  /// `File.length()` can transiently throw on Windows — a `PathNotFoundException`
+  /// (a `FileSystemException`) from handle contention with the still-open mux
+  /// writer, even for a file that exists. Return -1 on failure so the settle
+  /// loop keeps polling and a clip is never dropped (nor an unhandled async
+  /// error raised) over a momentary read hiccup. macOS/Linux never hit this.
+  Future<int> _safeLength(File file) async {
+    try {
+      return await file.length();
+    } on FileSystemException {
+      return -1;
+    }
   }
 
   /// Sets [lastSaveError], forcing a notification even when the message is

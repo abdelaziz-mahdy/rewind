@@ -74,7 +74,16 @@ void main() {
   Future<void> settleBurst() async =>
       Future<void>.delayed(const Duration(milliseconds: 400));
 
-  tearDown(() => tmp.deleteSync(recursive: true));
+  tearDown(() {
+    // On Windows a lingering file handle (mux writer / in-flight settle read)
+    // can make deleteSync throw errno 32 ("in use"); the OS reclaims the temp
+    // dir regardless, so don't let cleanup flake the test.
+    try {
+      tmp.deleteSync(recursive: true);
+    } on FileSystemException {
+      // best-effort cleanup
+    }
+  });
 
   test('hotkey with no active game saves a desktop/manual clip', () async {
     await coordinator.onHotkey();
