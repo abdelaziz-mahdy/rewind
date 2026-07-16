@@ -31,7 +31,6 @@
  * License: GPLv3.
  */
 #include "rewind_obs.h"
-#include "rewind_obs_internal.h"
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
@@ -50,6 +49,12 @@ const char *rewind_last_error(void) {
 }
 
 #ifdef REWIND_USE_LIBOBS
+
+/* The internal seam header is only meaningful in real (libobs) mode — its
+ * extern state and rw_plat_* declarations are all obs-typed. Include it only
+ * here so the stub build (and clangd's default stub-config analysis) doesn't
+ * pull in a header it can't use. */
+#include "rewind_obs_internal.h"
 
 /* path_exists() below is the one place this shared file needs an OS file-
  * existence check; pull in just enough of a platform header for that (not
