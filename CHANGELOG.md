@@ -6,15 +6,15 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-16
+
+First tagged release. macOS is the validated platform (real capture, League
+auto-clipping); the Windows backend is implemented and CI-compiled but not
+yet validated on real hardware — see ROADMAP.
+
 ### Added
 - **Windows real-capture backend** (native shim): `monitor_capture`/`window_capture` (display and window/app targeting — `game_capture`'s hook-injection was deliberately avoided on anti-cheat-safety grounds, see `docs/COMPLIANCE.md`), WASAPI audio (desktop / per-app via `wasapi_process_output_capture` / mic), and a hardware-first encoder fallback ladder (NVENC → AMD AMF → Intel Quick Sync → software x264) with `ffmpeg_aac` audio. New `tools/fetch_libobs_windows.ps1` (assembles a libobs SDK from the official prebuilt Windows runtime + a matching Sources tarball, synthesizing an import lib from the DLL's export table) and `tools/bundle_obs_windows.ps1` (bundles the runtime next to a built `rewind.exe`), both wired into a new `build-windows-libobs` CI job and into `release.yml`'s Windows leg. **Implemented and CI-compiled against the real pinned libobs SDK, but not yet validated on real Windows hardware** — see `native/shim/README.md`'s Windows section and `ROADMAP.md`.
-
-### Fixed
-- League Live Client API never connected: Riot signs it with a self-signed certificate, which the watcher's stock HTTP client rejected — Rewind sat on "waiting for a match" through live games. Trust is now scoped to exactly 127.0.0.1:2999.
-- League event storm: `eventdata` is match-global (all players) and replays the full match history on connect — a live Arena match auto-clipped every kill by anyone, 44 MB each, every ~5 seconds. The watcher now seeds past history, emits only the active player's events (`activeplayername`, failing closed), and the coordinator rate-limits event saves (10 s cooldown; manual saves exempt) and waits briefly for the mux helper to finish writing before indexing (clips silently vanished from the library during the incident).
-- League hub claimed "In match — connected to 127.0.0.1:2999" when the client was merely open in the lobby (the merged row's process-detection half firing); the status line now distinguishes in-match (vendor API live) from client-open-waiting.
-
-### Added
+- The C shim is split per platform (`rewind_obs.c` shared API + stub, `rewind_obs_macos.c`, `rewind_obs_windows.c`) behind an `rw_plat_*` seam, so a third backend (Linux) drops in without touching the shared layer.
 - Recording quality settings (Settings → Recording quality): framerate (30/60 fps), resolution (Source / 1440p / 1080p / 720p, downscaled to save CPU + disk), and a **system-audio** toggle so you can drop other apps' sound and keep voice-only clips.
 - Distributable installers: `tools/package_macos_dmg.sh` builds a drag-to-Applications macOS `.dmg` (pure `hdiutil`), `tools/windows_installer.iss` builds a Windows installer (Inno Setup), and `release.yml` produces both on every `v*` tag. macOS release builds are arm64 (the fetched libobs is arm64-only).
 - League match details captured per match: the champion you played, your teammates' and enemies' champions, and the game mode (Arena / ARAM / Summoner's Rift / …), read once from the Live Client API. The match card leads with "CHAMPION · MODE · age"; opening the match shows both teams' champions and the full K/D. Stored in `matches.json`.
@@ -70,9 +70,14 @@ All notable changes to Rewind are documented here. Format based on
 - CI and tag-driven release GitHub Actions workflows.
 
 ### Fixed
+- League Live Client API never connected: Riot signs it with a self-signed certificate, which the watcher's stock HTTP client rejected — Rewind sat on "waiting for a match" through live games. Trust is now scoped to exactly 127.0.0.1:2999.
+- League event storm: `eventdata` is match-global (all players) and replays the full match history on connect — a live Arena match auto-clipped every kill by anyone, 44 MB each, every ~5 seconds. The watcher now seeds past history, emits only the active player's events (`activeplayername`, failing closed), and the coordinator rate-limits event saves (10 s cooldown; manual saves exempt) and waits briefly for the mux helper to finish writing before indexing (clips silently vanished from the library during the incident).
+- League hub claimed "In match — connected to 127.0.0.1:2999" when the client was merely open in the lobby (the merged row's process-detection half firing); the status line now distinguishes in-match (vendor API live) from client-open-waiting.
+- Clips could be dropped on Windows when `File.length()` transiently failed (mux-writer handle contention) while waiting for a saved file to settle; the settle read now tolerates the hiccup instead of discarding the clip.
 - Replay saves silently failing: the `obs-ffmpeg-mux` helper is now shipped and auto-bundled (Xcode build phase); its absence is also detected and named in errors.
 - Capture recorded only the top-left quarter on Retina displays (canvas sized in points instead of physical pixels).
 - Screen-recording permission churn: the app is signed with a stable identity so macOS grants survive rebuilds, and the shim asks TCC directly (`CGPreflightScreenCaptureAccess`) so permission errors are precise; the permission hint only shows for actual permission failures.
 
 
-[Unreleased]: https://example.com/rewind/compare/main...HEAD
+[Unreleased]: https://github.com/abdelaziz-mahdy/rewind/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/abdelaziz-mahdy/rewind/releases/tag/v0.1.0
