@@ -4,24 +4,45 @@ A tiny C shim over **libobs** — the only native code in Rewind. It exposes a
 handful of C functions (see `rewind_obs.h`) that the Dart side calls via
 `dart:ffi`. All libobs complexity is hidden here.
 
+## File layout
+
+- `rewind_obs.h` — the public API. The ENTIRE surface Dart sees.
+- `rewind_obs.c` — shared layer: the public API's dispatch logic, shared
+  mutable state, shared helpers, and the whole no-libobs stub. Compiles on
+  every platform, in both modes.
+- `rewind_obs_internal.h` — internal (not Dart-visible) seam between the
+  shared layer and the per-platform backends: `extern` declarations for the
+  shared state/helpers, plus the `rw_plat_*` function interface every
+  backend implements.
+- `rewind_obs_macos.c` / `rewind_obs_windows.c` — the two libobs backends,
+  each implementing every `rw_plat_*` function for its platform. Compiled
+  only when `REWIND_USE_LIBOBS` is defined AND the matching platform macro
+  is set (see `hook/build.dart`); each file's body is also self-guarded the
+  same way, so an accidental compile elsewhere is a harmless empty
+  translation unit. Adding a third backend (e.g. Linux) means writing a
+  `rewind_obs_linux.c` implementing the same interface — no changes needed
+  to `rewind_obs.c`.
+
 ## Current state
 
-`rewind_obs.c` has two implementations, selected at compile time:
+The real implementation is split by platform (see "File layout" above),
+selected at compile time by two independent switches:
 
-- **`REWIND_USE_LIBOBS` defined** — the real libobs-backed implementation,
-  with a macOS branch (`#ifdef __APPLE__`) and a Windows branch (`#elif
-  defined(_WIN32)`). Requires the fetched SDK at `native/third_party/obs/`
-  (see `tools/fetch_libobs.sh` on macOS / `tools/fetch_libobs_windows.ps1`
-  on Windows, both gitignored, pinned to libobs **32.1.2**). The macOS path
-  is real-world exercised (see the macOS section below); the Windows path
-  is implemented and compiles in CI against the real SDK but is **not yet
+- **`REWIND_USE_LIBOBS` defined** — the real libobs-backed implementation:
+  `rewind_obs_macos.c` compiles on macOS, `rewind_obs_windows.c` on
+  Windows. Requires the fetched SDK at `native/third_party/obs/` (see
+  `tools/fetch_libobs.sh` on macOS / `tools/fetch_libobs_windows.ps1` on
+  Windows, both gitignored, pinned to libobs **32.1.2**). The macOS path is
+  real-world exercised (see the macOS section below); the Windows path is
+  implemented and compiles in CI against the real SDK but is **not yet
   validated on real Windows hardware** — see the Windows section below for
   exactly what's verified-by-source-reading vs. still an assumption.
-- **`REWIND_USE_LIBOBS` undefined** — a self-contained **stub** (works on
-  every platform) so the Flutter app links and runs before libobs is wired
-  in, or on platforms without a built SDK yet. `rewind_save_clip` returns a
-  synthesized path so the Dart pipeline can be exercised end-to-end in "dev
-  mode", but does not actually write a file.
+- **`REWIND_USE_LIBOBS` undefined** — a self-contained **stub**, entirely
+  inside `rewind_obs.c` (works on every platform) so the Flutter app links
+  and runs before libobs is wired in, or on platforms without a built SDK
+  yet. `rewind_save_clip` returns a synthesized path so the Dart pipeline
+  can be exercised end-to-end in "dev mode", but does not actually write a
+  file.
 
 ## Real mode: how it works (macOS)
 
@@ -383,15 +404,18 @@ note):
   `duplicator-monitor-capture.c`'s own device-id derivation produces
   (`EnumDisplayDevicesA(..., EDD_GET_DEVICE_INTERFACE_NAME)`, falling back
   to the raw `MONITORINFOEXA::szDevice` string on failure — see
-  `get_monitor_device_id()` in `rewind_obs.c`).
+  `get_monitor_device_id()` in `rewind_obs_windows.c`).
 - **`window_capture`/`wasapi_process_output_capture`'s `"window"` setting
   is an opaquely-encoded `"title:class:exe"` string**, NOT a window
   handle — confirmed against `libobs/util/windows/window-helpers.c`'s
   `encode_dstr()`/`add_window()`/`ms_build_window_strings()`: `'#'` ->
   `"#22"` then `':'` -> `"#3A"` (in that order — encoding `':'` first would
   corrupt the `"#3A"` escape sequence's own colon), the three components
-  joined by literal `:`. `build_window_token()` in `rewind_obs.c`
-  reproduces this exactly. Rewind's `rewind_list_capturable_apps()` emits
+  joined by literal `:`. `build_window_token()` in `rewind_obs_windows.c`
+  reproduces this exactly (its intermediate/output buffers were enlarged in
+  a later refactor to round-trip a max-length window title without
+  truncation — see that file's comment at `RW_WIN_ET_CAP`). Rewind's
+  `rewind_list_capturable_apps()` emits
   this token AS the (otherwise macOS-bundle-id-shaped) `"bundle_id"` JSON
   field — an intentional repurposing of an opaque string field, not a type
   mismatch: `rewind_set_capture_app()` just round-trips whatever string it
@@ -476,7 +500,8 @@ note):
 
    **macOS**
    ```bash
-   clang -shared -fPIC native/shim/rewind_obs.c -o librewind_obs.dylib \
+   clang -shared -fPIC native/shim/rewind_obs.c native/shim/rewind_obs_macos.c \
+     -o librewind_obs.dylib \
      -DREWIND_USE_LIBOBS -Inative/third_party/obs/include \
      -Fnative/third_party/obs/lib -framework libobs \
      -framework ApplicationServices
@@ -492,8 +517,8 @@ note):
    debugging outside the Dart build hook:
    ```bat
    cl /c /I native\third_party\obs\include /DREWIND_USE_LIBOBS ^
-     native\shim\rewind_obs.c
-   link /DLL /OUT:rewind_obs.dll rewind_obs.obj ^
+     native\shim\rewind_obs.c native\shim\rewind_obs_windows.c
+   link /DLL /OUT:rewind_obs.dll rewind_obs.obj rewind_obs_windows.obj ^
      /LIBPATH:native\third_party\obs\lib obs.lib user32.lib dwmapi.lib
    ```
 
