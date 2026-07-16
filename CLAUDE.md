@@ -188,6 +188,7 @@ generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
 - Dart: follow `flutter analyze` / `dart format`. Lints in `analysis_options.yaml`.
 - C: C11, no C++ in the shim (keeps `dart:ffi` binding simple — no name mangling).
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). This drives the changelog and release notes.
+  - **Do NOT add a `Claude-Session:` trailer** (or any AI-session link / "Co-authored-by: Claude" / "Generated with" line) to commit messages or PR bodies. Keep messages clean — subject + body only.
 - Versioning: Semantic Versioning. Pre-1.0 the minor version tracks roadmap milestones.
 
 ## Maintaining docs (important)
