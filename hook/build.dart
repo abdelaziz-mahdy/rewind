@@ -1,7 +1,16 @@
-// Dart build hook: compiles the Rewind C shim (native/shim/rewind_obs.c) into a
-// native "code asset" that Dart/Flutter bundles automatically. This removes the
-// need for per-OS build files or manual .dylib/.dll placement — the shim ships
-// next to the app and is resolved via the asset id below.
+// Dart build hook: compiles the Rewind C shim (native/shim/rewind_obs.c, plus
+// the matching platform backend file when libobs is available — see below)
+// into a native "code asset" that Dart/Flutter bundles automatically. This
+// removes the need for per-OS build files or manual .dylib/.dll placement —
+// the shim ships next to the app and is resolved via the asset id below.
+//
+// native/shim/ layout (see native/shim/rewind_obs_internal.h for the
+// backend-seam design): rewind_obs.c is the shared API layer + no-libobs
+// stub, ALWAYS compiled; rewind_obs_macos.c / rewind_obs_windows.c are the
+// per-platform libobs backends, each guarded to compile to nothing unless
+// both REWIND_USE_LIBOBS is defined AND its own platform matches, and only
+// ever added to `sources` below on the matching host platform (so a stub
+// build on either OS never even sees the other platform's backend file).
 //
 // Docs: https://dart.dev/tools/hooks
 //
@@ -58,7 +67,11 @@ void main(List<String> args) async {
     final builder = CBuilder.library(
       name: 'rewind_obs',
       assetName: 'rewind_obs.dart',
-      sources: ['native/shim/rewind_obs.c'],
+      sources: [
+        'native/shim/rewind_obs.c',
+        if (useLibobs && Platform.isMacOS) 'native/shim/rewind_obs_macos.c',
+        if (useLibobs && Platform.isWindows) 'native/shim/rewind_obs_windows.c',
+      ],
       includes: [if (useLibobs) 'native/third_party/obs/include'],
       defines: {if (useLibobs) 'REWIND_USE_LIBOBS': null},
       // '.' is CBuilder's own default (CTool.defaultLibraryDirectories,
