@@ -10,12 +10,12 @@ void main() {
         p.join('/Users/zee', 'Movies', 'Rewind'));
   });
   test('Windows → %USERPROFILE%\\Videos\\Rewind', () {
-    // p.split normalizes separators on both hosts, so this pins the base,
-    // segments, and order without reusing the implementation's join call.
-    expect(
-        p.split(
-            clipsDirPath(os: 'windows', env: {'USERPROFILE': r'C:\Users\zee'})),
-        [r'C:\Users\zee', 'Videos', 'Rewind']);
+    // Compare join-to-join like the macOS/linux cases: both sides use the
+    // host's path context, so this holds on a POSIX host AND a real Windows
+    // runner. (An earlier p.split-based assertion passed only on POSIX, where
+    // '\' isn't a separator — on Windows p.split decomposes 'C:\Users\zee'.)
+    expect(clipsDirPath(os: 'windows', env: {'USERPROFILE': r'C:\Users\zee'}),
+        p.join(r'C:\Users\zee', 'Videos', 'Rewind'));
   });
   test('other OS falls back to ~/Rewind', () {
     expect(clipsDirPath(os: 'linux', env: {'HOME': '/home/zee'}),
