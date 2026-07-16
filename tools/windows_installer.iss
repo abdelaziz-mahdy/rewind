@@ -6,9 +6,15 @@
 ; optional desktop shortcuts. Version can be overridden at build time:
 ;   ISCC.exe /DAppVersion=0.2.0 tools\windows_installer.iss
 ;
-; NOTE: the Windows capture backend is not implemented yet (the C shim runs
-; in stub mode on Windows) — this ships the functional app minus real
-; capture. See ROADMAP.md.
+; release.yml runs tools/fetch_libobs_windows.ps1 + tools/bundle_obs_windows.ps1
+; against build\windows\x64\runner\Release BEFORE this script, so SrcDir
+; already contains the bundled libobs runtime (obs.dll, obs-plugins\64bit\,
+; data\, obs-ffmpeg-mux.exe — see bundle_obs_windows.ps1's own layout doc
+; comment) alongside rewind.exe/rewind_obs.dll; the single recursive
+; [Files] line below picks all of it up. If the SDK wasn't fetched (e.g. a
+; local `flutter build windows --release` without running the fetch/bundle
+; scripts first), the shim instead built in stub mode and this still
+; packages a working app, just without real capture. See ROADMAP.md.
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
