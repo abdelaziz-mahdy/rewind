@@ -85,7 +85,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native/third_party/obs
-          key: libobs-windows-x64-32.1.2-recipe-1
+          key: libobs-windows-x64-32.1.2-recipe-2
       - run: ./tools/fetch_libobs_windows.ps1
         shell: pwsh
       - run: flutter config --enable-windows-desktop

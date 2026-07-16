@@ -71,7 +71,10 @@ $ObsTag = '32.1.2'
 # though it matches a newer one.
 #   1: initial cut — win-capture, win-wasapi, obs-ffmpeg, obs-x264,
 #      obs-nvenc, obs-qsv11.
-$RecipeVersion = 1
+#   2: required/optional runtime split (a missing required dep is now fatal
+#      instead of a silent warning), FFmpeg/x264 DLLs globbed by prefix
+#      (survive soname bumps), d3dcompiler_47.dll bundled defensively.
+$RecipeVersion = 2
 
 $WindowsZipName = "OBS-Studio-$ObsTag-Windows-x64.zip"
 $SourcesTarName = "OBS-Studio-$ObsTag-Sources.tar.gz"
@@ -196,21 +199,56 @@ Set-Content -Path "$Out/include/obsconfig.h" -Value @'
 # than probing in-process (crash-isolation — a misbehaving driver takes
 # down a disposable helper, not Rewind itself); omitting them risks
 # hardware encoders silently reporting "unavailable".
-$binKeep = @(
-    'obs.dll', 'libobs-d3d11.dll', 'libobs-opengl.dll', 'libobs-winrt.dll',
-    'w32-pthreads.dll', 'obs-ffmpeg-mux.exe',
+$binSrc = Join-Path $runtimeDir 'bin/64bit'
+# Required: obs.dll (link + runtime), the D3D11 graphics module, obs' pthreads
+# shim, and the mux helper (without which every replay/record save fails with
+# "Failed to create process pipe"). A genuinely missing one is fatal — CI only
+# compiles, so a silently-degraded runtime closure would otherwise sail through
+# green and only blow up on the first tester's machine.
+$binRequired = @('obs.dll', 'libobs-d3d11.dll', 'w32-pthreads.dll', 'obs-ffmpeg-mux.exe')
+# Optional: absence degrades gracefully. libobs-d3d11 compiles effect shaders
+# via d3dcompiler_47.dll — usually resolvable from System32, but OBS ships it
+# in bin/64bit defensively, so bundle it when present. The *-test.exe probes
+# spawn as isolated children for NVENC/QSV/AMF availability (crash-isolation);
+# missing → that encoder tier reports unavailable and we fall back down the
+# ladder, not fatal.
+$binOptional = @(
+    'libobs-opengl.dll', 'libobs-winrt.dll', 'd3dcompiler_47.dll',
     'obs-nvenc-test.exe', 'obs-qsv-test.exe', 'obs-amf-test.exe',
-    'avcodec-61.dll', 'avdevice-61.dll', 'avfilter-10.dll', 'avformat-61.dll', 'avutil-59.dll',
-    'swresample-5.dll', 'swscale-8.dll', 'libx264-164.dll',
     'librist.dll', 'srt.dll', 'libcurl.dll', 'zlib.dll'
 )
-foreach ($f in $binKeep) {
-    $src = Join-Path $runtimeDir "bin/64bit/$f"
+foreach ($f in $binRequired) {
+    $src = Join-Path $binSrc $f
     if (-not (Test-Path $src)) {
-        Write-Warning "expected runtime file missing, skipping: bin/64bit/$f (OBS release layout may have changed — check native/shim/README.md)"
+        throw "required runtime file missing: bin/64bit/$f (OBS release layout may have changed — check native/shim/README.md)"
+    }
+    Copy-Item $src "$Out/bin/64bit/$f"
+}
+foreach ($f in $binOptional) {
+    $src = Join-Path $binSrc $f
+    if (-not (Test-Path $src)) {
+        Write-Warning "optional runtime file missing, skipping: bin/64bit/$f"
         continue
     }
     Copy-Item $src "$Out/bin/64bit/$f"
+}
+# FFmpeg/x264 runtime DLLs are version-suffixed (avcodec-61, swscale-8, …) and
+# the soname bumps across FFmpeg releases. Glob by prefix rather than pinning
+# exact versions: a hardcoded list silently under-copies after an OBS FFmpeg
+# bump, leaving obs-ffmpeg.dll with unresolved imports at runtime (no replay
+# buffer, no ffmpeg_aac, no mux) while the fetch still reports success. obs-ffmpeg
+# REQUIRES these, so zero matches is fatal.
+$ffGlobs = @('avcodec-*.dll', 'avdevice-*.dll', 'avfilter-*.dll', 'avformat-*.dll',
+    'avutil-*.dll', 'swresample-*.dll', 'swscale-*.dll', 'libx264-*.dll')
+$ffCopied = 0
+foreach ($g in $ffGlobs) {
+    Get-ChildItem -Path $binSrc -Filter $g -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item $_.FullName "$Out/bin/64bit/$($_.Name)"
+        $ffCopied++
+    }
+}
+if ($ffCopied -eq 0) {
+    throw "no FFmpeg/x264 runtime DLLs (av*/sw*/libx264-*) found in bin/64bit — obs-ffmpeg.dll would fail to load; OBS release layout may have changed"
 }
 
 # obs-plugins/64bit/ + data/obs-plugins/<name>/: only the modules Rewind
@@ -264,7 +302,7 @@ if (-not $exportNames -or $exportNames.Count -eq 0) {
 Write-Host "  found $($exportNames.Count) exports"
 
 $defPath = Join-Path $Work 'obs.def'
-$defContent = "LIBRARY OBS`r`nEXPORTS`r`n" + ($exportNames -join "`r`n")
+$defContent = "LIBRARY obs.dll`r`nEXPORTS`r`n" + ($exportNames -join "`r`n")
 Set-Content -Path $defPath -Value $defContent -NoNewline
 
 & lib /def:$defPath /out:"$Out/lib/obs.lib" /machine:x64 | Out-Null
