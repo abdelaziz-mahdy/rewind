@@ -63,6 +63,9 @@ int rewind_set_buffer_seconds(int seconds);
 /* Enumerate the connected displays as a compact JSON array written into
  * `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
  *   [{"uuid":"...","width":1920,"height":1080,"main":true}, ...]
+ * ("uuid" is a ScreenCaptureKit display UUID on macOS, a monitor device-id
+ * string on Windows — an opaque identifier either way; round-trip it
+ * through rewind_set_capture_display unchanged.)
  * Returns 0 on success, non-zero if enumeration failed or the buffer was too
  * small (see rewind_last_error). Safe to call before rewind_obs_init. */
 int rewind_list_displays(char *json_out, int json_cap);
@@ -86,35 +89,49 @@ int rewind_set_capture_display(const char *display_uuid);
  * "icon" is "" when the bundle declares no .icns file; "window_id" is the
  * app's frontmost window (0 if unknown). Returns 0 on success, non-zero if
  * enumeration failed or the buffer was too small (see rewind_last_error).
- * Safe to call before rewind_obs_init. */
+ * Safe to call before rewind_obs_init.
+ * On Windows there are no bundle ids: "bundle_id" instead holds an opaque
+ * "title:class:exe" window-identity token (win-capture's own "window"
+ * setting format), one row per top-level capturable window deduplicated by
+ * exe name; "icon" is always "" (icon extraction isn't implemented on
+ * Windows); "window_id" is the window's HWND truncated to 32 bits
+ * (lossless on 64-bit Windows — see rewind_set_capture_window). Still an
+ * opaque identifier as far as callers are concerned — round-trip it
+ * through rewind_set_capture_app unchanged either way. */
 int rewind_list_capturable_apps(char *json_out, int json_cap);
 
 /* Select a specific application to capture instead of a whole display,
  * identified by the bundle id string returned from
- * rewind_list_capturable_apps. Passing NULL or "" reverts to display
- * capture (see rewind_set_capture_display) using whichever display was
- * last selected. Safe to call before rewind_obs_init (the preference is
- * remembered and applied at init — an app target takes precedence over a
- * display target if both are set); if the capture source already exists,
- * it is reconfigured immediately. Returns 0 on success. */
+ * rewind_list_capturable_apps (on Windows, the opaque window-identity token
+ * described above — same call, same semantics, different string shape).
+ * Passing NULL or "" reverts to display capture (see
+ * rewind_set_capture_display) using whichever display was last selected.
+ * Safe to call before rewind_obs_init (the preference is remembered and
+ * applied at init — an app target takes precedence over a display target
+ * if both are set); if the capture source already exists, it is
+ * reconfigured immediately. Returns 0 on success. */
 int rewind_set_capture_app(const char *bundle_id);
 
-/* Select a specific window to capture, identified by the "window_id"
- * (CGWindowID) from rewind_list_capturable_apps. The ONLY way to capture a
- * CrossOver/Wine game specifically — those processes have no bundle id for
- * rewind_set_capture_app to match. Window ids are EPHEMERAL (they die with
- * their window): persist the app's NAME and re-resolve a fresh id from
- * enumeration instead of storing one. Passing 0 reverts to the remaining
- * app/display preference; any later rewind_set_capture_app call also
- * clears the window target. Returns 0 on success. */
+/* Select a specific window to capture, identified by the "window_id" from
+ * rewind_list_capturable_apps (a CGWindowID on macOS, an HWND truncated to
+ * 32 bits on Windows). The ONLY way to capture a CrossOver/Wine game
+ * specifically on macOS — those processes have no bundle id for
+ * rewind_set_capture_app to match; on Windows, an equivalent direct pick by
+ * window rather than by (deduplicated) app. Window ids are EPHEMERAL (they
+ * die with their window): persist the app's NAME and re-resolve a fresh id
+ * from enumeration instead of storing one. Passing 0 reverts to the
+ * remaining app/display preference; any later rewind_set_capture_app call
+ * also clears the window target. Returns 0 on success. */
 int rewind_set_capture_window(uint32_t window_id);
 
-/* Enable/disable microphone capture (CoreAudio default input device),
- * mixed into every clip and recording alongside the always-on system
- * audio. Safe to call before rewind_obs_init (the preference is applied at
- * init); after init the mic source is created/torn down live. First use
- * triggers the macOS microphone permission prompt (the app bundle must
- * declare NSMicrophoneUsageDescription). Returns 0 on success. */
+/* Enable/disable microphone capture (the default input device — CoreAudio
+ * on macOS, WASAPI on Windows), mixed into every clip and recording
+ * alongside the always-on system audio. Safe to call before
+ * rewind_obs_init (the preference is applied at init); after init the mic
+ * source is created/torn down live. On macOS, first use triggers the
+ * microphone permission prompt (the app bundle must declare
+ * NSMicrophoneUsageDescription); Windows has no equivalent runtime prompt.
+ * Returns 0 on success. */
 int rewind_set_mic_enabled(int enabled);
 
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
