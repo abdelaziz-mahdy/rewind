@@ -11,6 +11,10 @@ Thanks for helping build Rewind! This guide covers setup and conventions.
   ```
 - **A C toolchain**: Xcode command line tools (macOS) or MSVC Build Tools (Windows).
 - **libobs**: a local build or SDK of libobs to link the shim against. See `native/shim/README.md`. Until the shim is wired to real libobs, it builds against a stub so the app runs in "no-capture" dev mode.
+- **Windows only, for real capture**: a Visual Studio installation with the
+  Desktop development with C++ workload (provides `dumpbin.exe`/`lib.exe`,
+  needed by `tools/fetch_libobs_windows.ps1` — see "Real capture mode
+  (Windows)" below).
 
 ## Getting started
 
@@ -90,6 +94,55 @@ picks the shim's implementation automatically, with **no manual flag**:
      ```
      — this is expected and not a bug; grant the permission and relaunch.
 
+## Real capture mode (Windows)
+
+> **Unvalidated on real hardware.** This path was implemented and CI-compiled
+> against the real pinned libobs SDK, but without access to a Windows
+> machine to actually run it — see `native/shim/README.md`'s Windows section
+> for exactly what's verified-by-source-reading vs. still assumption. If
+> you're the first to try this on real hardware, please report back (open an
+> issue) with what worked and what didn't.
+
+1. **Open a Visual Studio Developer shell** (Start menu → "Developer
+   PowerShell for VS 2022", or "x64 Native Tools Command Prompt" then launch
+   `pwsh`) — `tools/fetch_libobs_windows.ps1` needs `dumpbin.exe`/`lib.exe`
+   on `PATH` to synthesize an import library from the official prebuilt
+   `obs.dll` (there's no upstream Windows dev SDK with headers + `.lib`
+   files, only an end-user runtime `.zip` — see the script's own header
+   comment for exactly what it downloads and why).
+
+2. **Fetch the libobs SDK** (one-time; downloads ~200MB across two pinned
+   GitHub release assets, no build from source):
+
+   ```powershell
+   ./tools/fetch_libobs_windows.ps1
+   ```
+
+   This lays out a pinned libobs SDK under `native/third_party/obs/`
+   (gitignored) — same tag as the macOS pin (`32.1.2`). Re-running is
+   idempotent (a stamp file short-circuits it).
+
+3. **Build/run normally** — the build hook detects the SDK and links real
+   libobs automatically:
+
+   ```powershell
+   flutter run -d windows       # or: flutter build windows --debug
+   ```
+
+4. **Bundle libobs' runtime into the built app.** Flutter's own build only
+   compiles the shim and links it against the SDK in place; it does not copy
+   `obs.dll`, the plugin DLLs, or `data/` into the runner output. Do that
+   with:
+
+   ```powershell
+   ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
+   ```
+
+   This copies the SDK's `bin/64bit/*` flat next to `rewind.exe`,
+   `obs-plugins/64bit/` and `data/` nested alongside it — the layout
+   `rewind_obs.c`'s Windows module-path/data-path code expects. Safe to
+   re-run against the same build directory.
+
 ## Packaging installers
 
 Tag-driven CI (`.github/workflows/release.yml`) builds these on every `v*`
@@ -103,8 +156,13 @@ tag, but you can produce them locally too:
   ```
   The arm64-only flags are required: the fetched libobs is arm64, so a
   universal link fails on the x86_64 slice (see ROADMAP's Packaging task).
-- **Windows installer**: `flutter build windows --release`, then
+- **Windows installer**: for real capture, run
+  `./tools/fetch_libobs_windows.ps1` once, then `flutter build windows --release`
+  followed by `./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Release`
+  (see "Real capture mode (Windows)" above); then
   `ISCC.exe tools\windows_installer.iss` (Inno Setup) → `dist/Rewind-windows-setup.exe`.
+  Skipping the fetch/bundle steps still produces a working installer, just
+  with capture stubbed.
 
 ## Project layout
 

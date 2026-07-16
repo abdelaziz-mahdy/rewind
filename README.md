@@ -30,8 +30,12 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 > Status: **alpha.** Real capture + League auto-clipping work on macOS
 > (replay buffer, hotkey/in-app saves, per-display/app/window targeting,
 > auto-follow of detected games, kills/deaths + champion/mode per match,
-> game-centric library UI). Windows builds in stub-capture mode pending
-> native bring-up. See [ROADMAP.md](ROADMAP.md).
+> game-centric library UI). Windows now has a real capture backend too
+> (display/window capture, WASAPI audio, NVENC/AMF/QSV/x264 hardware
+> encoding — see `native/shim/README.md`), compiled and CI-verified against
+> the real libobs SDK, but **not yet validated on real Windows hardware** —
+> it needs a tester with a Windows machine before it can be trusted. See
+> [ROADMAP.md](ROADMAP.md).
 
 ## Highlights
 
@@ -73,7 +77,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Features
 
-- Rolling replay buffer (RAM-backed) — **working on macOS**, Windows native bring-up pending
+- Rolling replay buffer (RAM-backed) — **working on macOS**; a Windows real-capture backend exists and compiles in CI but is **untested on real hardware**
 - **Manual hotkey clip** ("clip that") saving the last **15s / 30s / 60s / custom** — configurable **per game**, hotkey set by pressing it
 - **Manual recording**: a deck button and a dedicated hotkey (default **Alt+F9**) start/stop a continuous recording, independent of the replay buffer, with a live elapsed-time readout and a matching tray item
 - **Automatic game detection** (process catalog + per-app watchers) with **auto-follow capture**: start a game and recording switches to it
@@ -81,7 +85,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 - Capture a **specific display or application**, switchable from the main screen
 - **In-app playback** (media_kit) and event-type badges on every clip
 - **Automatic event-based clipping** — League of Legends via the local Live Client Data API (kills, multikills, aces, objectives) — *lands in v0.2; the UI slot is already built*
-- Hardware-accelerated encoding (Apple VideoToolbox today; NVENC / AMF with the Windows bring-up)
+- Hardware-accelerated encoding (Apple VideoToolbox on macOS; NVENC → AMF → Quick Sync → x264 fallback ladder on Windows, untested on hardware)
 - Menu-bar / tray background operation, in-app logs, precise permission diagnostics
 
 ## Supported games (event auto-clipping)
