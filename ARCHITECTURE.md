@@ -33,6 +33,8 @@ Owns everything the user sees and most of the logic:
 
 A small, stable C11 API (no C++, so `dart:ffi` binding is trivial — no name mangling). It hides all libobs setup and exposes only:
 
+Internally the shim is split by platform: `rewind_obs.c` holds the shared API layer + no-libobs stub, `rewind_obs_internal.h` declares the `rw_plat_*` backend interface, and `rewind_obs_macos.c`/`rewind_obs_windows.c` each implement that interface for one platform (see `native/shim/README.md`). No `#ifdef __APPLE__`/`_WIN32` "backend selection" walls remain in the shared file — a future Linux backend drops in as a third `rewind_obs_linux.c` with no changes needed there.
+
 | Function | Purpose |
 |----------|---------|
 | `rewind_obs_init(const RewindConfig*)` | Start libobs, create video/audio, pick capture source, configure replay buffer |
