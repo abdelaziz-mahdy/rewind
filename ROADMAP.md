@@ -15,7 +15,7 @@ These shape every milestone:
 ## v0.1 — "It records" (foundation)
 
 - [x] Flutter desktop shell (macOS + Windows), tray/menu-bar presence
-- [x] C shim over libobs: init, start buffer, save clip, set-buffer-length, stop, shutdown (real libobs on macOS via `tools/fetch_libobs.sh`; stub elsewhere)
+- [x] C shim over libobs: init, start buffer, save clip, set-buffer-length, stop, shutdown (real libobs on macOS via `tools/fetch_libobs.sh` and on Windows via `tools/fetch_libobs_windows.ps1`, both unsigned/CI-compiled — Windows unvalidated on hardware, see note below; stub when the SDK isn't fetched)
 - [x] **Native build hook (`hook/build.dart`)** compiles + bundles the shim automatically
 - [x] Dart `@Native` FFI bindings to the shim
 - [x] Manual global **hotkey → save last N seconds** (30s / 60s / custom)
@@ -23,9 +23,14 @@ These shape every milestone:
 - [x] Basic clip library view
 - [x] CI builds on both platforms
 
-> Windows real capture (Windows Graphics Capture source + encoder wiring in
-> the shim) is deferred to a follow-up: the app builds and tests on Windows in
-> stub mode, and needs a Windows machine/tester for the native bring-up.
+> Windows real capture (monitor/window capture + WASAPI audio + NVENC/AMF/QSV/
+> x264 encoder ladder in the shim — see `native/shim/README.md`'s Windows
+> section) is implemented and wired into CI (`build-windows-libobs` in
+> `ci.yml` compiles it against the real pinned libobs SDK), but is
+> **unvalidated on real Windows hardware** — it was written and CI-compiled
+> without a Windows machine or GPU to run it on. Needs a Windows tester to
+> confirm actual capture/encode/save before this checkbox is trustworthy;
+> see `docs/COMPLIANCE.md` and the shim README for what to verify first.
 
 ## v0.2 — "It clips League automatically" (first integration)
 
@@ -71,10 +76,12 @@ Turn the tag-driven release into real, downloadable installers.
       drag-to-Applications DMG with pure `hdiutil` — no `appdmg`/Node
       dependency. Validated locally.
 - [x] **Windows installer**: `tools/windows_installer.iss` (Inno Setup)
-      packages the Windows build into `Rewind-windows-setup.exe`.
-- [x] **`release.yml`**: on a `v*` tag — fetch libobs, build release,
-      bundle, package DMG (macOS, arm64) + installer (Windows), attach both
-      to the drafted GitHub Release.
+      packages the Windows build (now including the bundled libobs runtime —
+      `tools/fetch_libobs_windows.ps1` + `tools/bundle_obs_windows.ps1`, see
+      `release.yml`) into `Rewind-windows-setup.exe`.
+- [x] **`release.yml`**: on a `v*` tag — fetch libobs (both platforms), build
+      release, bundle, package DMG (macOS, arm64) + installer (Windows),
+      attach both to the drafted GitHub Release.
 - [x] **arm64 release builds**: `flutter build macos --release` links only
       arm64 via `FLUTTER_XCODE_ARCHS=arm64` +
       `FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES` (the fetched libobs is arm64-only,

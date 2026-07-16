@@ -42,7 +42,51 @@ A small, stable C11 API (no C++, so `dart:ffi` binding is trivial — no name ma
 | `rewind_obs_shutdown()` | Tear down libobs |
 | `rewind_last_error()` | Human-readable last error string |
 
-The shim is where OS-specific capture selection happens: on macOS it configures a ScreenCaptureKit-based source, on Windows a Windows Graphics Capture / duplication source — but that choice is internal; the Dart-facing API is identical.
+The shim is where OS-specific capture selection happens: on macOS it configures a ScreenCaptureKit-based source, on Windows a DXGI-duplication/Windows-Graphics-Capture source — but that choice is internal; the Dart-facing API is identical.
+
+**Windows capture path** (implemented, CI-compiled against the real pinned
+libobs SDK, **not yet validated on real Windows hardware** — see ROADMAP.md):
+
+- **Video sources:** `monitor_capture` (a display, keyed by a `monitor_id`
+  device-id string) and `window_capture` (a specific window/app, keyed by an
+  encoded `"title:class:exe"` token) — two distinct libobs source ids, unlike
+  macOS's single `screen_capture` source with a `type` switch. Switching
+  between "capture a display" and "capture a window/app" therefore recreates
+  the source; switching within a category (one monitor to another, one app
+  window to another) just updates it in place. `game_capture` (hook-injection
+  based capture) was deliberately **not** used for app/window targeting,
+  even though it's the highest-fidelity option OBS itself offers for games:
+  it works by injecting a hook DLL into the target process, which is exactly
+  the kind of hooking `docs/COMPLIANCE.md` rules out for anti-cheat safety —
+  `window_capture` (BitBlt/Windows-Graphics-Capture, no injection) is the
+  safer fit and is what Rewind uses.
+- **Audio:** `wasapi_output_capture` (desktop, "ALL" mode) and
+  `wasapi_input_capture` (mic) as on any WASAPI setup; "APP" mode uses
+  `wasapi_process_output_capture` (per-process WASAPI loopback, Windows 10
+  20H1+), falling back to silence — not desktop audio — if no app target is
+  set, same fail-closed principle as macOS's `rebuild_system_audio()`.
+- **Encoders:** a hardware-first fallback ladder — NVIDIA (`obs_nvenc_h264_tex`)
+  → AMD (`h264_texture_amf`) → Intel Quick Sync (`obs_qsv11_v2` then
+  `obs_qsv11`) → software x264 (`obs_x264`) — tried in order via
+  `obs_video_encoder_create()`, whichever succeeds first wins. Audio is
+  `ffmpeg_aac` (libavcodec's built-in AAC encoder, bundled with the muxer
+  anyway) rather than the `CoreAudio_AAC` id macOS uses: that id *does* build
+  on Windows in this libobs tree, but only by dynamically loading Apple's
+  proprietary CoreAudioToolbox.dll at runtime, which Rewind has no license to
+  redistribute and which isn't present on a stock Windows machine.
+- **Module/data paths:** `obs_add_module_path()` with flat
+  `obs-plugins/64bit/%module%.dll` + `data/obs-plugins/%module%` templates
+  (vs. macOS's `.plugin` bundle nesting). libobs' own core data (shader
+  effects) needed a separate fix: its Windows lookup
+  (`find_libobs_data_file()`) is hardcoded to a path *relative to the
+  process's current working directory*, which doesn't hold for Rewind's flat
+  bundling — so the shim calls the public `obs_add_data_path()` API directly
+  with an absolute path instead of relying on that fallback. Both the SDK
+  directory and the graphics render device (`libobs-d3d11.dll`, not
+  `libobs-opengl.dll` — needed for NVENC/AMF's zero-copy GPU-texture
+  hand-off) are resolved with a dev-tree-vs-packaged-layout fallback mirroring
+  macOS's own `find_obs_sdk_dir()`/`find_graphics_module_path()`. See
+  `native/shim/README.md` for the full trace with source citations.
 
 ### 3. libobs (vendored/linked)
 
@@ -94,7 +138,22 @@ libobs is not a single static blob — it needs runtime data and plugin modules 
   re-signs the app. The shim discovers those paths at runtime relative to its
   own location (`dladdr`), falling back to `native/third_party/obs/` for
   dev-tree runs. Distribute as a signed, notarized `.app` in a DMG (v1.0).
-- **Windows:** ship `obs.dll` + `obs-plugins/` + `data/` next to the `.exe`; package with an installer (MSIX or Inno Setup).
+- **Windows:** `tools/fetch_libobs_windows.ps1` assembles a libobs SDK under
+  `native/third_party/obs/` from two official, pinned obs-studio release
+  artifacts (there's no upstream "Windows SDK" package): the prebuilt
+  Windows portable runtime zip (DLLs — obs.dll, the six plugin DLLs Rewind
+  uses, their runtime dependencies) and the matching Sources tarball
+  (`libobs/**/*.h` only, for headers). Since the runtime zip ships no
+  import library, `obs.lib` is synthesized from `obs.dll`'s own export
+  table via `dumpbin /exports` + a generated `.def` + `lib.exe` — the
+  standard technique for linking against a DLL-only artifact (needs a
+  Visual Studio Developer environment; see the script and
+  `native/shim/README.md`). `tools/bundle_obs_windows.ps1` then copies
+  `obs.dll` + its runtime DLLs flat next to the built `rewind.exe`,
+  `obs-plugins/64bit/` nested (matching `setup_module_paths()`'s module-bin
+  template), and `data/` nested (matching its data template + the
+  `obs_add_data_path()` call `rewind_obs.c` makes on Windows — see below);
+  package with Inno Setup (`tools/windows_installer.iss`).
 
 CI release jobs assemble these bundles per platform. See `.github/workflows/release.yml`.
 

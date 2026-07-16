@@ -6,6 +6,9 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+- **Windows real-capture backend** (native shim): `monitor_capture`/`window_capture` (display and window/app targeting — `game_capture`'s hook-injection was deliberately avoided on anti-cheat-safety grounds, see `docs/COMPLIANCE.md`), WASAPI audio (desktop / per-app via `wasapi_process_output_capture` / mic), and a hardware-first encoder fallback ladder (NVENC → AMD AMF → Intel Quick Sync → software x264) with `ffmpeg_aac` audio. New `tools/fetch_libobs_windows.ps1` (assembles a libobs SDK from the official prebuilt Windows runtime + a matching Sources tarball, synthesizing an import lib from the DLL's export table) and `tools/bundle_obs_windows.ps1` (bundles the runtime next to a built `rewind.exe`), both wired into a new `build-windows-libobs` CI job and into `release.yml`'s Windows leg. **Implemented and CI-compiled against the real pinned libobs SDK, but not yet validated on real Windows hardware** — see `native/shim/README.md`'s Windows section and `ROADMAP.md`.
+
 ### Fixed
 - League Live Client API never connected: Riot signs it with a self-signed certificate, which the watcher's stock HTTP client rejected — Rewind sat on "waiting for a match" through live games. Trust is now scoped to exactly 127.0.0.1:2999.
 - League event storm: `eventdata` is match-global (all players) and replays the full match history on connect — a live Arena match auto-clipped every kill by anyone, 44 MB each, every ~5 seconds. The watcher now seeds past history, emits only the active player's events (`activeplayername`, failing closed), and the coordinator rate-limits event saves (10 s cooldown; manual saves exempt) and waits briefly for the mux helper to finish writing before indexing (clips silently vanished from the library during the incident).
