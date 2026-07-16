@@ -6,20 +6,40 @@
 // Docs: https://dart.dev/tools/hooks
 //
 // Mode is picked automatically by whether the libobs SDK has been fetched
-// (native/third_party/obs/, gitignored — see tools/fetch_libobs.sh):
+// (native/third_party/obs/, gitignored — see tools/fetch_libobs.sh on macOS,
+// tools/fetch_libobs_windows.ps1 on Windows):
 //
-//   - SDK present  -> real libobs mode. Defines REWIND_USE_LIBOBS, adds the
-//     SDK's include dir, and links against lib/libobs.framework (macOS only
-//     so far; see native/shim/README.md). libobs ships as a real Apple
-//     .framework (not a flat .dylib — see tools/fetch_libobs.sh's report),
-//     so linking uses `-F<sdk>/lib -framework libobs`, not `-lobs`.
-//     Two rpaths are set so the built rewind_obs library can resolve
-//     `@rpath/libobs.framework/...` at load time in both layouts it may run
-//     from: the SDK's own lib/ (dev-tree `flutter run`/`flutter build macos`
-//     before bundling) and Contents/Frameworks (the packaged .app, after
-//     tools/bundle_obs_macos.sh copies the framework there).
+//   - SDK present  -> real libobs mode. Defines REWIND_USE_LIBOBS and adds
+//     the SDK's include dir. Linking is per-OS (see below); either way it's
+//     the real capture path — see native/shim/README.md.
 //   - SDK absent   -> the self-contained stub in rewind_obs.c (#else branch)
-//     is compiled instead, so the app still links and runs without the SDK.
+//     is compiled instead, so the app still links and runs without the SDK,
+//     on every platform.
+//
+// macOS: libobs ships as a real Apple .framework (not a flat .dylib — see
+// tools/fetch_libobs.sh's report), so linking uses `-F<sdk>/lib -framework
+// libobs`, not `-lobs`. Two rpaths are set so the built rewind_obs library
+// can resolve `@rpath/libobs.framework/...` at load time in both layouts it
+// may run from: the SDK's own lib/ (dev-tree `flutter run`/`flutter build
+// macos` before bundling) and Contents/Frameworks (the packaged .app, after
+// tools/bundle_obs_macos.sh copies the framework there).
+//
+// Windows: tools/fetch_libobs_windows.ps1 lays out an import library at
+// lib/obs.lib (generated from the official prebuilt obs.dll — see that
+// script's own header comment for exactly how, since there is no dev SDK
+// with headers+import-libs upstream, only a runtime .zip). Linked via the
+// typed `libraries`/`libraryDirectories` params (NOT raw `-l`/`-L` flags,
+// which are clang/gcc syntax — native_toolchain_c builds with MSVC
+// (cl.exe/link.exe) by default on Windows, where library linking is
+// `/LIBPATH:<dir>` + `<name>.lib`; `libraries`/`libraryDirectories` are
+// this package's cross-toolchain abstraction over that difference, see
+// run_cbuilder.dart). Also links the handful of Win32 import libs the
+// shim's own Windows code calls into directly (User32 for window/monitor
+// enumeration, Dwmapi for the DWM cloaked-window check). No rpath
+// equivalent is needed: Windows resolves obs.dll (and everything else
+// tools/bundle_obs_windows.ps1 places) via the standard "search the main
+// executable's own directory" DLL search rule, since the bundle script
+// drops the whole runtime flat next to rewind.exe.
 import 'dart:io';
 
 import 'package:hooks/hooks.dart';
@@ -41,8 +61,18 @@ void main(List<String> args) async {
       sources: ['native/shim/rewind_obs.c'],
       includes: [if (useLibobs) 'native/third_party/obs/include'],
       defines: {if (useLibobs) 'REWIND_USE_LIBOBS': null},
+      // '.' is CBuilder's own default (CTool.defaultLibraryDirectories,
+      // not publicly exported) — kept so this addition doesn't silently
+      // drop it for non-Windows/non-libobs builds.
+      libraryDirectories: [
+        '.',
+        if (useLibobs && Platform.isWindows) '${obsRoot.path}/lib',
+      ],
+      libraries: [
+        if (useLibobs && Platform.isWindows) ...['obs', 'user32', 'dwmapi'],
+      ],
       flags: [
-        if (useLibobs) ...[
+        if (useLibobs && Platform.isMacOS) ...[
           '-F${obsRoot.path}/lib',
           '-framework', 'libobs',
           '-framework', 'ApplicationServices',
