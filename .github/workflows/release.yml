@@ -58,7 +58,7 @@ jobs:
           path: dist/Rewind-macos-arm64.dmg
 
   windows:
-    name: Build & package Windows (installer)
+    name: Build & package Windows (installer + portable zip)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +88,17 @@ jobs:
         run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Release
         shell: pwsh
 
+      # Portable zip: the fully-bundled app (rewind.exe + libobs runtime +
+      # data) staged under a top-level Rewind/ folder so it extracts cleanly.
+      # For people who'd rather unzip and run than install.
+      - name: Package portable zip
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/Rewind | Out-Null
+          Copy-Item build/windows/x64/runner/Release/* dist/Rewind -Recurse -Force
+          Compress-Archive -Path dist/Rewind -DestinationPath dist/Rewind-windows-x64-portable.zip -Force
+          Remove-Item -Recurse -Force dist/Rewind
+        shell: pwsh
+
       # Inno Setup is the standard Windows installer builder (also what
       # flutter_distributor wraps for `.exe`); used directly here.
       - name: Install Inno Setup
@@ -100,7 +111,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rewind-windows
-          path: dist/Rewind-windows-setup.exe
+          path: |
+            dist/Rewind-windows-setup.exe
+            dist/Rewind-windows-x64-portable.zip
 
   release:
     name: Draft GitHub Release

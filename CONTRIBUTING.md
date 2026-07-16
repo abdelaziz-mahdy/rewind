@@ -163,6 +163,10 @@ tag, but you can produce them locally too:
   `ISCC.exe tools\windows_installer.iss` (Inno Setup) → `dist/Rewind-windows-setup.exe`.
   Skipping the fetch/bundle steps still produces a working installer, just
   with capture stubbed.
+- **Windows portable zip** (no installer): after the build + bundle above,
+  `Compress-Archive build/windows/x64/runner/Release dist/Rewind-windows-x64-portable.zip`
+  — unzip and run `rewind.exe`. `release.yml` produces this alongside the
+  installer on every tag.
 
 ## Project layout
 

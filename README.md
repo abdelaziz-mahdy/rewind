@@ -22,7 +22,8 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 
 <p align="center"><sub>Left: a game hub — clips grouped into match cards with your K/D, champion, and mode. Right: capture settings.</sub></p>
 
-> **Get it:** grab the macOS `.dmg` or Windows installer from the
+> **Get it:** grab the macOS `.dmg`, the Windows installer, or the Windows
+> **portable zip** (unzip and run `rewind.exe`, no install) from the
 > [latest release](https://github.com/abdelaziz-mahdy/rewind/releases) — built
 > automatically on every tag by the [release workflow](.github/workflows/release.yml).
 > First macOS launch: right-click → Open (unsigned for now).

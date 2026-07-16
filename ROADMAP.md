@@ -75,10 +75,13 @@ Turn the tag-driven release into real, downloadable installers.
       `.app` (bundled libobs runtime + `obs-ffmpeg-mux` helper) into a
       drag-to-Applications DMG with pure `hdiutil` — no `appdmg`/Node
       dependency. Validated locally.
-- [x] **Windows installer**: `tools/windows_installer.iss` (Inno Setup)
-      packages the Windows build (now including the bundled libobs runtime —
-      `tools/fetch_libobs_windows.ps1` + `tools/bundle_obs_windows.ps1`, see
-      `release.yml`) into `Rewind-windows-setup.exe`.
+- [x] **Windows installer + portable zip**: `tools/windows_installer.iss`
+      (Inno Setup) packages the Windows build (now including the bundled
+      libobs runtime — `tools/fetch_libobs_windows.ps1` +
+      `tools/bundle_obs_windows.ps1`, see `release.yml`) into
+      `Rewind-windows-setup.exe`; the same bundled app is also zipped to
+      `Rewind-windows-x64-portable.zip` (unzip and run `rewind.exe`, no
+      install) for a no-installer try.
 - [x] **`release.yml`**: on a `v*` tag — fetch libobs (both platforms), build
       release, bundle, package DMG (macOS, arm64) + installer (Windows),
       attach both to the drafted GitHub Release.
