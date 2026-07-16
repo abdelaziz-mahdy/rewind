@@ -65,11 +65,28 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      # Real capture needs the pinned libobs SDK; without it the shim
+      # builds in stub mode (no clips). dumpbin.exe/lib.exe (used to
+      # synthesize obs.lib from the official prebuilt obs.dll) need a
+      # Visual Studio Developer environment on PATH. Cache key must match
+      # ci.yml's.
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache libobs SDK
+        uses: actions/cache@v4
+        with:
+          path: native/third_party/obs
+          key: libobs-windows-x64-32.1.2-recipe-1
+      - run: ./tools/fetch_libobs_windows.ps1
+        shell: pwsh
+
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
-      # NOTE: the Windows capture backend is not implemented yet — this
-      # packages the functional app with capture stubbed. See ROADMAP.
       - run: flutter build windows --release
+
+      - name: Bundle libobs runtime
+        run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Release
+        shell: pwsh
 
       # Inno Setup is the standard Windows installer builder (also what
       # flutter_distributor wraps for `.exe`); used directly here.

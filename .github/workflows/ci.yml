@@ -66,3 +66,33 @@ jobs:
         env:
           FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
       - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Debug/rewind.app
+
+  build-windows-libobs:
+    name: Build Windows (real libobs)
+    needs: analyze-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      # dumpbin.exe/lib.exe (used by fetch_libobs_windows.ps1 to synthesize
+      # obs.lib from the official prebuilt obs.dll) need a Visual Studio
+      # Developer environment on PATH — windows-latest ships VS but doesn't
+      # activate it by default.
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache libobs SDK
+        uses: actions/cache@v4
+        with:
+          path: native/third_party/obs
+          key: libobs-windows-x64-32.1.2-recipe-1
+      - run: ./tools/fetch_libobs_windows.ps1
+        shell: pwsh
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      # This compiles the real Windows shim path (REWIND_USE_LIBOBS) —
+      # the whole point of this job, unlike the stub-mode `build
+      # (windows-latest)` leg above.
+      - run: flutter build windows --debug
+      - run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
+        shell: pwsh
