@@ -8,13 +8,22 @@ Thanks for helping build Rewind! This guide covers setup and conventions.
   ```bash
   flutter config --enable-macos-desktop
   flutter config --enable-windows-desktop
+  flutter config --enable-linux-desktop
   ```
-- **A C toolchain**: Xcode command line tools (macOS) or MSVC Build Tools (Windows).
+- **A C toolchain**: Xcode command line tools (macOS), MSVC Build Tools (Windows), or `build-essential`/clang (Linux).
 - **libobs**: a local build or SDK of libobs to link the shim against. See `native/shim/README.md`. Until the shim is wired to real libobs, it builds against a stub so the app runs in "no-capture" dev mode.
 - **Windows only, for real capture**: a Visual Studio installation with the
   Desktop development with C++ workload (provides `dumpbin.exe`/`lib.exe`,
   needed by `tools/fetch_libobs_windows.ps1` — see "Real capture mode
   (Windows)" below).
+- **Linux only, for real capture**: `cmake`, `ninja-build`, and a long list
+  of X11/XCB/PipeWire/PulseAudio/FFmpeg `-dev` packages `tools/fetch_libobs_linux.sh`
+  builds against — see that script's header comment for the exact
+  `apt-get install` line, and "Real capture mode (Linux)" below.
+  **Linux is otherwise unfinished beyond the native shim** — see
+  ROADMAP.md and `native/shim/README.md`'s Linux section for what's
+  implemented-but-unvalidated vs. still missing (packaging, some Flutter
+  plugin system dependencies).
 
 ## Getting started
 
@@ -142,6 +151,58 @@ picks the shim's implementation automatically, with **no manual flag**:
    `obs-plugins/64bit/` and `data/` nested alongside it — the layout
    `rewind_obs.c`'s Windows module-path/data-path code expects. Safe to
    re-run against the same build directory.
+
+## Real capture mode (Linux)
+
+> **Unvalidated on any real Linux desktop.** This path was implemented and
+> CI-compiled against the real pinned libobs SDK on a real Ubuntu GitHub
+> Actions runner, but no X server, Wayland compositor, or GPU driver has
+> ever run it — see `native/shim/README.md`'s Linux section for exactly
+> what's verified-by-source-reading vs. still an assumption. There is also
+> no packaging script yet (`tools/bundle_obs_linux.sh` doesn't exist), so
+> even a successful `flutter build linux` won't produce a runnable capture
+> app without manually copying `native/third_party/obs/lib/*.so` and
+> `obs-plugins/`/`data/` next to the built binary yourself. If you're the
+> first to try this on real hardware, please report back (open an issue)
+> with what worked and what didn't.
+
+1. **Install build dependencies.** `tools/fetch_libobs_linux.sh` builds
+   libobs from source (CMake + Ninja) against system X11/XCB/PipeWire/
+   PulseAudio/FFmpeg `-dev` packages — see the script's own header comment
+   for the exact `apt-get install` line (Ubuntu/Debian package names).
+
+2. **Fetch the libobs SDK** (one-time; builds from source, similar
+   turnaround to the macOS recipe):
+
+   ```bash
+   tools/fetch_libobs_linux.sh
+   ```
+
+   This lays out a pinned libobs SDK under `native/third_party/obs/`
+   (gitignored) — same tag as macOS/Windows (`32.1.2`). Re-running is
+   idempotent (a stamp file short-circuits it).
+
+3. **Build/run normally** — the build hook detects the SDK and links real
+   libobs automatically:
+
+   ```bash
+   flutter run -d linux         # or: flutter build linux --debug
+   ```
+
+   Flutter Linux desktop also needs its own plugin-level system packages
+   independent of libobs — `hotkey_manager` needs `keybinder-3.0`,
+   `tray_manager` needs `libayatana-appindicator3-dev` (and, on stock
+   GNOME, the "AppIndicator and KStatusNotifierItem Support" Shell
+   extension for the tray icon to appear at all), `media_kit`/
+   `media_kit_video` need `libmpv-dev`/`mpv` installed. None of these are
+   installed by `tools/fetch_libobs_linux.sh` or wired into CI yet — see
+   ROADMAP.md.
+
+4. **No bundling step exists yet.** Unlike macOS/Windows,
+   `tools/bundle_obs_linux.sh` hasn't been written — a built
+   `flutter build linux` output will link against `native/third_party/obs/lib/`
+   directly (dev-tree rpath) but won't carry the SDK's `obs-plugins/`/
+   `data/` trees or the `obs-ffmpeg-mux` helper with it if moved elsewhere.
 
 ## Packaging installers
 
