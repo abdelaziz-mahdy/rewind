@@ -45,6 +45,34 @@ caveats to keep in mind:
 - **Other people's content / private info** may appear on screen; that's a user
   responsibility, but we avoid uploading anything without explicit user action.
 
+## Riot's required legal boilerplate (do not remove)
+
+Riot's [Developer API Policy](https://developer.riotgames.com/docs/lol)
+requires this text, **verbatim**, "in a location that is readily visible to
+players" for any product using their APIs or game-specific static data. Rewind
+reads the Live Client Data API and renders Data Dragon art, so it applies:
+
+> Rewind is not endorsed by Riot Games and does not reflect the views or
+> opinions of Riot Games or anyone officially involved in producing or managing
+> Riot Games properties. Riot Games and all associated properties are
+> trademarks or registered trademarks of Riot Games, Inc.
+
+It lives in `kRiotDisclaimer` (`lib/src/ui/system_settings.dart`) and is shown
+in **Settings → About & help**; a test asserts it renders. Do not reword,
+shorten, or hide it.
+
+Two more policy points that bind this project:
+
+- **Riot IP:** only the Press Kit and **game-specific static data** may be
+  used. Data Dragon champion/item art is game-specific static data, so it is
+  allowed; do not ship other Riot logos/artwork.
+- **No win rates for Augments or Arena Mode items** — an explicitly
+  unapproved use case. Showing the player their *own* picks is fine;
+  aggregate/win-rate stats for augments or Arena items are not.
+- **Registration:** a product that serves players must be registered on
+  Riot's Developer Portal, even when it only uses local APIs. That is a
+  maintainer action, tracked in ROADMAP.
+
 ## Per-game notes
 
 - **League of Legends:** integration uses only the official Live Client Data

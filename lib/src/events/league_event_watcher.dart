@@ -252,6 +252,8 @@ class LeagueEventWatcher implements GameEventSource {
   static bool _isTwoTeamMode(String? rawMode) => const {
         'CLASSIC', // Summoner's Rift 5v5
         'ARAM',
+        'KIWI', // ARAM Mayhem — a 5v5 ARAM variant on the Howling Abyss
+        // (verified live 2026-07-16: gameMode "KIWI", mapName "Map12").
         'URF',
         'ARURF',
         'ONEFORALL',
@@ -268,6 +270,9 @@ class LeagueEventWatcher implements GameEventSource {
     const known = {
       'CLASSIC': "Summoner's Rift",
       'ARAM': 'ARAM',
+      // Riot's internal codename for ARAM Mayhem (verified against a live
+      // match, 2026-07-16) — without this the hub would label it "Kiwi".
+      'KIWI': 'ARAM Mayhem',
       'CHERRY': 'Arena',
       'URF': 'URF',
       'ARURF': 'ARURF',

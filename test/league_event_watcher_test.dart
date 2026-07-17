@@ -130,6 +130,30 @@ void main() {
     expect(info.meta['enemies'], ['Zed', 'Yasuo']);
   });
 
+  test('ARAM Mayhem (KIWI) is a real 2-team mode and gets a friendly name',
+      () async {
+    // Verified against a live match 2026-07-16: ARAM Mayhem reports
+    // gameMode "KIWI" (mapName "Map12", the Howling Abyss). Without KIWI in
+    // the two-team set it would fall through to the Arena/free-for-all path
+    // (flat champion list, no team split) and be labelled "Kiwi".
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'KIWI'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Syndra', 'team': 'ORDER'},
+      {'riotId': 'Mate#EUW', 'championName': 'Sona', 'team': 'ORDER'},
+      {'riotId': 'Foe#EUW', 'championName': 'Ziggs', 'team': 'CHAOS'},
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow(); // post-seed: emits matchInfo
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(info.meta['gameMode'], 'ARAM Mayhem');
+    expect(info.meta['champion'], 'Syndra');
+    expect(info.meta['allies'], ['Sona']);
+    expect(info.meta['enemies'], ['Ziggs']);
+  });
+
   test(
       'Arena (CHERRY) has no reliable teams: allies empty, everyone else in '
       'one flat list', () async {

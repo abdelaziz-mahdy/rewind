@@ -661,6 +661,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        // Required, verbatim, by Riot's Developer API Policy
+                        // ("You must post the following legal boilerplate to
+                        // your product in a location that is readily visible
+                        // to players") because Rewind reads League's Live
+                        // Client Data API and shows Data Dragon art. Do not
+                        // reword or hide this. See docs/COMPLIANCE.md.
+                        Text(
+                          kRiotDisclaimer,
+                          key: const ValueKey('riotDisclaimer'),
+                          style: Theme.of(context).textTheme.bodyMuted,
+                        ),
                       ],
                     ),
                   ),
