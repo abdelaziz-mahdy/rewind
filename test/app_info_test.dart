@@ -63,6 +63,33 @@ void main() {
     expect(bare.windowId, 0);
   });
 
+  test('on_screen parses when present, defaults to true when absent', () {
+    final hidden = AppInfo.fromJson(const {
+      'bundle_id': 'com.example.app',
+      'name': 'Example',
+      'pid': 42,
+      'on_screen': false,
+    });
+    expect(hidden.onScreen, isFalse);
+
+    final visible = AppInfo.fromJson(const {
+      'bundle_id': 'com.example.app',
+      'name': 'Example',
+      'pid': 42,
+      'on_screen': true,
+    });
+    expect(visible.onScreen, isTrue);
+
+    // Older shims omit the field — treat as on-screen so nothing that reads
+    // visibility changes behaviour against an old enumeration.
+    final legacy = AppInfo.fromJson(const {
+      'bundle_id': 'com.example.app',
+      'name': 'Example',
+      'pid': 42,
+    });
+    expect(legacy.onScreen, isTrue);
+  });
+
   test('a Wine entry parses with its empty bundle id intact', () {
     const json = '[{"bundle_id":"","name":"PenguinHotel-Win64-Shipping",'
         '"pid":7,"icon":"","window_id":99}]';

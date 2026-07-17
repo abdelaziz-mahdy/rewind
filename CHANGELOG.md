@@ -65,6 +65,11 @@ All notable changes to Rewind are documented here. Format based on
   changed.
 
 ### Fixed
+- **Running fullscreen games now appear in the capture-source picker
+  (macOS)**: app enumeration listed only windows on the active Space, so a
+  game — almost always fullscreen on its own Space — was invisible the
+  moment you switched to Rewind to pick it. Enumeration now spans all Spaces
+  and reports each window's on-screen visibility.
 - **The capture-source picker no longer disappears when no displays
   enumerate (macOS)**: it was hidden entirely whenever the startup display
   list came back empty (a display asleep/clamshell, the screen locked, or a

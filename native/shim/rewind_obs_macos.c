@@ -378,8 +378,17 @@ static int is_windows_exe_name(const char *name) {
 int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
     if (!json_out || json_cap <= 0) return fail("invalid buffer");
 
+    /* kCGWindowListOptionAll, NOT ...OnScreenOnly: macOS gives a fullscreen
+     * app its OWN Space, and "on screen only" means "on the ACTIVE Space".
+     * A game is almost always fullscreen (its own Space) or on a different
+     * Space than Rewind, so the instant the user switches to Rewind to pick
+     * it, the game's window is off the active Space and vanishes from the
+     * list — the exact "my running game isn't in the picker" bug. Enumerating
+     * ALL Spaces is what a capture-source picker needs; the layer==0 + >=64px
+     * + bundle-id filters below still drop the extra off-screen/background
+     * windows this option lets through. */
     CFArrayRef windows = CGWindowListCopyWindowInfo(
-        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+        kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
     if (!windows) return fail("CGWindowListCopyWindowInfo failed");
 
     pid_t self_pid = getpid();
@@ -473,6 +482,16 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
                 window_id = (uint32_t)wid;
         }
 
+        /* Whether this window is on a display right now. With all-Spaces
+         * enumeration (see the kCGWindowListOptionAll note above) the list
+         * mixes visible and hidden/other-Space windows; the "follow the game"
+         * auto-switch uses this to prefer the VISIBLE match — e.g. native
+         * League's in-match window over its hidden client/lobby window, both
+         * of which are named "League of Legends". */
+        CFBooleanRef onscreen_ref =
+            (CFBooleanRef)CFDictionaryGetValue(entry, kCGWindowIsOnscreen);
+        int on_screen = onscreen_ref && CFBooleanGetValue(onscreen_ref);
+
         char escaped_id[256] = "";
         char escaped_name[512] = "";
         char escaped_icon[PATH_MAX * 2] = "";
@@ -480,9 +499,10 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         json_escape_append(name, escaped_name, sizeof(escaped_name));
         json_escape_append(icon, escaped_icon, sizeof(escaped_icon));
 
-        APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"%s\",\"window_id\":%u}",
+        APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"%s\","
+               "\"window_id\":%u,\"on_screen\":%s}",
                first ? "" : ",", escaped_id, escaped_name, (int)pid, escaped_icon,
-               (unsigned)window_id);
+               (unsigned)window_id, on_screen ? "true" : "false");
         first = 0;
     }
     APPEND("]");
