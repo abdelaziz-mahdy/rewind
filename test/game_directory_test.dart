@@ -189,4 +189,49 @@ void main() {
     expect(entry.detection, isEmpty);
     expect(entry.processMatch, isNull);
   });
+
+  test('a GameConfig.iconPath is surfaced on its entry for the rail logo', () {
+    final settings = AppSettings();
+    settings.setConfig(GameConfig(
+        gameId: 'app:cs2', iconPath: '/Applications/CS2.app/icon.icns'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {},
+    );
+
+    expect(
+        byId(entries, 'app:cs2').iconPath, '/Applications/CS2.app/icon.icns');
+  });
+
+  test('no iconPath means null, not an invented path', () {
+    final settings = AppSettings();
+    settings.setConfig(GameConfig(gameId: 'app:cs2'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {},
+    );
+
+    expect(byId(entries, 'app:cs2').iconPath, isNull);
+  });
+
+  test(
+      'League NEVER surfaces an iconPath even if one was persisted (its app '
+      'icon is Riot\'s official logo — Riot policy forbids using it, unlike '
+      'champion/item art)', () {
+    final settings = AppSettings();
+    // Simulates data written by a pre-fix version of Rewind — must still
+    // never render, not just never be captured going forward.
+    settings.setConfig(GameConfig(
+        gameId: 'app:league_of_legends',
+        iconPath: '/Applications/League of Legends.app/icon.icns'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {'app:league_of_legends'},
+    );
+
+    expect(byId(entries, 'league_of_legends').iconPath, isNull);
+  });
 }

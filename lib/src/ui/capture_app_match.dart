@@ -15,6 +15,34 @@ bool appMatchesProcess(AppInfo app, String processMatch) {
       app.bundleId.toLowerCase().contains(needle);
 }
 
+/// Whether a game's real, OS-extracted app icon (see `GameConfig.iconPath`'s
+/// doc, captured via `_SourceLine._pickApp` / `ClipCoordinator.
+/// _autoSwitchCaptureFor`) must NEVER be shown for it, because that icon IS
+/// the vendor's official logo — reading it off a running app bundle at
+/// runtime doesn't change what it depicts.
+///
+/// Riot's Developer Policies are explicit and asymmetric here: "Please
+/// Don't: Use any of our official logos" vs. "Please Do: Feel free to use
+/// any of our art assets from the game (but NOT any official Logos)". The
+/// League client's application icon is Riot's logo, not "game art" — unlike
+/// champion/item art from Data Dragon (`DDragon`), which the policy
+/// explicitly permits and this predicate has NO effect on. Keep this an
+/// explicit, documented exclusion — do not remove it to "fix" a missing
+/// rail icon for League.
+///
+/// [gameId] is checked exactly against League's two known ids (the vendor
+/// integration and the catalog's process-watch entry — see `game_directory.
+/// dart`'s doc on why League has both). [bundleId] is checked as a
+/// best-effort (loose substring, not exact) safety net for other Riot
+/// titles a user might pick via the generic capture-source menu, since this
+/// codebase has no verified, hardcoded Riot bundle id to match exactly.
+bool usesOfficialLogo({required String gameId, String? bundleId}) {
+  const riotGameIds = {'league_of_legends', 'app:league_of_legends'};
+  if (riotGameIds.contains(gameId)) return true;
+  final bundle = bundleId?.toLowerCase();
+  return bundle != null && bundle.contains('riotgames');
+}
+
 /// The first currently-capturable app matching [processMatch], or null if
 /// none is running (yet).
 AppInfo? findRunningApp(String processMatch, List<AppInfo> apps) {

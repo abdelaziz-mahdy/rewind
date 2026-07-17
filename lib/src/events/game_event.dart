@@ -27,6 +27,12 @@ enum GameEventKind {
   // Not a clip trigger: carries per-match metadata (champion, teams, mode)
   // in [GameEvent.meta] for the coordinator to record onto MatchStats.
   matchInfo,
+  // Not a clip trigger: carries a fresh snapshot of the active player's
+  // live stats (assists, creep score, ward score, current items) in
+  // [GameEvent.meta] — unlike [matchInfo] (captured once, stable for the
+  // whole match), this is emitted on every poll since those numbers keep
+  // changing. See `LeagueEventWatcher._emitStatsUpdate`.
+  statsUpdate,
   other,
 }
 
@@ -55,6 +61,7 @@ int clipPriority(GameEventKind kind) => switch (kind) {
       // fight the player also got a kill in should badge the kill.
       GameEventKind.death => 5,
       GameEventKind.matchInfo => 0,
+      GameEventKind.statsUpdate => 0,
       GameEventKind.other => 0,
     };
 

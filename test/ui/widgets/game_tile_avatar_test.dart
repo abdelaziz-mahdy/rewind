@@ -1,8 +1,115 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/ui/icns.dart';
+import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/game_tile_avatar.dart';
 
+/// A real, fully-decodable 1×1 transparent PNG (the smallest valid PNG with
+/// an actual IDAT chunk) — `Image.memory` needs a real decode, unlike
+/// `test/ui/icns_test.dart`'s magic-bytes-only fixture, which has no IDAT
+/// and fails Flutter's image codec.
+final _tinyPng = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAAC0lEQVR42mNk+A8A'
+    'AQUBAScY42YAAAAASUVORK5CYII=');
+
+/// A minimal valid `.icns` file holding one PNG-encoded `icp5` chunk.
+Uint8List _fakeIcns() {
+  final body = <int>[
+    ...'icp5'.codeUnits,
+    ..._lenBytes(_tinyPng.length + 8),
+    ..._tinyPng,
+  ];
+  final total = body.length + 8;
+  return Uint8List.fromList(
+      [..."icns".codeUnits, ..._lenBytes(total), ...body]);
+}
+
+List<int> _lenBytes(int len) =>
+    [len >> 24 & 0xFF, len >> 16 & 0xFF, len >> 8 & 0xFF, len & 0xFF];
+
 void main() {
+  group('GameTileAvatar real icon rendering', () {
+    late Directory tmp;
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('rewind_game_tile_avatar');
+      clearAppIconCache();
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Widget app(Widget child) =>
+        MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
+
+    testWidgets('a valid iconPath renders the real icon, not the monogram',
+        (t) async {
+      final iconFile = File('${tmp.path}/App.icns')
+        ..writeAsBytesSync(_fakeIcns());
+
+      await t.pumpWidget(app(GameTileAvatar(
+        gameId: 'app:cs2',
+        displayName: 'Counter-Strike 2',
+        iconPath: iconFile.path,
+        size: 28,
+      )));
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('C2'), findsNothing);
+    });
+
+    testWidgets('a null iconPath falls back to the monogram', (t) async {
+      await t.pumpWidget(app(const GameTileAvatar(
+        gameId: 'app:cs2',
+        displayName: 'Counter-Strike 2',
+        size: 28,
+      )));
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('C2'), findsOneWidget);
+    });
+
+    testWidgets(
+        'an iconPath pointing at a missing/unreadable file falls back to '
+        'the monogram, never a broken image', (t) async {
+      await t.pumpWidget(app(GameTileAvatar(
+        gameId: 'app:cs2',
+        displayName: 'Counter-Strike 2',
+        iconPath: '${tmp.path}/does-not-exist.icns',
+        size: 28,
+      )));
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('C2'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a Wine game (no iconPath, per AppInfo.iconPath\'s contract) always '
+        'shows the monogram', (t) async {
+      await t.pumpWidget(app(const GameTileAvatar(
+        gameId: 'app:penguinhotel',
+        displayName: 'PenguinHotel-Win64-Shipping',
+        iconPath: null,
+        size: 28,
+      )));
+
+      expect(find.byType(Image), findsNothing);
+    });
+
+    testWidgets('desktop keeps its monitor icon even with no iconPath',
+        (t) async {
+      await t.pumpWidget(app(const GameTileAvatar(
+        gameId: 'desktop',
+        displayName: 'Desktop',
+        size: 28,
+      )));
+
+      expect(find.byIcon(Icons.desktop_windows_outlined), findsOneWidget);
+    });
+  });
+
   group('gameTileInitials', () {
     test('multi-word name takes the first letter of the first two words', () {
       expect(gameTileInitials('League of Legends'), 'LL');

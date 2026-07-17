@@ -7,6 +7,7 @@ import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../events/game_event.dart';
+import '../games/league/ddragon.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
 import 'clip_sessions.dart';
@@ -77,6 +78,11 @@ class GameHubScreen extends StatefulWidget {
   final String hotkeyLabel;
   final ThumbnailCache? thumbnails;
 
+  /// Source of champion/item art for match cards/detail. Null (every test
+  /// that doesn't care about art, and any build before `main.dart` threads
+  /// one through) always renders the monogram/blank fallbacks.
+  final DDragon? ddragon;
+
   /// Persists a settings change (mutated in place) — the same
   /// `settings.configFor(gameId)` → `setConfig` → `onSettingsChanged` path
   /// the status strip's buffer quick-set uses.
@@ -89,6 +95,7 @@ class GameHubScreen extends StatefulWidget {
     required this.hotkeyLabel,
     required this.onSettingsChanged,
     this.thumbnails,
+    this.ddragon,
     super.key,
   });
 
@@ -126,8 +133,11 @@ class _GameHubScreenState extends State<GameHubScreen> {
       _eventsSub = widget.coordinator.registry.events
           .where((e) =>
               e.gameId == widget.gameId &&
-              // matchInfo is metadata, not a live moment for the feed.
-              e.kind != GameEventKind.matchInfo)
+              // matchInfo/statsUpdate are metadata, not a live moment for
+              // the feed — statsUpdate in particular fires every poll
+              // (~500 ms) and would otherwise spam it.
+              e.kind != GameEventKind.matchInfo &&
+              e.kind != GameEventKind.statsUpdate)
           .listen((e) {
         setState(() {
           _liveEvents.insert(0, e);
@@ -334,6 +344,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
                       stats: widget.coordinator.matchStats
                           ?.statsFor(widget.gameId, session.startedAt),
                       thumbnails: widget.thumbnails,
+                      ddragon: widget.ddragon,
                       onTap: () => _openMatch(context, entry, session),
                     );
                   },
@@ -355,6 +366,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
             ?.statsFor(widget.gameId, session.startedAt),
         library: widget.library,
         thumbnails: widget.thumbnails,
+        ddragon: widget.ddragon,
       ),
     ));
   }

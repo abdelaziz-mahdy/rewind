@@ -13,6 +13,7 @@ import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
+import '../ui/capture_app_match.dart' show usesOfficialLogo;
 
 /// Central brain: listens to auto-detected game activity + game events + the
 /// global hotkey, applies the active game's per-game config (replay-buffer
@@ -178,6 +179,10 @@ class ClipCoordinator {
         _recordMatchInfo(e);
         return;
       }
+      if (e.kind == GameEventKind.statsUpdate) {
+        _recordStatsUpdate(e);
+        return;
+      }
       // Remembered unconditionally (even when auto-clip is off): kill
       // counts on clips must reflect what HAPPENED, not what triggered a
       // save.
@@ -253,6 +258,21 @@ class ClipCoordinator {
     _autoSwitchedGameId = a.gameId;
     autoSwitchedAppName.value = match.name;
     talker.info('Auto-switched capture to ${match.name}');
+
+    // First real-app match for this game: capture its icon for the rail
+    // logo (`GameTileAvatar`), same "capture once, never overwrite" rule as
+    // the picker's manual pick path (`_SourceLine._pickApp`) — see
+    // `GameConfig.iconPath`'s doc. Wine games have no icon (bundle-less), so
+    // this correctly stays null for them, same as the manual path — and so
+    // does any Riot game (`usesOfficialLogo`): their app icon IS Riot's
+    // official logo, which Riot's policy forbids using; the monogram stays
+    // for those. Mutates the shared, in-memory `settings` object only —
+    // like every other `configFor` call in this class, it rides along on
+    // the next explicit settings save rather than persisting immediately
+    // (no `onSettingsChanged` hook is wired into the coordinator).
+    if (!usesOfficialLogo(gameId: a.gameId, bundleId: match.bundleId)) {
+      settings.configFor(a.gameId).iconPath ??= match.iconPath;
+    }
   }
 
   /// The capture-source picker's path for a Wine app (empty
@@ -431,8 +451,39 @@ class ClipCoordinator {
       sessionStart,
       gameMode: e.meta['gameMode'] as String?,
       champion: e.meta['champion'] as String?,
-      allies: (e.meta['allies'] as List?)?.cast<String>(),
-      enemies: (e.meta['enemies'] as List?)?.cast<String>(),
+      allies: _parsePlayers(e.meta['allies']),
+      enemies: _parsePlayers(e.meta['enemies']),
+      rawChampionName: e.meta['rawChampionName'] as String?,
+      skinName: e.meta['skinName'] as String?,
+    );
+  }
+
+  /// Parses a matchInfo event's `allies`/`enemies` meta (a `List` of
+  /// champion+name maps, see `LeagueEventWatcher._emitMatchInfo`) into
+  /// [MatchPlayer]s. Null passthrough for a missing key.
+  static List<MatchPlayer>? _parsePlayers(Object? raw) =>
+      (raw as List?)?.map(MatchPlayer.fromDynamic).toList();
+
+  /// Writes a [GameEventKind.statsUpdate] event's live snapshot
+  /// (assists/creepScore/wardScore/items) onto the active session's
+  /// MatchStats — same session-key contract as [_recordMatchInfo], except
+  /// this fires every poll (see that event kind's doc) rather than once;
+  /// [MatchStatsStore.recordStatsUpdate] is what keeps the actual disk
+  /// writes cheap by no-opping when nothing changed.
+  void _recordStatsUpdate(GameEvent e) {
+    final sessionStart = _sessionStartedAt[e.gameId];
+    final stats = matchStats;
+    if (sessionStart == null || stats == null) return;
+    final items = (e.meta['items'] as List?)
+        ?.map((i) => MatchItemSlot.fromJson((i as Map).cast<String, dynamic>()))
+        .toList();
+    stats.recordStatsUpdate(
+      e.gameId,
+      sessionStart,
+      assists: e.meta['assists'] as int?,
+      creepScore: e.meta['creepScore'] as int?,
+      wardScore: e.meta['wardScore'] as double?,
+      items: items,
     );
   }
 

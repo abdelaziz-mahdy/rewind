@@ -143,9 +143,10 @@ class LeagueEventWatcher implements GameEventSource {
       // event may emit. Fail closed: no name, no clips (never spam).
       _activeName ??= await _fetchActiveName();
 
-      // Capture the match metadata (champion, teams, mode) once — it's
-      // stable for the whole match.
-      if (!_infoSent) await _emitMatchInfo();
+      // Player-scoped state off the SAME playerlist fetch: the one-shot
+      // match metadata (champion, teams, mode) plus a fresh live-stats
+      // snapshot every poll (assists/creepScore/wardScore/items).
+      await _pollPlayerState();
 
       for (final e in events) {
         final map = (e as Map).cast<String, dynamic>();
@@ -173,15 +174,52 @@ class LeagueEventWatcher implements GameEventSource {
     }
   }
 
-  /// Fetches the player list + game stats and emits a one-shot
-  /// [GameEventKind.matchInfo] with the active player's champion, their
-  /// teammates' and enemies' champions, and a friendly game-mode name.
-  /// Best-effort: if either endpoint is unavailable it just doesn't send
-  /// (and will retry next poll, since [_infoSent] stays false).
-  Future<void> _emitMatchInfo() async {
+  /// Fetches `/liveclientdata/playerlist` once per poll and, off the active
+  /// player's row: (a) emits the one-shot [GameEventKind.matchInfo] the
+  /// first time it resolves (champion, teams, mode, skin — stable for the
+  /// whole match, see [_emitMatchInfo]), and (b) emits a fresh
+  /// [GameEventKind.statsUpdate] every poll (assists/creepScore/wardScore/
+  /// items — these DO change over the match, see [_emitStatsUpdate]).
+  /// No-ops (retries next poll) when the endpoint or the active player's row
+  /// isn't resolvable yet.
+  Future<void> _pollPlayerState() async {
     final listBody = await _fetch('/liveclientdata/playerlist');
     if (listBody == null) return;
 
+    List<Map<String, dynamic>> players;
+    try {
+      players = (jsonDecode(listBody) as List)
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (err, stack) {
+      talker.handle(err, stack);
+      return;
+    }
+
+    // Find "me": match by riotId (preferred) or the tagless summoner name.
+    Map<String, dynamic>? me;
+    for (final p in players) {
+      final riotId = p['riotId'] as String?;
+      final summoner = p['summonerName'] as String?;
+      if (_isActivePlayer(riotId) || _isActivePlayer(summoner)) {
+        me = p;
+        break;
+      }
+    }
+    if (me == null) return;
+
+    if (!_infoSent) await _emitMatchInfo(players, me);
+    _emitStatsUpdate(me);
+  }
+
+  /// Emits a one-shot [GameEventKind.matchInfo] with the active player's
+  /// champion (+ its raw form/skin, for art), their teammates' and
+  /// enemies' champions, and a friendly game-mode name. [players]/[me] come
+  /// from [_pollPlayerState]'s single playerlist fetch; only `gamestats` (for
+  /// the mode) is fetched separately here. Best-effort: a failure just
+  /// retries next poll, since [_infoSent] stays false.
+  Future<void> _emitMatchInfo(
+      List<Map<String, dynamic>> players, Map<String, dynamic> me) async {
     String? rawMode;
     final statsBody = await _fetch('/liveclientdata/gamestats');
     if (statsBody != null) {
@@ -193,20 +231,8 @@ class LeagueEventWatcher implements GameEventSource {
     final gameMode = _friendlyGameMode(rawMode);
 
     try {
-      final players =
-          (jsonDecode(listBody) as List).cast<Map<String, dynamic>>();
-      // Find "me": match by riotId (preferred) or the tagless summoner name.
-      Map<String, dynamic>? me;
-      for (final p in players) {
-        final riotId = p['riotId'] as String?;
-        final summoner = p['summonerName'] as String?;
-        if (_isActivePlayer(riotId) || _isActivePlayer(summoner)) {
-          me = p;
-          break;
-        }
-      }
-      final myChampion = me?['championName'] as String?;
-      final myTeam = me?['team'];
+      final myChampion = me['championName'] as String?;
+      final myTeam = me['team'];
 
       // The ORDER/CHAOS `team` field is only a real 2-team split for
       // standard modes. In Arena (CHERRY) it buckets everyone into two
@@ -217,16 +243,25 @@ class LeagueEventWatcher implements GameEventSource {
       // list (carried in `enemies`, with `allies` empty — the UI renders
       // that as a neutral "champions in this game").
       final twoTeam = _isTwoTeamMode(rawMode) && myTeam != null;
-      final allies = <String>[];
-      final enemies = <String>[];
+      final allies = <Map<String, dynamic>>[];
+      final enemies = <Map<String, dynamic>>[];
       for (final p in players) {
         if (identical(p, me)) continue;
         final champ = p['championName'] as String?;
         if (champ == null || champ.isEmpty) continue;
+        // Champion AND name together in one entry (never two parallel
+        // lists that could drift out of sync) — the keys match
+        // `MatchPlayer.fromDynamic`'s shape exactly, so the coordinator can
+        // parse each straight through with no remapping.
+        final player = {
+          'championName': champ,
+          'championKey': p['rawChampionName'] as String?,
+          'riotId': _riotIdOf(p),
+        };
         if (twoTeam && p['team'] == myTeam) {
-          allies.add(champ);
+          allies.add(player);
         } else {
-          enemies.add(champ);
+          enemies.add(player);
         }
       }
 
@@ -238,11 +273,46 @@ class LeagueEventWatcher implements GameEventSource {
         'champion': myChampion,
         'allies': allies,
         'enemies': enemies,
+        // Stable for the whole match (champion select is long over by the
+        // time the Live Client Data API is up) — captured once here rather
+        // than every poll like [_emitStatsUpdate]'s fields.
+        'rawChampionName': me['rawChampionName'] as String?,
+        'skinName': me['skinName'] as String?,
       }));
       _infoSent = true;
     } catch (err, stack) {
       talker.handle(err, stack);
     }
+  }
+
+  /// Emits a fresh [GameEventKind.statsUpdate] off the active player's
+  /// CURRENT `playerlist` row: `assists`/`creepScore`/`wardScore` (only
+  /// available via `scores` — kills/deaths themselves are already tracked
+  /// via combat events, see [_kindsFor]) and the running `items` build —
+  /// all of which change throughout the match, unlike [_emitMatchInfo]'s
+  /// one-shot metadata. Fired every poll; [ClipCoordinator]/
+  /// [MatchStatsStore] are responsible for not persisting when nothing
+  /// actually changed.
+  void _emitStatsUpdate(Map<String, dynamic> me) {
+    final scores = (me['scores'] as Map?)?.cast<String, dynamic>();
+    final items = ((me['items'] as List?) ?? const [])
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .map((e) => {
+              'itemId': (e['itemID'] as num?)?.toInt() ?? 0,
+              'slot': (e['slot'] as num?)?.toInt() ?? 0,
+            })
+        .toList();
+
+    _controller.add(GameEvent(
+      gameId: gameId,
+      kind: GameEventKind.statsUpdate,
+      meta: {
+        'assists': (scores?['assists'] as num?)?.toInt(),
+        'creepScore': (scores?['creepScore'] as num?)?.toInt(),
+        'wardScore': (scores?['wardScore'] as num?)?.toDouble(),
+        'items': items,
+      },
+    ));
   }
 
   /// Whether [rawMode] is a mode where the ORDER/CHAOS `team` field is a
@@ -283,6 +353,26 @@ class LeagueEventWatcher implements GameEventSource {
       'PRACTICETOOL': 'Practice Tool',
     };
     return known[raw] ?? '${raw[0]}${raw.substring(1).toLowerCase()}';
+  }
+
+  /// The best available "Name#TAG" for a `playerlist` row: `riotId` when
+  /// present (Riot has deprecated summoner names — current docs describe
+  /// `summonerName` as a compatibility shim over the RiotID), else
+  /// `riotIdGameName`+`riotIdTagLine` combined, else the legacy
+  /// `summonerName`. Null when none of those resolve.
+  static String? _riotIdOf(Map<String, dynamic> p) {
+    final riotId = p['riotId'] as String?;
+    if (riotId != null && riotId.isNotEmpty) return riotId;
+    final gameName = p['riotIdGameName'] as String?;
+    final tagLine = p['riotIdTagLine'] as String?;
+    if (gameName != null &&
+        gameName.isNotEmpty &&
+        tagLine != null &&
+        tagLine.isNotEmpty) {
+      return '$gameName#$tagLine';
+    }
+    final summoner = p['summonerName'] as String?;
+    return (summoner != null && summoner.isNotEmpty) ? summoner : null;
   }
 
   Future<String?> _fetchActiveName() async {

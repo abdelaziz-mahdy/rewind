@@ -625,8 +625,12 @@ void main() {
         meta: const {
           'gameMode': 'Arena',
           'champion': 'Ahri',
-          'allies': ['Lux'],
-          'enemies': ['Zed'],
+          'allies': [
+            {'championName': 'Lux', 'championKey': null, 'riotId': 'Mate#EUW'}
+          ],
+          'enemies': [
+            {'championName': 'Zed', 'championKey': null, 'riotId': 'Foe#EUW'}
+          ],
         },
       ));
       await settleBurst();
@@ -634,8 +638,93 @@ void main() {
       final s = statsStore.statsFor('league_of_legends', sessionStart)!;
       expect(s.champion, 'Ahri');
       expect(s.gameMode, 'Arena');
-      expect(s.allies, ['Lux']);
-      expect(s.enemies, ['Zed']);
+      expect(s.allies,
+          [const MatchPlayer(championName: 'Lux', riotId: 'Mate#EUW')]);
+      expect(s.enemies,
+          [const MatchPlayer(championName: 'Zed', riotId: 'Foe#EUW')]);
+      expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
+    });
+
+    test(
+        'a matchInfo event with legacy bare champion-name strings still '
+        'parses (defensive: real sources always send the object shape)',
+        () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emitEvent(GameEvent(
+        gameId: 'league_of_legends',
+        kind: GameEventKind.matchInfo,
+        meta: const {
+          'allies': ['Lux'],
+          'enemies': ['Zed']
+        },
+      ));
+      await settleBurst();
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.allies, [const MatchPlayer(championName: 'Lux')]);
+      expect(s.enemies, [const MatchPlayer(championName: 'Zed')]);
+    });
+
+    test('a statsUpdate event records the live stat line, never a clip',
+        () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emitEvent(GameEvent(
+        gameId: 'league_of_legends',
+        kind: GameEventKind.statsUpdate,
+        meta: const {
+          'assists': 4,
+          'creepScore': 63,
+          'wardScore': 8.0,
+          'items': [
+            {'itemId': 1001, 'slot': 0},
+          ],
+        },
+      ));
+      await settleBurst();
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.assists, 4);
+      expect(s.creepScore, 63);
+      expect(s.wardScore, 8.0);
+      expect(s.items, [const MatchItemSlot(itemId: 1001, slot: 0)]);
       expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
     });
 
@@ -726,6 +815,88 @@ void main() {
 
       expect(engine.captureAppCalls, ['com.rewind.stub.one']);
       expect(settings.captureAppBundleId, isNull);
+    });
+
+    test(
+        'activation with a matching running app captures its icon onto '
+        'GameConfig.iconPath for the rail logo', () async {
+      engine.apps = [
+        const AppInfo(
+          bundleId: 'com.rewind.stub.one',
+          name: 'Stub App One',
+          pid: 1001,
+          iconPath: '/Applications/Stub App One.app/icon.icns',
+        ),
+        ...engine.apps.where((a) => a.bundleId != 'com.rewind.stub.one'),
+      ];
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(settings.configFor('app:stub_game').iconPath,
+          '/Applications/Stub App One.app/icon.icns');
+    });
+
+    test('never overwrites an already-captured iconPath', () async {
+      settings.setConfig(GameConfig(
+          gameId: 'app:stub_game', iconPath: '/already/captured.icns'));
+      engine.apps = [
+        const AppInfo(
+          bundleId: 'com.rewind.stub.one',
+          name: 'Stub App One',
+          pid: 1001,
+          iconPath: '/Applications/Stub App One.app/icon.icns',
+        ),
+        ...engine.apps.where((a) => a.bundleId != 'com.rewind.stub.one'),
+      ];
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(settings.configFor('app:stub_game').iconPath,
+          '/already/captured.icns');
+    });
+
+    test(
+        'League never has its app icon auto-captured: it IS Riot\'s '
+        'official logo, which Riot policy forbids using', () async {
+      // The catalog's process-watch half of League (see game_directory.
+      // dart's doc on the two League gameIds) is what auto-switch acts on —
+      // the vendor half has no OS process to match, so this is the only
+      // path that could ever pick up an icon for it.
+      final leagueLister = FakeProcessLister()..names = ['LeagueClientUx.exe'];
+      final leagueWatch = ProcessWatcherSource(
+        gameId: 'app:league_of_legends',
+        displayName: 'League of Legends',
+        processMatch: 'LeagueClientUx',
+        lister: leagueLister,
+      );
+      final localRegistry = GameRegistry(sources: [leagueWatch]);
+      final localEngine = FakeCaptureEngine()
+        ..apps = [
+          const AppInfo(
+            bundleId: 'com.riotgames.LeagueClientUx',
+            name: 'League of Legends',
+            pid: 2001,
+            iconPath: '/Applications/League of Legends.app/icon.icns',
+          ),
+        ];
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: settings,
+        outDir: tmp.path,
+        engine: localEngine,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(localEngine.captureAppCalls, ['com.riotgames.LeagueClientUx']);
+      expect(settings.configFor('app:league_of_legends').iconPath, isNull);
     });
 
     test('deactivation reverts capture to null when no persisted choice',

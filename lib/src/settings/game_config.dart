@@ -30,6 +30,18 @@ class GameConfig {
   /// `displayNameFor` via `registerCustomDisplayNames`.
   String? displayName;
 
+  /// Absolute path to this game's app icon (an `.icns` bundle icon, the
+  /// same [AppInfo.iconPath] the capture-source picker already reads via
+  /// `icns.dart`), captured once from a real running-app match — either a
+  /// manual pick (`_SourceLine._pickApp`) or an auto-detection match
+  /// (`ClipCoordinator._autoSwitchCaptureFor`) — and persisted here so the
+  /// rail can show a real logo (`GameTileAvatar`) even when the game isn't
+  /// currently running (an `AppInfo` only exists while its process is
+  /// enumerable). Null for games never matched to a running app, and
+  /// ALWAYS null for Wine/CrossOver games (see `AppInfo.iconPath`'s doc) —
+  /// `GameTileAvatar` falls back to the monogram either way.
+  String? iconPath;
+
   GameConfig({
     required this.gameId,
     this.bufferSeconds = 30,
@@ -37,6 +49,7 @@ class GameConfig {
     Set<GameEventKind>? enabledEvents,
     this.processMatch,
     this.displayName,
+    this.iconPath,
   }) : enabledEvents = enabledEvents ??
             {
               GameEventKind.manual,
@@ -55,6 +68,7 @@ class GameConfig {
         'enabledEvents': enabledEvents.map((e) => e.name).toList(),
         'processMatch': processMatch,
         'displayName': displayName,
+        'iconPath': iconPath,
       };
 
   factory GameConfig.fromJson(Map<String, dynamic> j) => GameConfig(
@@ -67,5 +81,6 @@ class GameConfig {
             .toSet(),
         processMatch: j['processMatch'] as String?,
         displayName: j['displayName'] as String?,
+        iconPath: j['iconPath'] as String?,
       );
 }

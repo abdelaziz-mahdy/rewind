@@ -7,6 +7,24 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **League of Legends match tracker**: match cards and the match detail
+  screen now show a full stat line (K/D/A, creep score, ward score — polled
+  live from the Live Client Data API's `playerlist[].scores`, alongside the
+  existing kill/death event tracking), the player's champion portrait and
+  skin name, their final item build, and each teammate's/opponent's
+  champion **and in-game name** together (never as two lists that could
+  drift apart) — all via a new `MatchPlayer` model with legacy-string
+  backward compatibility for existing `matches.json` files. Champion/item
+  art comes from Data Dragon (`DDragon`, already built); it and the new
+  live-stats polling are wired through a new `GameEventKind.statsUpdate`
+  event kind, kept deliberately separate from the one-shot `matchInfo`
+  event since stats change every poll while champion/mode/skin don't. The
+  left rail now also shows each game's real, OS-extracted app icon (cached
+  via `GameConfig.iconPath`, read the same way the capture-source picker
+  already reads `.icns` bundles) instead of a monogram — **except League**,
+  whose app icon is Riot's official logo and stays a monogram per Riot's
+  "no official logos" policy (`usesOfficialLogo`); champion/item art is
+  unaffected, since Riot's policy explicitly permits game art assets.
 - **Linux real-capture backend** (native shim): `xshm_input_v2`/`xcomposite_input`
   (X11 display and window/app targeting, RandR-monitor-index and XID-based)
   and a Wayland `pipewire-screen-capture-source` path (portal-driven; capture
