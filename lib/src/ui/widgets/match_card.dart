@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../clip/match_stats.dart';
 import '../../clip/thumbnail_cache.dart';
 import '../../games/league/ddragon.dart';
+import '../../games/league/game_modes.dart';
 import '../clip_sessions.dart';
 import '../theme.dart';
 import 'clip_tile.dart';
@@ -75,7 +76,10 @@ class MatchCard extends StatelessWidget {
     if (stats?.champion case final c? when c.isNotEmpty) {
       parts.add(c.toUpperCase());
     }
-    if (stats?.gameMode case final m? when m.isNotEmpty) {
+    // Resolved at render from the stored RAW code, never read straight out of
+    // storage — see games/league/game_modes.dart for why.
+    if (friendlyLeagueGameMode(stats?.gameMode) case final m?
+        when m.isNotEmpty) {
       parts.add(m.toUpperCase());
     }
     parts.add(relativeAge(session.startedAt).toUpperCase());

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../games/league/game_modes.dart';
 import '../log/log.dart';
 import 'game_event.dart';
 import 'game_event_source.dart';
@@ -228,8 +229,6 @@ class LeagueEventWatcher implements GameEventSource {
         rawMode = stats['gameMode'] as String?;
       } catch (_) {}
     }
-    final gameMode = _friendlyGameMode(rawMode);
-
     try {
       final myChampion = me['championName'] as String?;
       final myTeam = me['team'];
@@ -242,7 +241,7 @@ class LeagueEventWatcher implements GameEventSource {
       // fake a "your team": every other champion goes into a single flat
       // list (carried in `enemies`, with `allies` empty — the UI renders
       // that as a neutral "champions in this game").
-      final twoTeam = _isTwoTeamMode(rawMode) && myTeam != null;
+      final twoTeam = isTwoTeamLeagueMode(rawMode) && myTeam != null;
       final allies = <Map<String, dynamic>>[];
       final enemies = <Map<String, dynamic>>[];
       for (final p in players) {
@@ -265,11 +264,15 @@ class LeagueEventWatcher implements GameEventSource {
         }
       }
 
-      talker.info('League match: champion=$myChampion mode=$gameMode '
+      talker.info('League match: champion=$myChampion mode=$rawMode '
           'twoTeam=$twoTeam allies=${allies.length} others=${enemies.length}');
       _controller
           .add(GameEvent(gameId: gameId, kind: GameEventKind.matchInfo, meta: {
-        'gameMode': gameMode,
+        // The RAW code ("KIWI"), not a friendly name: the display name is
+        // derived at render by friendlyLeagueGameMode(). Persisting the
+        // derived name froze it — every match recorded before ARAM Mayhem was
+        // mapped is stuck reading "Kiwi" forever. See games/league/game_modes.dart.
+        'gameMode': rawMode,
         'champion': myChampion,
         'allies': allies,
         'enemies': enemies,
@@ -313,46 +316,6 @@ class LeagueEventWatcher implements GameEventSource {
         'items': items,
       },
     ));
-  }
-
-  /// Whether [rawMode] is a mode where the ORDER/CHAOS `team` field is a
-  /// genuine two-team split (so "your team" vs "enemies" is meaningful).
-  /// Arena (CHERRY) and other free-for-all/multi-team modes are NOT — see
-  /// [_emitMatchInfo].
-  static bool _isTwoTeamMode(String? rawMode) => const {
-        'CLASSIC', // Summoner's Rift 5v5
-        'ARAM',
-        'KIWI', // ARAM Mayhem — a 5v5 ARAM variant on the Howling Abyss
-        // (verified live 2026-07-16: gameMode "KIWI", mapName "Map12").
-        'URF',
-        'ARURF',
-        'ONEFORALL',
-        'ULTBOOK',
-        'NEXUSBLITZ',
-        'TUTORIAL',
-        'PRACTICETOOL',
-      }.contains(rawMode);
-
-  /// Maps Riot's internal gameMode codes to friendly names, falling back to
-  /// a title-cased version of the raw code for modes not listed.
-  static String? _friendlyGameMode(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    const known = {
-      'CLASSIC': "Summoner's Rift",
-      'ARAM': 'ARAM',
-      // Riot's internal codename for ARAM Mayhem (verified against a live
-      // match, 2026-07-16) — without this the hub would label it "Kiwi".
-      'KIWI': 'ARAM Mayhem',
-      'CHERRY': 'Arena',
-      'URF': 'URF',
-      'ARURF': 'ARURF',
-      'NEXUSBLITZ': 'Nexus Blitz',
-      'ONEFORALL': 'One for All',
-      'ULTBOOK': 'Ultimate Spellbook',
-      'TUTORIAL': 'Tutorial',
-      'PRACTICETOOL': 'Practice Tool',
-    };
-    return known[raw] ?? '${raw[0]}${raw.substring(1).toLowerCase()}';
   }
 
   /// The best available "Name#TAG" for a `playerlist` row: `riotId` when

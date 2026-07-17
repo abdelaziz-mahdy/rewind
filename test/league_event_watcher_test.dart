@@ -130,7 +130,9 @@ void main() {
 
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
     expect(info.meta['champion'], 'Ahri');
-    expect(info.meta['gameMode'], "Summoner's Rift");
+    // The RAW code — the friendly name is resolved at render by
+    // friendlyLeagueGameMode(), never persisted (see games/league/game_modes.dart).
+    expect(info.meta['gameMode'], 'CLASSIC');
     // same team, excludes me; each entry carries the player's name too.
     expect(info.meta['allies'], [_player('Lux', riotId: 'Mate#EUW')]);
     expect(info.meta['enemies'], [
@@ -157,7 +159,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
-    expect(info.meta['gameMode'], 'ARAM Mayhem');
+    expect(info.meta['gameMode'], 'KIWI'); // raw; renders as "ARAM Mayhem"
     expect(info.meta['champion'], 'Syndra');
     expect(info.meta['allies'], [_player('Sona', riotId: 'Mate#EUW')]);
     expect(info.meta['enemies'], [_player('Ziggs', riotId: 'Foe#EUW')]);
@@ -182,7 +184,7 @@ void main() {
 
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
     expect(info.meta['champion'], 'Leona');
-    expect(info.meta['gameMode'], 'Arena');
+    expect(info.meta['gameMode'], 'CHERRY'); // raw; renders as "Arena"
     expect(info.meta['allies'], isEmpty);
     // all others, flat — still carrying names.
     expect(info.meta['enemies'], [
