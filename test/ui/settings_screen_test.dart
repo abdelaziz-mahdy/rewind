@@ -557,6 +557,40 @@ void main() {
     });
   });
 
+  testWidgets('the default buffer offers 15 s, same as a per-game override',
+      (t) async {
+    // The global default offered only 30/60/Custom while a game hub's
+    // override offered 15/30/60/Custom — so the shortest buffer the app
+    // advertises ("the last 15-60 s") couldn't be set as the default.
+    final calls = <AppSettings>[];
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (s) async => calls.add(s),
+      displays: const [],
+    )));
+
+    expect(find.text('15 s'), findsOneWidget);
+    await t.tap(find.text('15 s'));
+    await t.pump();
+
+    expect(calls.last.defaultBufferSeconds, 15);
+  });
+
+  testWidgets('a saved 15 s selects its segment instead of falling to Custom',
+      (t) async {
+    // The custom-detection didn't list 15, so a stored 15 was treated as a
+    // custom value and no segment highlighted.
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings()..defaultBufferSeconds = 15,
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    final seg = t.widget<SegmentedButton<String>>(
+        find.byType(SegmentedButton<String>).first);
+    expect(seg.selected, {'15'});
+  });
+
   testWidgets('About shows Riot\'s required legal boilerplate verbatim',
       (t) async {
     // Riot's Developer API Policy REQUIRES this text, unmodified, "in a
