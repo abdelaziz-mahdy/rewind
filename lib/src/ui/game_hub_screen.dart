@@ -17,6 +17,7 @@ import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/match_card.dart';
+import 'widgets/setting_row.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -564,57 +565,65 @@ class _GameHubScreenState extends State<GameHubScreen> {
   }
 
   Widget _captureSettingsBody(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Buffer length', style: theme.textTheme.body),
-        const SizedBox(height: 8),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: '15', label: Text('15 s')),
-            ButtonSegment(value: '30', label: Text('30 s')),
-            ButtonSegment(value: '60', label: Text('60 s')),
-            ButtonSegment(value: 'custom', label: Text('Custom')),
-          ],
-          selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
-          onSelectionChanged: (selection) {
-            final value = selection.first;
-            if (value == 'custom') {
-              setState(() => _customBuffer = true);
-            } else {
-              _commitBuffer(int.parse(value));
-            }
-          },
-        ),
-        if (_customBuffer) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            width: 160,
-            child: TextField(
-              key: const ValueKey('gameHubBufferField'),
-              controller: _bufferController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Seconds (5-300)'),
-              onChanged: _handleCustomBufferChanged,
+        // Same row grammar as the Settings screen (widgets/setting_row.dart):
+        // these are the same settings, so they must not have a second shape
+        // here. This panel used to draw label-ABOVE-control while Settings
+        // drew label-left/control-right.
+        SettingRows([
+          SettingRow(
+            label: 'Buffer length',
+            control: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '15', label: Text('15 s')),
+                ButtonSegment(value: '30', label: Text('30 s')),
+                ButtonSegment(value: '60', label: Text('60 s')),
+                ButtonSegment(value: 'custom', label: Text('Custom')),
+              ],
+              selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
+              onSelectionChanged: (selection) {
+                final value = selection.first;
+                if (value == 'custom') {
+                  setState(() => _customBuffer = true);
+                } else {
+                  _commitBuffer(int.parse(value));
+                }
+              },
             ),
           ),
-        ],
-        // Only League emits events (§3.4 — "the only source that emits
-        // events"): catalog/desktop games get buffer-only settings, with
-        // the event UI hidden entirely rather than shown-and-disabled.
-        if (_isLeague) ...[
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(child: Text('Auto-clip', style: theme.textTheme.body)),
-              Switch(
+          if (_customBuffer)
+            SettingRow(
+              label: 'Custom buffer',
+              control: SizedBox(
+                width: 200,
+                child: TextField(
+                  key: const ValueKey('gameHubBufferField'),
+                  controller: _bufferController,
+                  keyboardType: TextInputType.number,
+                  decoration:
+                      const InputDecoration(labelText: 'Seconds (5-300)'),
+                  onChanged: _handleCustomBufferChanged,
+                ),
+              ),
+            ),
+          // Only League emits events (§3.4 — "the only source that emits
+          // events"): catalog/desktop games get buffer-only settings, with
+          // the event UI hidden entirely rather than shown-and-disabled.
+          if (_isLeague)
+            SettingRow(
+              label: 'Auto-clip',
+              hint: Text('Save a clip automatically when one of these happens',
+                  style: Theme.of(context).textTheme.bodyMuted),
+              control: Switch(
                 key: const ValueKey('gameHubAutoClipSwitch'),
                 value: _autoClip,
                 onChanged: _setAutoClip,
               ),
-            ],
-          ),
+            ),
+        ]),
+        if (_isLeague) ...[
           const SizedBox(height: 12),
           Opacity(
             opacity: _autoClip ? 1 : 0.4,
