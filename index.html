@@ -1,161 +1,382 @@
 <!DOCTYPE html>
 <!--
-  Landing page for https://abdelaziz-mahdy.github.io/rewind (GitHub Pages,
-  served from main/). This is the product URL registered with Riot's Developer
-  Portal, so it doubles as the page a reviewer lands on: it states plainly what
-  Rewind does, that everything stays on the player's machine, and exactly which
-  Riot data it reads.
+  Landing page for https://abdelaziz-mahdy.github.io/rewind (GitHub Pages, main/).
+  This is the product URL registered with Riot's Developer Portal, so it doubles as
+  the page a reviewer lands on: it says plainly what Rewind does, that everything
+  stays on the player's machine, and exactly which Riot data it reads.
 
   Riot policy notes for anyone editing this page:
-   * No Riot logos or Riot-lookalike branding (Developer Policies, "Please
-     Don't"). Champion/item art is game-specific static data and IS permitted,
-     but this page ships none of it — only Rewind's own screenshots.
-   * The "not endorsed by Riot Games" boilerplate at the bottom is REQUIRED
+   * No Riot logos and no Riot-lookalike branding (Developer Policies, "Please
+     Don't"). Champion/item art is game-specific static data and IS permitted, but
+     this page ships none — only Rewind's own screenshots.
+   * The "not endorsed by Riot Games" boilerplate in the footer is REQUIRED
      verbatim wherever the product is presented. Do not reword or remove it.
-   * riot.txt (repo root) is fetched from this origin for URL verification —
-     don't delete it.
-  Self-contained on purpose: no CDNs, no fonts, no trackers.
+   * riot.txt (repo root) is fetched from this origin for URL verification.
+
+  Design notes:
+   * Self-contained on purpose — no CDNs, no web fonts, no trackers. Type
+     personality comes from a monospace utility face (timecodes/labels), which is
+     the vernacular of recording software, against a heavy system display face.
+   * Follows the app's own visual language (lib/src/ui/theme.dart): sharp corners,
+     hairline borders, NO glow, NO gradient fills, no pill radii.
+   * One ambient animation only: the buffer strip. It IS the product — the last 30
+     seconds, always running. Disabled under prefers-reduced-motion.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Rewind — instant replay for macOS &amp; Windows</title>
-<meta name="description" content="Free, open-source instant-replay recorder. Keeps a rolling buffer of your own gameplay and saves a clip on a hotkey — or automatically when you get a kill. Everything stays on your machine." />
+<meta name="description" content="Rewind keeps the last 30 seconds of your game in memory, always. Press one key after something good happens — the clip is already there. Free, open source, and everything stays on your machine." />
+<meta property="og:title" content="Rewind — you already recorded it" />
+<meta property="og:description" content="Instant replay for macOS and Windows. The last 30 seconds are always buffered. Free and open source." />
 <style>
   :root {
-    --bg: #0d0f12;
-    --surface: #15181d;
-    --line: #262b33;
-    --text: #eef1f5;
-    --muted: #9aa4b2;
-    --accent: #3ddc84;
+    --void:  #0a0c0f;
+    --panel: #14171c;
+    --line:  #232830;
+    --text:  #e8ecf1;
+    --dim:   #8b95a3;
+    --rec:   #3ddc84;  /* Rewind's accent, used sparingly */
+    --live:  #ff4d4f;  /* the recording dot, straight from the app's deck */
+
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
+
   * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background: var(--void);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 900px; margin: 0 auto; padding: 0 20px; }
-  header { padding: 56px 0 32px; border-bottom: 1px solid var(--line); }
-  h1 { margin: 0 0 8px; font-size: 40px; letter-spacing: -0.02em; }
-  h1 .dot { color: var(--accent); }
-  .tag { margin: 0; color: var(--muted); font-size: 19px; }
-  .badges { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
-  .badge {
-    border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px;
-    font-size: 13px; color: var(--muted); background: var(--surface);
+
+  a { color: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--rec);
+    outline-offset: 3px;
   }
-  .cta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 10px; }
+
+  .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- utility face: the recorder's vernacular ---- */
+  .mono {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  /* ---- top bar ---- */
+  .bar {
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 12, 15, 0.86);
+    backdrop-filter: blur(8px);
+  }
+  .bar .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .mark {
+    font-weight: 800; font-size: 15px; letter-spacing: 0.02em; text-decoration: none;
+  }
+  .mark i { color: var(--rec); font-style: normal; }
+  .bar nav { display: flex; gap: 22px; }
+  .bar nav a { text-decoration: none; }
+  .bar nav a:hover { color: var(--text); }
+
+  /* ---- hero ---- */
+  .hero { padding: 72px 0 8px; }
+
+  .status { display: inline-flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--live); flex: none;
+    animation: blink 2.4s steps(1, end) infinite;
+  }
+  @keyframes blink { 0%, 70% { opacity: 1; } 71%, 100% { opacity: 0.25; } }
+
+  h1 {
+    margin: 0 0 18px;
+    font-size: clamp(40px, 7.2vw, 72px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+  }
+  h1 em { font-style: normal; color: var(--rec); }
+
+  .lede {
+    margin: 0; max-width: 60ch; color: var(--dim); font-size: clamp(17px, 2vw, 20px);
+  }
+
+  .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px; }
   .btn {
-    display: inline-block; text-decoration: none; border-radius: 4px;
-    padding: 10px 18px; font-weight: 600; font-size: 15px;
-    background: var(--accent); color: #06210f;
+    display: inline-block; text-decoration: none;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 13px 22px; border: 1px solid var(--rec); background: var(--rec); color: #05230f;
+    font-weight: 700; border-radius: 2px;
   }
-  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  section { padding: 40px 0; border-bottom: 1px solid var(--line); }
-  h2 { font-size: 22px; margin: 0 0 16px; letter-spacing: -0.01em; }
-  ul { margin: 0; padding-left: 20px; }
-  li { margin-bottom: 10px; }
-  li b { color: var(--text); }
-  p { color: var(--muted); }
-  img { max-width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 6px; }
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
-  @media (max-width: 700px) { .shots { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
-  .note {
-    background: var(--surface); border: 1px solid var(--line);
-    border-radius: 6px; padding: 16px 18px;
+  .btn:hover { background: #4ef195; border-color: #4ef195; }
+  .btn.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+  .btn.ghost:hover { border-color: var(--dim); background: var(--panel); }
+
+  /* ---- signature: the buffer strip ----
+     The product in one graphic: time is always moving through memory. Ticks march
+     right-to-left toward NOW; the last 30 seconds are always in there. */
+  .buffer { margin-top: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: 2px; }
+  .buffer .meta {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
   }
-  .note p:last-child { margin-bottom: 0; }
-  code { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; font-size: 13px; color: var(--text); }
-  footer { padding: 32px 0 56px; }
-  footer p { font-size: 13px; line-height: 1.7; }
-  a { color: var(--accent); }
+  .track { height: 62px; overflow: hidden; position: relative; }
+  .ticks {
+    position: absolute; inset: 0; width: 200%;
+    /* Solid stops only — ticks, not a gradient fill. */
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--line) 0 1px,
+      transparent 1px 9px
+    );
+    animation: march 3s linear infinite;
+  }
+  .ticks.tall {
+    background-image: repeating-linear-gradient(
+      90deg,
+      #2f3742 0 1px,
+      transparent 1px 45px
+    );
+  }
+  @keyframes march { from { transform: translateX(0); } to { transform: translateX(-45px); } }
+  .now {
+    position: absolute; top: 0; bottom: 0; right: 0; width: 2px; background: var(--live);
+  }
+  .window {
+    position: absolute; top: 0; bottom: 0; right: 0; width: 58%;
+    border-left: 1px solid var(--rec);
+    background: rgba(61, 220, 132, 0.06);
+  }
+  .window span {
+    position: absolute; top: 8px; left: 10px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--rec);
+  }
+
+  /* ---- hero shot ---- */
+  .shot { margin: 28px 0 0; }
+  .shot img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 3px; }
+
+  /* ---- sections ---- */
+  section { padding: 72px 0; }
+  section + section { border-top: 1px solid var(--line); }
+  .label { margin: 0 0 26px; }
+  h2 {
+    margin: 0 0 20px; font-size: clamp(24px, 3vw, 32px);
+    letter-spacing: -0.02em; font-weight: 800;
+  }
+  p { color: var(--dim); }
+
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 2px; }
+  .cell { background: var(--void); padding: 26px; }
+  .cell h3 { margin: 12px 0 8px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .cell p { margin: 0; font-size: 15px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .two img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 3px; }
+
+  /* ---- the panel a Riot reviewer reads ---- */
+  .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 2px; padding: 28px; }
+  .panel p { margin: 0 0 14px; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel b { color: var(--text); }
+  code {
+    font-family: var(--mono); font-size: 13px; color: var(--text);
+    background: #1b1f26; border: 1px solid var(--line); border-radius: 2px; padding: 1px 6px;
+  }
+  .never { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .never span {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 1px solid var(--line); border-radius: 2px; padding: 6px 10px; color: var(--dim);
+  }
+
+  /* ---- footer ---- */
+  footer { border-top: 1px solid var(--line); padding: 40px 0 64px; }
+  footer p { font-size: 13px; line-height: 1.7; margin: 0 0 16px; max-width: 78ch; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
+  footer nav a { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); text-decoration: none; }
+  footer nav a:hover { color: var(--text); }
+
+  @media (max-width: 760px) {
+    .grid, .two { grid-template-columns: 1fr; }
+    .bar nav { gap: 14px; }
+    .hero { padding-top: 48px; }
+    section { padding: 52px 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .ticks { animation: none; }
+    .dot { animation: none; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <h1>Rewind<span class="dot">.</span></h1>
-    <p class="tag">Instant replay for macOS &amp; Windows. It's already recording — press a key and keep the last 30 seconds.</p>
-    <div class="badges">
-      <span class="badge">Free &amp; open source (GPLv3)</span>
-      <span class="badge">macOS &amp; Windows</span>
-      <span class="badge">100% local — nothing uploaded</span>
-      <span class="badge">No account · No telemetry</span>
+<div class="bar">
+  <div class="wrap">
+    <a class="mark" href="/rewind/">REWIND<i>.</i></a>
+    <nav class="mono">
+      <a href="#what">What it does</a>
+      <a href="#data">Your data</a>
+      <a href="https://github.com/abdelaziz-mahdy/rewind">GitHub</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="status">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="mono">Buffering · 30 s</span>
     </div>
+
+    <h1>You already<br />recorded it<em>.</em></h1>
+
+    <p class="lede">
+      Rewind keeps the last 30 seconds of your game in memory, always. Something good
+      happens, you press one key — the clip was already there. Free, open source, and
+      it never leaves your machine.
+    </p>
+
     <div class="cta">
       <a class="btn" href="https://github.com/abdelaziz-mahdy/rewind/releases">Download</a>
-      <a class="btn secondary" href="https://github.com/abdelaziz-mahdy/rewind">Source on GitHub</a>
+      <a class="btn ghost" href="https://github.com/abdelaziz-mahdy/rewind">Read the source</a>
     </div>
-  </header>
 
-  <section>
-    <h2>What it does</h2>
-    <ul>
-      <li><b>Always-on replay buffer.</b> Your last 15–60 seconds are always in memory. Hit the hotkey after something good happens — no need to remember to hit record first.</li>
-      <li><b>Games that clip themselves.</b> In League of Legends, Rewind saves a clip the moment <em>you</em> get a kill, using Riot's official local Live Client Data API.</li>
-      <li><b>A library built around your games.</b> Clips group into matches, with the champion you played and your own scoreboard beside them.</li>
-      <li><b>Keep the good ones, share them yourself.</b> Clips are ordinary video files on your disk. Rewind never uploads anything.</li>
-    </ul>
-    <div class="shots">
-      <img src="docs/images/screenshot.png" alt="Rewind's clip library, grouped by game" />
-      <img src="docs/images/matches.png" alt="Per-match cards showing champion and your kills/deaths" />
+    <!-- Signature: the rolling buffer, running as you read. -->
+    <div class="buffer" aria-hidden="true">
+      <div class="meta">
+        <span class="mono">−30 s</span>
+        <span class="mono">Always in memory</span>
+        <span class="mono">Now</span>
+      </div>
+      <div class="track">
+        <div class="ticks"></div>
+        <div class="ticks tall"></div>
+        <div class="window"><span>Saved on keypress</span></div>
+        <div class="now"></div>
+      </div>
     </div>
-  </section>
 
-  <section>
-    <h2>Why it exists</h2>
-    <p>
-      On Windows, players have NVIDIA Instant Replay and Medal. On macOS almost none of
-      that exists — the few tools that do are manual-only, with no idea what's happening
-      in your game. Rewind is one open-source app that does both, on both platforms,
-      built on <a href="https://github.com/obsproject/obs-studio">libobs</a> (the engine
-      behind OBS Studio).
+    <div class="shot">
+      <img src="docs/images/screenshot.png" alt="Rewind's clip library: clips grouped by game, each with a thumbnail." />
+    </div>
+  </div>
+</header>
+
+<section id="what">
+  <div class="wrap">
+    <p class="label mono">What it does</p>
+    <h2>Recording is the part you forget. So it's already done.</h2>
+
+    <div class="grid">
+      <div class="cell">
+        <span class="mono">Always on</span>
+        <h3>The last 15–60 seconds, in memory</h3>
+        <p>No "start recording" to remember, and no 40 GB of footage you'll never watch. Only what you keep gets written to disk.</p>
+      </div>
+      <div class="cell">
+        <span class="mono">Automatic</span>
+        <h3>League clips itself</h3>
+        <p>Get a kill, get a clip. Rewind reads Riot's official local Live Client Data API and saves the moment — only your plays, never anyone else's.</p>
+      </div>
+      <div class="cell">
+        <span class="mono">Per match</span>
+        <h3>Your game, next to your clips</h3>
+        <p>Champion, skin, item build, K/D/A and CS — grouped into the match they came from, so a highlight has context.</p>
+      </div>
+      <div class="cell">
+        <span class="mono">Yours</span>
+        <h3>Ordinary files you own</h3>
+        <p>Clips are plain video on your disk. Send one to a friend, or don't. Rewind uploads nothing, ever.</p>
+      </div>
+    </div>
+
+    <div class="two" style="margin-top:14px">
+      <img src="docs/images/matches.png" alt="A game hub: matches as cards, each with the champion played and that match's kills and deaths." />
+      <img src="docs/images/settings.png" alt="Capture settings: buffer length, which display or app to capture, follow-the-game, and microphone." />
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="label mono">Why it exists</p>
+    <h2>Windows players got this a decade ago.</h2>
+    <p style="max-width:70ch">
+      NVIDIA Instant Replay, Medal, Outplayed — background recorders that catch what you
+      didn't plan for. On macOS almost none of it exists, and the few tools that do are
+      manual-only, with no idea what's happening in your game. Rewind is one open-source
+      app that does both, on both platforms, built on
+      <a href="https://github.com/obsproject/obs-studio">libobs</a> — the engine behind OBS Studio.
     </p>
-  </section>
+  </div>
+</section>
 
-  <section>
-    <h2>What data it reads</h2>
-    <div class="note">
+<section id="data">
+  <div class="wrap">
+    <p class="label mono">Your data</p>
+    <h2>Nothing leaves your machine.</h2>
+    <div class="panel">
       <p>
-        Rewind runs entirely on your own machine. There is no account, no server, no
-        telemetry, and no monetisation. It makes <b>no calls to Riot's web API and uses
-        no API key</b>.
+        There is no account, no server, no telemetry, and no monetisation. Rewind makes
+        <b>no calls to Riot's web API and uses no API key</b>.
       </p>
       <p>
-        For League of Legends it reads only Riot's official <b>Live Client Data API</b>
-        on <code>127.0.0.1:2999</code> — which exists for exactly this purpose, is
-        read-only, and is local to your PC. It uses that to know when <em>you</em> got a
-        kill (so it can save that clip) and to show your own match summary: champion,
-        items, K/D/A and CS. Champion and item art come from Riot's public
-        <b>Data Dragon</b> static data.
+        For League of Legends it reads Riot's official <b>Live Client Data API</b> on
+        <code>127.0.0.1:2999</code> — read-only, local to your PC, and built for exactly
+        this. It uses that to know when <em>you</em> got a kill, and to show your own match
+        summary: champion, items, K/D/A, CS. Champion and item art come from Riot's public
+        <b>Data Dragon</b> static data, cached on your disk.
       </p>
       <p>
         Rewind never reads game memory, never injects into or hooks the game, and never
-        touches network traffic — the things that get players banned. Games without an
-        official data source simply get manual hotkey capture, which is always safe.
+        touches network traffic — the things that get accounts banned. A game with no
+        official data source simply gets manual hotkey capture, which is always safe.
       </p>
+      <div class="never">
+        <span>No memory reads</span>
+        <span>No injection</span>
+        <span>No hooking</span>
+        <span>No packet capture</span>
+        <span>No uploads</span>
+      </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <footer>
+<footer>
+  <div class="wrap">
     <p>
       Rewind is not endorsed by Riot Games and does not reflect the views or opinions of
       Riot Games or anyone officially involved in producing or managing Riot Games
       properties. Riot Games and all associated properties are trademarks or registered
       trademarks of Riot Games, Inc.
     </p>
-    <p>
-      <a href="https://github.com/abdelaziz-mahdy/rewind">GitHub</a> ·
-      <a href="https://github.com/abdelaziz-mahdy/rewind/releases">Releases</a> ·
-      <a href="https://github.com/abdelaziz-mahdy/rewind/blob/main/docs/COMPLIANCE.md">Compliance</a> ·
+    <nav>
+      <a href="https://github.com/abdelaziz-mahdy/rewind">GitHub</a>
+      <a href="https://github.com/abdelaziz-mahdy/rewind/releases">Releases</a>
+      <a href="https://github.com/abdelaziz-mahdy/rewind/blob/main/docs/COMPLIANCE.md">Compliance</a>
       <a href="https://github.com/abdelaziz-mahdy/rewind/blob/main/LICENSE">GPLv3</a>
-    </p>
-  </footer>
+    </nav>
+  </div>
+</footer>
 
-</div>
 </body>
 </html>
