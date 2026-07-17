@@ -38,8 +38,20 @@ class DisplayInfo {
       '${isMain ? ', main' : ''})';
 }
 
-/// Returns [saved] only if it identifies a currently connected display —
-/// a stale UUID (e.g. an unplugged external monitor) must not be applied,
-/// or capture silently records black. Null means "use the main display".
-String? validDisplayUuid(String? saved, List<DisplayInfo> displays) =>
-    saved != null && displays.any((d) => d.uuid == saved) ? saved : null;
+/// The saved capture-display UUID to actually apply, or null for "use the
+/// main display".
+///
+/// A stale UUID (e.g. an unplugged external monitor) must not be applied, or
+/// capture silently records black — BUT only a NON-EMPTY [displays] list that
+/// lacks [saved] proves the display is gone. An EMPTY list means enumeration
+/// itself failed (a display asleep/clamshell, the screen locked, or a
+/// fullscreen game holding its own Space at launch) — not that the monitor
+/// disappeared. Wiping the choice then would silently fall capture back to the
+/// MAIN display and record the WRONG monitor; the shim resolves the UUID
+/// itself (see `rewind_obs_macos.c` `display_uuid`), so an empty list keeps
+/// [saved]. Only "enumerated, and it's genuinely missing" returns null.
+String? validDisplayUuid(String? saved, List<DisplayInfo> displays) {
+  if (saved == null) return null;
+  if (displays.isEmpty) return saved;
+  return displays.any((d) => d.uuid == saved) ? saved : null;
+}

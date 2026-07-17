@@ -99,15 +99,20 @@ Future<void> main() async {
   CaptureEngine? engine = RewindObsEngine();
   String? captureError;
   // Apply the user's saved capture-display choice before init so the shim
-  // targets it from the first frame (null: main display). A stale UUID —
-  // e.g. an unplugged external monitor — must be dropped, or capture
-  // silently records black.
+  // targets it from the first frame (null: main display). A genuinely stale
+  // UUID — an external monitor that's now UNPLUGGED — must be dropped, or
+  // capture silently records black. But an EMPTY enumeration is NOT proof of
+  // that (see validDisplayUuid): it keeps the choice, so we only wipe when
+  // the display list came back non-empty AND lacks the UUID. Wiping on an
+  // empty list would erase a deliberate "record my other monitor" choice and
+  // fall capture back to the main display — recording the WRONG screen.
   final connectedDisplays = engine.listDisplays();
   final connectedApps = engine.listCapturableApps();
   final savedDisplay =
       validDisplayUuid(settings.captureDisplayUuid, connectedDisplays);
   if (settings.captureDisplayUuid != null && savedDisplay == null) {
-    talker.warning('Saved capture display not found; using main display');
+    talker.warning('Saved capture display no longer connected; using main '
+        'display');
     settings.captureDisplayUuid = null;
     await store.save(settings);
   }
