@@ -14,14 +14,12 @@ handful of C functions (see `rewind_obs.h`) that the Dart side calls via
   shared layer and the per-platform backends: `extern` declarations for the
   shared state/helpers, plus the `rw_plat_*` function interface every
   backend implements.
-- `rewind_obs_macos.c` / `rewind_obs_windows.c` — the two libobs backends,
-  each implementing every `rw_plat_*` function for its platform. Compiled
-  only when `REWIND_USE_LIBOBS` is defined AND the matching platform macro
-  is set (see `hook/build.dart`); each file's body is also self-guarded the
-  same way, so an accidental compile elsewhere is a harmless empty
-  translation unit. Adding a third backend (e.g. Linux) means writing a
-  `rewind_obs_linux.c` implementing the same interface — no changes needed
-  to `rewind_obs.c`.
+- `rewind_obs_macos.c` / `rewind_obs_windows.c` / `rewind_obs_linux.c` — the
+  three libobs backends, each implementing every `rw_plat_*` function for
+  its platform. Compiled only when `REWIND_USE_LIBOBS` is defined AND the
+  matching platform macro is set (see `hook/build.dart`); each file's body
+  is also self-guarded the same way, so an accidental compile elsewhere is
+  a harmless empty translation unit.
 
 ## Current state
 
@@ -30,12 +28,13 @@ selected at compile time by two independent switches:
 
 - **`REWIND_USE_LIBOBS` defined** — the real libobs-backed implementation:
   `rewind_obs_macos.c` compiles on macOS, `rewind_obs_windows.c` on
-  Windows. Requires the fetched SDK at `native/third_party/obs/` (see
-  `tools/fetch_libobs.sh` on macOS / `tools/fetch_libobs_windows.ps1` on
-  Windows, both gitignored, pinned to libobs **32.1.2**). The macOS path is
-  real-world exercised (see the macOS section below); the Windows path is
-  implemented and compiles in CI against the real SDK but is **not yet
-  validated on real Windows hardware** — see the Windows section below for
+  Windows, `rewind_obs_linux.c` on Linux. Requires the fetched SDK at
+  `native/third_party/obs/` (see `tools/fetch_libobs.sh` on macOS /
+  `tools/fetch_libobs_windows.ps1` on Windows / `tools/fetch_libobs_linux.sh`
+  on Linux, all gitignored, pinned to libobs **32.1.2**). The macOS path is
+  real-world exercised (see the macOS section below); the Windows and Linux
+  paths are implemented and compile in CI against the real SDK but are
+  **not yet validated on real hardware** — see their sections below for
   exactly what's verified-by-source-reading vs. still an assumption.
 - **`REWIND_USE_LIBOBS` undefined** — a self-contained **stub**, entirely
   inside `rewind_obs.c` (works on every platform) so the Flutter app links
@@ -488,14 +487,206 @@ note):
   DLL's own export table (see `tools/fetch_libobs_windows.ps1`'s header
   comment for exactly how, and why that's a standard, safe technique).
 
+## Real mode: how it works (Linux)
+
+> **Status: implemented, CI-compiled against the real pinned SDK on a real
+> Linux (`ubuntu-latest`) GitHub Actions runner, NOT yet run on any real
+> Linux desktop.** Everything below is either verified directly against the
+> pinned obs-studio 32.1.2 source (fetched read-only via the GitHub API —
+> `plugins/linux-capture/`, `plugins/linux-pipewire/`,
+> `plugins/linux-pulseaudio/`, `plugins/obs-ffmpeg/obs-ffmpeg-vaapi.c`,
+> `plugins/obs-nvenc/`, `libobs/obs-nix*.c`, `libobs-opengl/gl-nix.c`,
+> `libobs-opengl/gl-x11-egl.c`) or clearly flagged as an assumption. A Linux
+> tester should treat every claim here as "needs confirming", not
+> "confirmed" — this backend has never opened a real X11/Wayland
+> connection, never enumerated a real window, never encoded a real frame.
+
+Unlike macOS (a single ScreenCaptureKit-backed capture model) and Windows (a
+single Win32 desktop model), Linux has **two structurally different
+compositor protocols** with no shared capture API between them, so this
+backend detects which one is running and picks an entirely different
+capture strategy per session.
+
+### X11 vs Wayland detection
+
+`rw_plat_pre_video_setup()` (called once, early — before `obs_reset_video()`
+creates the graphics device, since `libobs-opengl`'s `gl-nix.c` dispatches
+between its X11/EGL and Wayland/EGL backends the first time a GL context is
+created) checks the `WAYLAND_DISPLAY` environment variable: set and
+non-empty → Wayland session, otherwise → X11. This is the same environment
+variable virtually all non-Qt/non-GTK Linux tooling uses for this decision;
+libobs itself has no auto-detection (`obs_nix_platform` defaults to
+`OBS_NIX_PLATFORM_X11_EGL` in `libobs/obs-nix-platform.c` — the official
+frontend only ever sets it explicitly, driven by Qt's own
+`QApplication::platformName()` in `frontend/OBSApp.cpp`, which this shim has
+no equivalent of since it has no Qt). The result is applied via the public
+`obs_set_nix_platform()` API, which `plugins/linux-capture/linux-capture.c`'s
+own `obs_module_load()` reads to decide whether to register `xshm_input`/
+`xshm_input_v2`/`xcomposite_input` at all (`if (platform ==
+OBS_NIX_PLATFORM_X11_EGL) { ... }` — verified directly in that file: these
+sources are simply never registered on a Wayland session, module-load-time,
+not a runtime check this shim itself needs to duplicate).
+
+### X11 session
+
+1. **Video sources**: `xshm_input_v2` (a display, `"screen"` int setting —
+   a RandR monitor index) or `xcomposite_input` (a specific window,
+   `"capture_window"` string setting). Two distinct source ids, exactly the
+   same structural split as Windows' `monitor_capture`/`window_capture` —
+   switching between "capture a display" and "capture a window" recreates
+   the source; switching within a category updates it in place
+   (`rebuild_video_capture_x11()` in `rewind_obs_linux.c`, modeled directly
+   on the Windows backend's own `rebuild_video_capture()`).
+   - Unlike macOS (which distinguishes a whole-app target from a specific
+     window) or Windows (whose opaque `"title:class:exe"` token can target
+     either), **X11 has no "capture this application" concept** — only
+     windows. `rewind_set_capture_app()`'s value is therefore treated
+     exactly like `rewind_set_capture_window()`'s: both become the target
+     window's XID as a plain decimal string, the format
+     `xcomposite_input`'s own `"capture_window"` setting accepts directly
+     (verified against `convert_encoded_window_id()` in
+     `plugins/linux-capture/xcomposite-input.c`: a string containing no
+     `"\r\n"` divider is parsed as JUST the decimal XID, and
+     `xcomp_find_window()` tries an exact id match against the current
+     top-level window list first — no name/class re-derivation is needed
+     the way Windows' opaque token requires).
+2. **Display enumeration** (`rewind_list_displays`): RandR monitors
+   (`xcb_randr_get_monitors`), reproducing
+   `plugins/linux-capture/xhelpers.c`'s `randr_screen_geo()`/
+   `randr_screen_count()` "has monitors" path (RandR ≥ 1.5, universal on
+   any X server from the last decade) so the emitted index lines up with
+   what `xshm_input_v2`'s own `"screen"` property resolves internally.
+   Deliberately does **not** reproduce `xhelpers.c`'s further Xinerama/
+   legacy-per-CRTC-RandR fallbacks (dead code paths on any current desktop)
+   — falls back to a single bare-X11-screen entry instead if RandR monitors
+   are unavailable. The "uuid" this shim hands back is the RandR monitor
+   INDEX as a decimal string — not a persistent hardware id (X11 RandR
+   monitors have none), same caveat already true in spirit for Windows'
+   own device-id string (can change if a monitor is unplugged/replugged).
+3. **Window/app enumeration** (`rewind_list_capturable_apps`): pure XCB/EWMH
+   — `_NET_CLIENT_LIST` on the root window for every top-level window,
+   `_NET_WM_PID` to resolve the owning process, then `/proc/<pid>/comm` for
+   a display name (the Linux-native equivalent of macOS's `proc_pidpath`/
+   Windows' `QueryFullProcessImageNameW`), deduplicated by process name
+   (one row per running app, same granularity as the Windows backend's
+   per-exe dedup). Window title comes from `_NET_WM_NAME` (UTF8_STRING)
+   falling back to the legacy `WM_NAME` property treated as raw bytes — a
+   simplification versus `xcomposite-input.c`'s own full ICCCM
+   STRING/COMPOUND_TEXT charset handling, acceptable since this is cosmetic
+   display text only, never used to re-match a window (see point 1 above).
+4. **Audio**: `pulse_output_capture` (desktop, `"device_id": "default"`) /
+   `pulse_input_capture` (mic), both from `plugins/linux-pulseaudio/`.
+   **Confirmed there is no per-application PulseAudio source anywhere in
+   this SDK's plugin set** (grepped every `obs_source_info` linux-pulseaudio
+   registers: `pulse_input_capture` + `pulse_output_capture`, nothing else —
+   neither exposes per-owning-process filtering the way macOS's
+   `sck_audio_capture` "application" setting or Windows'
+   `wasapi_process_output_capture` "window" setting do). `AUDIO_MODE_APP`
+   therefore falls back to full desktop audio on Linux, **with a logged
+   warning** explaining why — not silence (which would surprise a user who
+   explicitly asked for audio) and not a silent upgrade to full desktop
+   audio (which would leak audio a user opted out of without telling them).
+   This is a deliberate, documented platform-capability decision, not a
+   bug or an oversight.
+
+### Wayland session
+
+There is no libobs source id that can target a specific display or window
+by settings key on Wayland — capture is entirely mediated by the
+`xdg-desktop-portal` ScreenCast portal, whose OWN picker dialog is shown to
+the user interactively when the capture source starts
+(`plugins/linux-pipewire/screencast-portal.c`'s `select_source()` →
+`SelectSources` D-Bus call). This shim registers the portal's unified
+monitor-and-window source, `"pipewire-screen-capture-source"`
+(`OBS_PORTAL_CAPTURE_TYPE_UNIFIED` — confirmed in `screencast_portal_load()`,
+always registered regardless of what `AvailableSourceTypes` the portal
+reports, unlike the split desktop-only/window-only variants which are
+conditionally registered), with just `"ShowCursor": true`. Consequences,
+all deliberate and documented rather than silently degraded:
+
+- **`rewind_list_displays`/`rewind_list_capturable_apps` return an empty
+  array** (not an error) — there is no synchronous enumeration API; the
+  portal dialog IS the picker.
+- **`rewind_set_capture_display`/`_app`/`_window` are no-ops** (logged at
+  `LOG_WARNING`, not silently swallowed) — nothing to reconfigure
+  programmatically once the source exists.
+- **The portal reprompts on every capture start.** The screencast protocol
+  (v4+) supports a `"RestoreToken"` the source's own `.save` callback
+  persists to skip re-prompting — but that requires this shim to persist
+  obs source settings across process restarts, which it doesn't do for ANY
+  source (no on-disk settings-persistence layer exists in this shim at
+  all). Left unset rather than half-implemented.
+- **`rw_plat_query_main_display_size()` returns a fixed 1920×1080 default**
+  on Wayland (no synchronous compositor-output-size query without a
+  Wayland client connection of this shim's own, out of scope here) — only
+  affects the initial OBS canvas size, not the eventual capture resolution
+  (the portal-backed source reports its own width/height once a stream is
+  actually connected, per `screencast_portal_capture_get_width/height` in
+  `screencast-portal.c`).
+
+### Encoders
+
+A hardware-first ladder, same spirit as Windows' NVENC/AMF/QSV/x264 chain
+but shorter (Linux has no AMD- or Intel-specific plugin distinct from
+VA-API, unlike Windows' separate AMF/QSV modules):
+`obs_nvenc_h264_tex` (NVIDIA; cross-platform id, texture interop via
+`nvenc-opengl.c` on Linux per `plugins/obs-nvenc/CMakeLists.txt`'s
+`$<$<PLATFORM_ID:Linux>:nvenc-opengl.c>`) → `ffmpeg_vaapi_tex` (Intel/AMD via
+VA-API, texture-passing) → `ffmpeg_vaapi` (same plugin, CPU-copy fallback,
+broader compatibility if texture interop fails to attach) → `obs_x264`
+(software, universal fallback). All four ids confirmed by grepping
+`.id = "..."` registrations directly in `plugins/obs-nvenc/nvenc.c` and
+`plugins/obs-ffmpeg/obs-ffmpeg-vaapi.c` at the pinned tag. `"vaapi_device"`
+is deliberately left unset so each VAAPI encoder's own `get_defaults()`
+(`vaapi_default_device()`) auto-picks a suitable `/dev/dri/renderD1xx` node,
+rather than this shim reimplementing that device-probing logic. Audio is
+`ffmpeg_aac`, same choice and rationale as the Windows backend (no
+`CoreAudio_AAC`-equivalent licensing question).
+
+### `graphics_module` / module paths
+
+`libobs-opengl.so` is the only render device libobs-opengl builds for on
+Linux (`libobs-opengl/CMakeLists.txt` at the pinned tag has no D3D11/Metal
+branch to choose between the way macOS/Windows do). Its build output name
+is exactly `libobs-opengl.so` — `set_target_properties_obs(libobs-opengl
+PROPERTIES ... PREFIX "" ...)` combined with the CMake target already being
+named `libobs-opengl` (not `opengl`) means `PREFIX ""` doesn't strip the
+"lib" substring. `obs_add_module_path()` uses flat `%module%.so` /
+`data/obs-plugins/%module%` templates — every plugin's own `CMakeLists.txt`
+sets `PREFIX ""`, and `get_module_extension()` in `libobs/obs-nix.c`
+confirms `.so`, so plugin modules build as flat `<name>.so` files (no `lib`
+prefix, no `.plugin`-bundle nesting like macOS) — same flat shape as the
+Windows backend's `.dll` layout.
+
+### `tools/fetch_libobs_linux.sh`'s from-source approach
+
+Like macOS (and unlike Windows' prebuilt-zip repackaging), this script
+builds libobs from source via CMake — Ninja generator rather than macOS's
+mandatory Xcode generator, matching how obs-studio's own CI configures its
+`ubuntu-ci` preset. There is no equivalent of Windows' "official prebuilt
+portable zip to repackage" shortcut: obs-studio publishes no standalone
+Linux runtime artifact meant for embedding (distros are expected to build
+from source against system libraries, which is exactly what this script
+does too, just against a narrow plugin allow-list — `linux-capture`,
+`linux-pipewire`, `linux-pulseaudio`, `obs-ffmpeg`, `obs-nvenc`, `obs-x264`).
+`ENABLE_NEW_MPEGTS_OUTPUT` is turned off to avoid needing `librist-dev`/
+`libsrt-openssl-dev` (RIST/SRT streaming isn't used by a local
+replay-buffer/recording-only app). See the script's own header comment for
+the full required `apt-get install` package list, and
+`.github/workflows/ci.yml`'s `build-linux-libobs` job for how CI installs
+them and runs it.
+
 ## Wiring up real libobs
 
-1. `tools/fetch_libobs.sh` (macOS) or `tools/fetch_libobs_windows.ps1`
-   (Windows) lays out the SDK at `native/third_party/obs/` (gitignored).
-   On macOS, see the gap above — `mac-videotoolbox` needs adding to its
-   plugin allow-list before a fetch produces a fully working encoder set.
-   On Windows there's no equivalent gap (see "`mac-videotoolbox`-equivalent
-   gap: none" above).
+1. `tools/fetch_libobs.sh` (macOS), `tools/fetch_libobs_windows.ps1`
+   (Windows), or `tools/fetch_libobs_linux.sh` (Linux) lays out the SDK at
+   `native/third_party/obs/` (gitignored). On macOS, see the gap above —
+   `mac-videotoolbox` needs adding to its plugin allow-list before a fetch
+   produces a fully working encoder set. On Windows/Linux there's no
+   equivalent gap (see "`mac-videotoolbox`-equivalent gap: none" above —
+   the same reasoning applies to Linux's VAAPI/NVENC/x264 ladder, all
+   provided by plugins already in `tools/fetch_libobs_linux.sh`'s
+   allow-list).
 2. Build the shared library:
 
    **macOS**
@@ -520,6 +711,18 @@ note):
      native\shim\rewind_obs.c native\shim\rewind_obs_windows.c
    link /DLL /OUT:rewind_obs.dll rewind_obs.obj rewind_obs_windows.obj ^
      /LIBPATH:native\third_party\obs\lib obs.lib user32.lib dwmapi.lib
+   ```
+
+   **Linux** — implemented, not yet run against a real X11/Wayland session
+   (see the Linux section above). `hook/build.dart` runs the equivalent of
+   this automatically; shown here for reference / manual debugging outside
+   the Dart build hook:
+   ```bash
+   clang -shared -fPIC native/shim/rewind_obs.c native/shim/rewind_obs_linux.c \
+     -o librewind_obs.so \
+     -DREWIND_USE_LIBOBS -Inative/third_party/obs/include \
+     -Lnative/third_party/obs/lib -lobs -lX11 -lX11-xcb -lxcb -lxcb-randr -ldl \
+     -Wl,-rpath,native/third_party/obs/lib
    ```
 
 3. Place the resulting library where the app can `DynamicLibrary.open` it

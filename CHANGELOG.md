@@ -6,6 +6,31 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+- **Linux real-capture backend** (native shim): `xshm_input_v2`/`xcomposite_input`
+  (X11 display and window/app targeting, RandR-monitor-index and XID-based)
+  and a Wayland `pipewire-screen-capture-source` path (portal-driven; capture
+  target selection is interactive-only there, no programmatic display/app/window
+  preselection — see `native/shim/README.md`'s Linux section), PulseAudio
+  audio (desktop/mic; no per-application source exists on Linux in this SDK,
+  so "app audio" mode falls back to full desktop audio with a logged
+  warning), and a hardware-first encoder ladder (NVIDIA NVENC → VAAPI →
+  software x264) with `ffmpeg_aac` audio. New `tools/fetch_libobs_linux.sh`
+  (builds libobs + this plugin set from source via CMake/Ninja against
+  system X11/XCB/PipeWire/PulseAudio/FFmpeg dev packages, pinned to the same
+  libobs 32.1.2 tag as macOS/Windows), wired into a new `build-linux-libobs`
+  CI job (`ubuntu-latest`) that compiles `flutter build linux --debug`
+  against the real fetched SDK. **Implemented and CI-compiled against the
+  real pinned libobs SDK on a real Linux runner, but not yet run on any
+  real Linux desktop** — no X server, Wayland compositor, or GPU driver has
+  ever executed this code; see `native/shim/README.md`'s Linux section and
+  `ROADMAP.md`. No `tools/bundle_obs_linux.sh` packaging script exists yet,
+  and the Flutter desktop plugins Rewind depends on beyond the shim
+  (`hotkey_manager`, `tray_manager`, `media_kit`, `file_selector`) each
+  declare Linux support but need additional system packages/setup this
+  work doesn't wire up end-to-end — a real Linux app needs more than this
+  backend alone.
+
 ## [0.1.0] - 2026-07-16
 
 First tagged release. macOS is the validated platform (real capture, League

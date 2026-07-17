@@ -4,7 +4,9 @@ This document describes how Rewind is put together and why.
 
 ## Goals
 
-- One codebase, native performance, Windows **and** macOS.
+- One codebase, native performance, Windows, macOS, **and** Linux (the
+  Linux capture backend is implemented and CI-compiled; a distributable
+  Linux app is not yet assembled — see "Packaging" below and ROADMAP.md).
 - Reuse a proven capture/encode pipeline instead of reinventing it — hence embedded **libobs**.
 - Keep the native surface tiny so almost all work happens in testable Dart.
 
@@ -33,7 +35,7 @@ Owns everything the user sees and most of the logic:
 
 A small, stable C11 API (no C++, so `dart:ffi` binding is trivial — no name mangling). It hides all libobs setup and exposes only:
 
-Internally the shim is split by platform: `rewind_obs.c` holds the shared API layer + no-libobs stub, `rewind_obs_internal.h` declares the `rw_plat_*` backend interface, and `rewind_obs_macos.c`/`rewind_obs_windows.c` each implement that interface for one platform (see `native/shim/README.md`). No `#ifdef __APPLE__`/`_WIN32` "backend selection" walls remain in the shared file — a future Linux backend drops in as a third `rewind_obs_linux.c` with no changes needed there.
+Internally the shim is split by platform: `rewind_obs.c` holds the shared API layer + no-libobs stub, `rewind_obs_internal.h` declares the `rw_plat_*` backend interface, and `rewind_obs_macos.c`/`rewind_obs_windows.c`/`rewind_obs_linux.c` each implement that interface for one platform (see `native/shim/README.md`). No `#ifdef __APPLE__`/`_WIN32`/`__linux__` "backend selection" walls exist in the shared file — each backend was dropped in purely by implementing the `rw_plat_*` interface, no changes needed there.
 
 | Function | Purpose |
 |----------|---------|
@@ -89,6 +91,53 @@ libobs SDK, **not yet validated on real Windows hardware** — see ROADMAP.md):
   hand-off) are resolved with a dev-tree-vs-packaged-layout fallback mirroring
   macOS's own `find_obs_sdk_dir()`/`find_graphics_module_path()`. See
   `native/shim/README.md` for the full trace with source citations.
+
+**Linux capture path** (implemented, CI-compiled on a real Ubuntu runner
+against the real pinned libobs SDK, **not yet run on any real Linux
+desktop** — see ROADMAP.md):
+
+- **Two capture models, chosen per session type.** Linux has no single
+  capture API the way macOS (ScreenCaptureKit) and Windows (DXGI/WGC) do —
+  X11 and Wayland are structurally different. The shim detects the session
+  via `WAYLAND_DISPLAY` and picks accordingly (see `native/shim/README.md`'s
+  Linux section for the full trace).
+- **X11**: `xshm_input_v2` (a display, keyed by a RandR monitor index) and
+  `xcomposite_input` (a specific window, keyed by its XID) — the same
+  two-source-id structural split as Windows' `monitor_capture`/
+  `window_capture`. X11 has no "capture this application" concept
+  distinct from a window, so app targeting and window targeting collapse
+  into the same mechanism (unlike macOS/Windows, which each have a
+  separate app-level target).
+- **Wayland**: a single portal-backed source
+  (`pipewire-screen-capture-source`, from `xdg-desktop-portal` + PipeWire)
+  whose picker dialog is shown to the user interactively when capture
+  starts — there is no settings key to preselect a display/window/app the
+  way X11 or the other two platforms support, so display/app/window
+  enumeration and the capture-target setters are no-ops on Wayland,
+  documented rather than silently swallowed.
+- **Audio**: `pulse_output_capture` (desktop, "ALL" mode) / `pulse_input_capture`
+  (mic). Linux has **no per-application PulseAudio source** in this SDK —
+  "APP" audio mode falls back to full desktop audio with a logged warning,
+  a deliberate platform-capability decision (see `native/shim/README.md`).
+- **Encoders**: a hardware-first ladder — NVIDIA (`obs_nvenc_h264_tex`) →
+  Intel/AMD VA-API (`ffmpeg_vaapi_tex` then `ffmpeg_vaapi`) → software x264
+  (`obs_x264`); audio is `ffmpeg_aac` (same reasoning as Windows: no
+  `CoreAudio_AAC`-equivalent licensing question).
+- **Build**: `tools/fetch_libobs_linux.sh` builds libobs + this plugin set
+  from source via CMake/Ninja against system X11/XCB/PipeWire/PulseAudio/
+  FFmpeg dev packages (unlike Windows' prebuilt-zip repackaging — there is
+  no upstream Linux runtime artifact meant for embedding). `hook/build.dart`
+  links the shim against it directly (`-lobs`, no import-lib indirection
+  needed on ELF).
+- **Flutter Linux desktop plugin support** (outside the shim, not fixed by
+  this work — see ROADMAP.md for the full gap list): `hotkey_manager`,
+  `tray_manager`, `media_kit`/`media_kit_video`, and `file_selector` all
+  declare Linux support, but `hotkey_manager` needs `keybinder-3.0`,
+  `tray_manager` needs `libayatana-appindicator3` AND won't show an icon on
+  stock GNOME without the user installing a Shell extension, and
+  `media_kit` needs `libmpv` present on the system (not bundled) — none of
+  these are libobs/shim concerns, but they block a real Linux app beyond
+  what this shim provides.
 
 ### 3. libobs (vendored/linked)
 
@@ -156,6 +205,15 @@ libobs is not a single static blob — it needs runtime data and plugin modules 
   template), and `data/` nested (matching its data template + the
   `obs_add_data_path()` call `rewind_obs.c` makes on Windows — see below);
   package with Inno Setup (`tools/windows_installer.iss`).
+- **Linux:** `tools/fetch_libobs_linux.sh` builds `native/third_party/obs/`
+  from source (CMake/Ninja) against the same narrow plugin allow-list as
+  the other two platforms. **No `tools/bundle_obs_linux.sh` exists yet** —
+  packaging a runnable Linux bundle (copying `libobs.so`/`libobs-opengl.so`/
+  plugins/data next to a built executable, plus resolving the Flutter
+  plugin gaps noted above) was out of scope for the task that added this
+  backend; CI only compiles `flutter build linux --debug` against the real
+  SDK (`build-linux-libobs` in `ci.yml`), it doesn't produce a distributable
+  artifact. See ROADMAP.md.
 
 CI release jobs assemble these bundles per platform. See `.github/workflows/release.yml`.
 

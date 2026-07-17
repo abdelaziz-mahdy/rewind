@@ -96,3 +96,48 @@ jobs:
       - run: flutter build windows --debug
       - run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
         shell: pwsh
+
+  build-linux-libobs:
+    name: Build Linux (real libobs)
+    needs: analyze-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      # See tools/fetch_libobs_linux.sh's header comment for exactly why
+      # each package is needed. Kept as an explicit CI step (rather than
+      # inside the script) so the package list stays visible/auditable here.
+      - name: Install libobs build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git python3 pkg-config \
+            libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
+            libavutil-dev libswresample-dev libswscale-dev \
+            zlib1g-dev uthash-dev libjansson-dev libsimde-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-shm0-dev \
+            libxcb-randr0-dev libxcb-xinerama0-dev libxcb-composite0-dev \
+            libxcb-xfixes0-dev libxcomposite-dev libdrm-dev \
+            libwayland-dev libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev \
+            libpipewire-0.3-dev libglib2.0-dev \
+            libpulse-dev libx264-dev libva-dev libpci-dev libffmpeg-nvenc-dev \
+            clang libgtk-3-dev
+      - name: Cache libobs SDK
+        uses: actions/cache@v4
+        with:
+          path: native/third_party/obs
+          key: libobs-linux-x64-32.1.2-recipe-1
+      - run: bash tools/fetch_libobs_linux.sh
+      - run: flutter config --enable-linux-desktop
+      - run: flutter pub get
+      # This compiles the real Linux shim path (REWIND_USE_LIBOBS) — the
+      # whole point of this job. Unlike the macOS/Windows real-libobs jobs,
+      # there is no stub-mode `build (ubuntu-latest)` leg to compare
+      # against in the matrix above: Flutter Linux desktop plugin support
+      # (hotkey_manager, tray_manager, media_kit, file_selector) hasn't been
+      # verified yet, so a full `flutter build linux` isn't exercised
+      # outside this real-libobs path either way — see
+      # native/shim/README.md's Linux section for exactly what that means.
+      - run: flutter build linux --debug

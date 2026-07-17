@@ -6,17 +6,19 @@
 //
 // native/shim/ layout (see native/shim/rewind_obs_internal.h for the
 // backend-seam design): rewind_obs.c is the shared API layer + no-libobs
-// stub, ALWAYS compiled; rewind_obs_macos.c / rewind_obs_windows.c are the
-// per-platform libobs backends, each guarded to compile to nothing unless
-// both REWIND_USE_LIBOBS is defined AND its own platform matches, and only
-// ever added to `sources` below on the matching host platform (so a stub
-// build on either OS never even sees the other platform's backend file).
+// stub, ALWAYS compiled; rewind_obs_macos.c / rewind_obs_windows.c /
+// rewind_obs_linux.c are the per-platform libobs backends, each guarded to
+// compile to nothing unless both REWIND_USE_LIBOBS is defined AND its own
+// platform matches, and only ever added to `sources` below on the matching
+// host platform (so a stub build on any OS never even sees another
+// platform's backend file).
 //
 // Docs: https://dart.dev/tools/hooks
 //
 // Mode is picked automatically by whether the libobs SDK has been fetched
 // (native/third_party/obs/, gitignored — see tools/fetch_libobs.sh on macOS,
-// tools/fetch_libobs_windows.ps1 on Windows):
+// tools/fetch_libobs_windows.ps1 on Windows, tools/fetch_libobs_linux.sh on
+// Linux):
 //
 //   - SDK present  -> real libobs mode. Defines REWIND_USE_LIBOBS and adds
 //     the SDK's include dir. Linking is per-OS (see below); either way it's
@@ -49,6 +51,21 @@
 // tools/bundle_obs_windows.ps1 places) via the standard "search the main
 // executable's own directory" DLL search rule, since the bundle script
 // drops the whole runtime flat next to rewind.exe.
+//
+// Linux: tools/fetch_libobs_linux.sh builds libobs + the Linux plugin set
+// from source (like macOS, unlike Windows' prebuilt-zip approach) via
+// CMake + Ninja against system X11/XCB/PipeWire/PulseAudio/FFmpeg dev
+// packages (see that script's own header comment for the exact apt list).
+// Linking uses plain `-l`/`-L`-style typed params (clang/gcc, like macOS,
+// not MSVC): `obs` (the libobs.so this shim links against directly, no
+// import-lib indirection needed on ELF), plus `X11`/`X11-xcb`/`xcb`/
+// `xcb-randr` for rewind_obs_linux.c's own direct X11/XCB calls (capture-
+// target enumeration, RandR monitor listing) and `dl` for dladdr(). Two
+// rpaths mirror the macOS shape: an absolute one into the fetched SDK's
+// lib/ (dev-tree runs) and `$ORIGIN` (ELF's dyld-@loader_path analogue) for
+// an eventual flat-colocated packaged layout — no tools/bundle_obs_linux.sh
+// exists yet (packaging was out of scope for this task; see
+// native/shim/README.md's Linux section).
 import 'dart:io';
 
 import 'package:hooks/hooks.dart';
@@ -71,6 +88,7 @@ void main(List<String> args) async {
         'native/shim/rewind_obs.c',
         if (useLibobs && Platform.isMacOS) 'native/shim/rewind_obs_macos.c',
         if (useLibobs && Platform.isWindows) 'native/shim/rewind_obs_windows.c',
+        if (useLibobs && Platform.isLinux) 'native/shim/rewind_obs_linux.c',
       ],
       includes: [if (useLibobs) 'native/third_party/obs/include'],
       defines: {if (useLibobs) 'REWIND_USE_LIBOBS': null},
@@ -80,9 +98,23 @@ void main(List<String> args) async {
       libraryDirectories: [
         '.',
         if (useLibobs && Platform.isWindows) '${obsRoot.path}/lib',
+        if (useLibobs && Platform.isLinux) '${obsRoot.path}/lib',
       ],
       libraries: [
         if (useLibobs && Platform.isWindows) ...['obs', 'user32', 'dwmapi'],
+        // X11/XCB for xshm_input/xcomposite_input capture-target
+        // enumeration and RandR monitor listing (rewind_obs_linux.c); 'dl'
+        // for dladdr() (rw_plat_own_dir, same technique as the macOS
+        // backend, but macOS gets dladdr from libSystem implicitly while
+        // glibc needs an explicit -ldl).
+        if (useLibobs && Platform.isLinux) ...[
+          'obs',
+          'X11',
+          'X11-xcb',
+          'xcb',
+          'xcb-randr',
+          'dl'
+        ],
       ],
       flags: [
         if (useLibobs && Platform.isMacOS) ...[
@@ -109,6 +141,22 @@ void main(List<String> args) async {
           // change back to flat placement.
           '-Wl,-rpath,@loader_path/../../../',
           '-Wl,-rpath,@loader_path/../Frameworks',
+        ],
+        if (useLibobs && Platform.isLinux) ...[
+          // Dev-tree runs: resolve libobs.so/libobs-opengl.so straight from
+          // the fetched SDK via an absolute rpath (mirrors the macOS flag
+          // above; ELF's $ORIGIN is the Linux/glibc analogue of dyld's
+          // @loader_path, single-quoted so the shell that eventually runs
+          // the linker doesn't expand it, and escaped here so Dart's own
+          // string interpolation doesn't try to either).
+          '-Wl,-rpath,${obsRoot.path}/lib',
+          // Packaged app: aspirational, flat colocation next to the shim
+          // .so — no tools/bundle_obs_linux.sh exists yet (packaging was
+          // out of scope for this task; see native/shim/README.md), but
+          // this costs nothing to include now and matches
+          // rw_plat_sdk_dir_candidate()/rw_plat_find_graphics_module_path()'s
+          // own flat-shim-dir fallback in rewind_obs_linux.c.
+          r'-Wl,-rpath,$ORIGIN',
         ],
       ],
     );

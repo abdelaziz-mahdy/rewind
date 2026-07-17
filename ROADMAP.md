@@ -32,6 +32,24 @@ These shape every milestone:
 > confirm actual capture/encode/save before this checkbox is trustworthy;
 > see `docs/COMPLIANCE.md` and the shim README for what to verify first.
 
+> **Linux real capture** (X11 `xshm_input_v2`/`xcomposite_input` display and
+> window capture, Wayland portal-backed capture via `linux-pipewire`,
+> PulseAudio audio, VAAPI/NVENC/x264 encoder ladder in the shim — see
+> `native/shim/README.md`'s Linux section) is implemented and wired into CI
+> (`build-linux-libobs` in `ci.yml` compiles it on a real Ubuntu runner
+> against the real pinned libobs SDK), but is **unvalidated on any real
+> Linux desktop** — no X server, no Wayland compositor, no GPU driver has
+> ever run this code. There is also **no distributable Linux build yet**:
+> no `tools/bundle_obs_linux.sh` packaging script, and the Flutter desktop
+> plugins Rewind depends on for hotkeys/tray/playback (`hotkey_manager`,
+> `tray_manager`, `media_kit`, `file_selector`) each declare Linux support
+> but need system packages this repo doesn't yet document/install
+> end-to-end (`keybinder-3.0`, `libayatana-appindicator3`, `libmpv`) and
+> `tray_manager` specifically won't show an icon on stock GNOME without the
+> user installing a Shell extension. A real Linux app needs all of the
+> above, not just the shim. See `native/shim/README.md` and
+> `ARCHITECTURE.md`'s Packaging section.
+
 ## v0.2 — "It clips League automatically" (first integration)
 
 - [ ] `GameEventSource` abstraction + `GameRegistry`
