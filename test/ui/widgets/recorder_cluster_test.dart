@@ -120,12 +120,26 @@ void main() {
       expect(sourceLine('App Two'), findsOneWidget);
     });
 
-    testWidgets('hidden entirely when there are no displays to pick between',
-        (t) async {
+    testWidgets('hidden only when nothing at all is pickable', (t) async {
+      // No displays AND no apps AND no live enumerator — the degenerate
+      // "capture is impossible" case is the only one that hides the line.
       await t.pumpWidget(
           app(cluster(settings: AppSettings(), displays: const [])));
       expect(find.byIcon(Icons.desktop_windows_outlined), findsNothing);
       expect(find.byIcon(Icons.apps_outlined), findsNothing);
+    });
+
+    testWidgets('still shown when apps are pickable but displays came back '
+        'empty (the empty-displays-at-startup case)', (t) async {
+      // A single empty listDisplays() at launch must NOT hide the only
+      // app-picker in the main window: apps enumerated fine, so the game is
+      // still pickable here even though no display was reported.
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        displays: const [],
+        capturableApps: _apps,
+      )));
+      expect(find.byKey(const ValueKey('recorderSourceLine')), findsOneWidget);
     });
 
     testWidgets(
