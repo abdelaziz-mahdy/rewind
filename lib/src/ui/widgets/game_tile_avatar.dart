@@ -1,18 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../icns.dart';
 import '../theme.dart';
 
-/// A squared "logo" stand-in for a game: 1-2 letter initials on a muted,
-/// per-game tint (or, for the `desktop` pseudo-game, the desktop icon).
+/// A squared "logo" for a game: the real OS-installed app icon
+/// ([iconPath], read via `icns.dart` — the same extraction the
+/// capture-source picker's app menu already uses) when one has been
+/// captured, else 1-2 letter initials on a muted, per-game tint (or, for
+/// the `desktop` pseudo-game, the desktop icon).
 ///
-/// Rewind ships no real game artwork on purpose: the actual logos/icons are
-/// trademarked assets whose license terms don't permit redistribution in a
-/// GPLv3 repository (see `docs/COMPLIANCE.md`'s "sanctioned sources only"
-/// stance — the same caution that keeps integrations off game memory also
-/// keeps this app off games' branded assets). Reading each game's real,
-/// OS-installed app icon at runtime (rather than bundling artwork) is a
-/// plausible future upgrade, but out of scope here — see docs/superpowers/
-/// specs/2026-07-13-game-centric-redesign.md.
+/// Rewind ships NO bundled game artwork — the monogram fallback exists
+/// because the actual logos/icons are trademarked assets whose license
+/// terms don't permit redistribution in a GPLv3 repository (see
+/// `docs/COMPLIANCE.md`'s "sanctioned sources only" stance — the same
+/// caution that keeps integrations off game memory also keeps this app off
+/// games' branded assets). Reading the icon at runtime off a real,
+/// already-installed app bundle the user is already running is a different
+/// thing — no asset is ever copied into the repo or shipped — and is what
+/// [iconPath] enables when set (see `GameConfig.iconPath`'s doc for how it
+/// gets there). Wine/CrossOver games never have one (no bundle to read an
+/// icon from), so they always render the monogram — the correct fallback,
+/// not a bug.
 ///
 /// Used at three sizes: 28 px in the left rail, 40 px in the game hub
 /// header, 32 px in the Supported Games rows.
@@ -21,10 +29,16 @@ class GameTileAvatar extends StatelessWidget {
   final String displayName;
   final double size;
 
+  /// Absolute path to an `.icns` bundle icon, or null to always show the
+  /// monogram/desktop-icon fallback (every existing call site before this
+  /// feature, and any game never matched to a running app).
+  final String? iconPath;
+
   const GameTileAvatar({
     required this.gameId,
     required this.displayName,
     required this.size,
+    this.iconPath,
     super.key,
   });
 
@@ -32,6 +46,21 @@ class GameTileAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
     final radius = BorderRadius.circular(tokens.radiusControl);
+
+    final path = iconPath;
+    final png = (path != null && path.isNotEmpty) ? loadAppIconPng(path) : null;
+    if (png != null) {
+      return ClipRRect(
+        borderRadius: radius,
+        child: Image.memory(
+          png,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    }
 
     // The manual-capture pseudo-game has no display name worth abbreviating
     // ("Desktop" -> "DE" reads as a typo) and no per-game tint would mean

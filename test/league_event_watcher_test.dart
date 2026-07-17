@@ -16,6 +16,11 @@ Map<String, dynamic> _kill(int id, String killer,
 String _events(List<Map<String, dynamic>> events) =>
     jsonEncode({'Events': events});
 
+/// The shape `_emitMatchInfo` puts in each `allies`/`enemies` entry —
+/// matches `MatchPlayer.fromDynamic`'s expected keys exactly.
+Map<String, dynamic> _player(String championName, {String? riotId}) =>
+    {'championName': championName, 'championKey': null, 'riotId': riotId};
+
 void main() {
   late Map<String, String?> responses;
   late LeagueEventWatcher watcher;
@@ -126,8 +131,12 @@ void main() {
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
     expect(info.meta['champion'], 'Ahri');
     expect(info.meta['gameMode'], "Summoner's Rift");
-    expect(info.meta['allies'], ['Lux']); // same team, excludes me
-    expect(info.meta['enemies'], ['Zed', 'Yasuo']);
+    // same team, excludes me; each entry carries the player's name too.
+    expect(info.meta['allies'], [_player('Lux', riotId: 'Mate#EUW')]);
+    expect(info.meta['enemies'], [
+      _player('Zed', riotId: 'Foe1#EUW'),
+      _player('Yasuo', riotId: 'Foe2#EUW'),
+    ]);
   });
 
   test('ARAM Mayhem (KIWI) is a real 2-team mode and gets a friendly name',
@@ -150,8 +159,8 @@ void main() {
     final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
     expect(info.meta['gameMode'], 'ARAM Mayhem');
     expect(info.meta['champion'], 'Syndra');
-    expect(info.meta['allies'], ['Sona']);
-    expect(info.meta['enemies'], ['Ziggs']);
+    expect(info.meta['allies'], [_player('Sona', riotId: 'Mate#EUW')]);
+    expect(info.meta['enemies'], [_player('Ziggs', riotId: 'Foe#EUW')]);
   });
 
   test(
@@ -175,7 +184,12 @@ void main() {
     expect(info.meta['champion'], 'Leona');
     expect(info.meta['gameMode'], 'Arena');
     expect(info.meta['allies'], isEmpty);
-    expect(info.meta['enemies'], ['Vex', 'Jax', 'Lux']); // all others, flat
+    // all others, flat — still carrying names.
+    expect(info.meta['enemies'], [
+      _player('Vex', riotId: 'A#EUW'),
+      _player('Jax', riotId: 'B#EUW'),
+      _player('Lux', riotId: 'C#EUW'),
+    ]);
   });
 
   test('matchInfo is emitted only once per match', () async {
@@ -244,6 +258,158 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(emitted, isEmpty);
+  });
+
+  test('allies/enemies also carry each player\'s rawChampionName for art',
+      () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'},
+      {
+        'riotId': 'Mate#EUW',
+        'championName': 'Wukong',
+        'rawChampionName': 'game_character_displayname_MonkeyKing',
+        'team': 'ORDER',
+      },
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    final allies = (info.meta['allies'] as List).cast<Map<String, dynamic>>();
+    expect(
+        allies.single['championKey'], 'game_character_displayname_MonkeyKing');
+  });
+
+  test(
+      'a player with no riotId falls back to riotIdGameName#riotIdTagLine, '
+      'then summonerName', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'},
+      {
+        'championName': 'Lux',
+        'riotIdGameName': 'Mate',
+        'riotIdTagLine': 'EUW',
+        'team': 'ORDER',
+      },
+      {
+        'championName': 'Zed',
+        'summonerName': 'LegacyFoe',
+        'team': 'CHAOS',
+      },
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(info.meta['allies'], [_player('Lux', riotId: 'Mate#EUW')]);
+    expect(info.meta['enemies'], [_player('Zed', riotId: 'LegacyFoe')]);
+  });
+
+  test('matchInfo also carries rawChampionName/skinName for art', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {
+        'riotId': 'Me#EUW',
+        'championName': 'Wukong',
+        'rawChampionName': 'game_character_displayname_MonkeyKing',
+        'skinName': 'Astronaut Wukong',
+        'team': 'ORDER',
+      }
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow(); // post-seed: emits matchInfo
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(
+        info.meta['rawChampionName'], 'game_character_displayname_MonkeyKing');
+    expect(info.meta['skinName'], 'Astronaut Wukong');
+  });
+
+  test(
+      'a statsUpdate is emitted every poll with assists/creepScore/wardScore/'
+      'items from the active player\'s row', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {
+        'riotId': 'Me#EUW',
+        'championName': 'Kayle',
+        'team': 'ORDER',
+        'scores': {
+          'kills': 2,
+          'deaths': 1,
+          'assists': 5,
+          'creepScore': 87,
+          'wardScore': 12.4,
+        },
+        'items': [
+          {'itemID': 220013, 'slot': 6, 'displayName': 'Poro-Snax'},
+          {'itemID': 3157, 'slot': 0, 'displayName': 'Zhonya\'s Hourglass'},
+        ],
+      }
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow(); // post-seed: emits matchInfo + statsUpdate
+    await Future<void>.delayed(Duration.zero);
+
+    final updates =
+        emitted.where((e) => e.kind == GameEventKind.statsUpdate).toList();
+    expect(updates, hasLength(1));
+    final meta = updates.single.meta;
+    expect(meta['assists'], 5);
+    expect(meta['creepScore'], 87);
+    expect(meta['wardScore'], 12.4);
+    expect(meta['items'], [
+      {'itemId': 220013, 'slot': 6},
+      {'itemId': 3157, 'slot': 0},
+    ]);
+  });
+
+  test('statsUpdate keeps firing every poll (unlike the one-shot matchInfo)',
+      () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'}
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await watcher.pollNow();
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+        emitted.where((e) => e.kind == GameEventKind.matchInfo), hasLength(1));
+    expect(emitted.where((e) => e.kind == GameEventKind.statsUpdate),
+        hasLength(3));
+  });
+
+  test('a missing scores/items object never crashes statsUpdate', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    // ARAM Mayhem's activePlayer.fullRunes can be `{}` and scores can be
+    // entirely absent on some payload shapes — never assume populated.
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Ahri', 'team': 'ORDER'}
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final update =
+        emitted.singleWhere((e) => e.kind == GameEventKind.statsUpdate);
+    expect(update.meta['assists'], isNull);
+    expect(update.meta['creepScore'], isNull);
+    expect(update.meta['wardScore'], isNull);
+    expect(update.meta['items'], isEmpty);
   });
 
   test(

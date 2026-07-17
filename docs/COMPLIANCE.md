@@ -65,7 +65,12 @@ Two more policy points that bind this project:
 
 - **Riot IP:** only the Press Kit and **game-specific static data** may be
   used. Data Dragon champion/item art is game-specific static data, so it is
-  allowed; do not ship other Riot logos/artwork.
+  allowed; do not ship other Riot logos/artwork. This also covers art never
+  "shipped" but read at runtime: the rail's real-app-icon feature
+  (`GameConfig.iconPath`, `GameTileAvatar`) deliberately excludes League —
+  its app icon IS Riot's official logo — via `usesOfficialLogo` in
+  `lib/src/ui/capture_app_match.dart`. Do not remove that exclusion to "fix"
+  a missing rail icon.
 - **No win rates for Augments or Arena Mode items** — an explicitly
   unapproved use case. Showing the player their *own* picks is fine;
   aggregate/win-rate stats for augments or Arena items are not.

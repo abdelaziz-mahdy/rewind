@@ -41,9 +41,9 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 ## Highlights
 
 - **Instant replay, always on.** The last 15–60 s are always buffered; save with a hotkey or a button.
-- **Games clip themselves.** League of Legends auto-clips your kills/aces from the Live Client API — only *your* plays — and records each match's **kills / deaths, champion, and mode**.
-- **Auto-detect & follow.** Popular games are detected on launch; capture follows the game's window. Any app (including CrossOver/Wine games) can be added.
-- **A library built around games.** Each game gets a hub; clips group into **match cards** you can drill into.
+- **Games clip themselves.** League of Legends auto-clips your kills/aces from the Live Client API — only *your* plays — and tracks each match's full **K/D/A, creep score, ward score, champion + skin, item build, and teammates'/opponents' champions and names**.
+- **Auto-detect & follow.** Popular games are detected on launch; capture follows the game's window. Any app (including CrossOver/Wine games) can be added — the left rail shows each game's real app icon.
+- **A library built around games.** Each game gets a hub; clips group into **match cards** (with champion art) you can drill into for the full stat line and item build.
 - **You're in control.** Framerate/resolution, audio source (none / game-only / all apps) + mic, storage limits with auto-cleanup, a custom recordings folder, and rebindable hotkeys.
 - **Mac-first, honest about it.** Native ScreenCaptureKit + VideoToolbox; ~17 % CPU idle for always-on capture, tunable down via the quality settings.
 
@@ -86,6 +86,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 - Capture a **specific display or application**, switchable from the main screen
 - **In-app playback** (media_kit) and event-type badges on every clip
 - **Automatic event-based clipping** — League of Legends via the local Live Client Data API (kills, multikills, aces, objectives) — *lands in v0.2; the UI slot is already built*
+- **Per-match League tracker**: live K/D/A, creep score, and ward score (polled from the Live Client Data API), champion portrait + skin name and final item build (Data Dragon art), and each teammate's/opponent's champion **and in-game name**, shown on every match card and its detail screen
+- **Real game icons in the rail** — read from each game's installed app bundle at runtime, no bundled artwork (League keeps its monogram: its app icon is Riot's official logo, which Riot's asset policy excludes even though champion/item art is explicitly permitted)
 - Hardware-accelerated encoding (Apple VideoToolbox on macOS; NVENC → AMF → Quick Sync → x264 fallback ladder on Windows, untested on hardware)
 - Menu-bar / tray background operation, in-app logs, precise permission diagnostics
 

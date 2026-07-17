@@ -201,6 +201,86 @@ void main() {
     });
 
     testWidgets(
+        'picking an app also captures its icon onto the GameConfig for the '
+        'rail logo', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      const iconApp = AppInfo(
+        bundleId: 'com.example.three',
+        name: 'App Three',
+        pid: 4,
+        iconPath: '/Applications/App Three.app/Contents/Resources/icon.icns',
+      );
+      await t.pumpWidget(app(cluster(
+        settings: settings,
+        capturableApps: const [..._apps, iconApp],
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      await t.tap(sourceLine('Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('App Three').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      final cfg = settings.allConfigs.where((c) => c.gameId == 'app:app_three');
+      expect(cfg.single.iconPath,
+          '/Applications/App Three.app/Contents/Resources/icon.icns');
+    });
+
+    testWidgets('a Wine app (no bundle, no icon) leaves iconPath null',
+        (t) async {
+      const crossover = AppInfo(
+          bundleId: 'com.codeweavers.CrossOver', name: 'CrossOver', pid: 10);
+      const wineGame = AppInfo(bundleId: '', name: 'SomeGame.exe', pid: 11);
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(app(cluster(
+        settings: settings,
+        capturableApps: const [crossover, wineGame],
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      await t.tap(sourceLine('Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('SomeGame.exe').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      final cfg =
+          settings.allConfigs.where((c) => c.gameId == 'app:somegame_exe');
+      expect(cfg.single.iconPath, isNull);
+    });
+
+    testWidgets(
+        'picking League never captures its app icon: it IS Riot\'s official '
+        'logo, which Riot policy forbids using', (t) async {
+      const league = AppInfo(
+        bundleId: 'com.riotgames.LeagueClientUx',
+        name: 'League of Legends',
+        pid: 12,
+        iconPath: '/Applications/League of Legends.app/icon.icns',
+      );
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(app(cluster(
+        settings: settings,
+        capturableApps: const [..._apps, league],
+        onSettingsChanged: (s) async => calls.add(s),
+      )));
+
+      await t.tap(sourceLine('Display 1'));
+      await settleMenu(t);
+      await t.tap(find.text('League of Legends').last);
+      await settleMenu(t);
+
+      expect(calls, isNotEmpty);
+      final cfg =
+          settings.allConfigs.where((c) => c.gameId == 'app:league_of_legends');
+      expect(cfg.single.iconPath, isNull);
+    });
+
+    testWidgets(
         'the label prefers the stored captureAppName over a bundle-id '
         'lookup (ambiguous for Wine apps sharing one bundle id)', (t) async {
       // Two entries share CrossOver's bundle id: the translator itself and

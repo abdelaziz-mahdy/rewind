@@ -2,6 +2,7 @@ import '../clip/clip.dart';
 import '../events/game_catalog.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
+import 'capture_app_match.dart' show usesOfficialLogo;
 
 /// How Rewind knows a game is running, shown to the user so they understand
 /// what auto-clipping (if any) to expect — see `docs/COMPLIANCE.md`.
@@ -44,6 +45,12 @@ class GameEntry {
   final int totalSizeBytes;
   final DateTime? lastClipAt;
 
+  /// The real app icon for this game, when one has ever been captured (see
+  /// [GameConfig.iconPath]'s doc for how/when). Null falls back to the
+  /// FNV-monogram tile — the deliberate look for Wine games and any game
+  /// never matched to a running app.
+  final String? iconPath;
+
   const GameEntry({
     required this.gameId,
     required this.displayName,
@@ -54,6 +61,7 @@ class GameEntry {
     required this.clipCount,
     required this.totalSizeBytes,
     this.lastClipAt,
+    this.iconPath,
   });
 }
 
@@ -109,6 +117,7 @@ List<GameEntry> buildGameDirectory({
         processMatch: catalogById[_leagueCatalogId]?.processMatch,
         clips: clips,
         activeIds: activeIds,
+        configById: configById,
       ),
     for (final gameId in candidateIds)
       _buildEntry(
@@ -119,6 +128,7 @@ List<GameEntry> buildGameDirectory({
             configById[gameId]?.processMatch,
         clips: clips,
         activeIds: activeIds,
+        configById: configById,
       ),
   ];
 
@@ -138,6 +148,7 @@ List<GameEntry> buildGameDirectory({
     processMatch: null,
     clips: clips,
     activeIds: activeIds,
+    configById: configById,
   );
 
   return [...entries, desktop];
@@ -162,6 +173,7 @@ GameEntry _buildEntry({
   required String? processMatch,
   required List<Clip> clips,
   required Set<String> activeIds,
+  required Map<String, GameConfig> configById,
 }) {
   final matchingClips = clips.where((c) => matchIds.contains(c.gameId));
   var clipCount = 0;
@@ -174,6 +186,24 @@ GameEntry _buildEntry({
       lastClipAt = c.createdAt;
     }
   }
+  // A merged row (League) can have the icon captured under either of its
+  // matchIds — whichever was actually matched to a running app first.
+  //
+  // Defensively re-checked here (not just at capture time — see
+  // `ClipCoordinator._autoSwitchCaptureFor`/`_SourceLine._pickApp`) so an
+  // `iconPath` persisted by a pre-fix version of Rewind never renders:
+  // League's app icon is Riot's official logo, which Riot's policy forbids
+  // using (see `usesOfficialLogo`'s doc) — champion/item art (DDragon) is
+  // unaffected, this is ONLY about the OS-extracted app icon.
+  String? iconPath;
+  if (!usesOfficialLogo(gameId: gameId)) {
+    for (final id in matchIds) {
+      if (configById[id]?.iconPath case final path?) {
+        iconPath = path;
+        break;
+      }
+    }
+  }
   return GameEntry(
     gameId: gameId,
     displayName: displayNameFor(gameId),
@@ -184,5 +214,6 @@ GameEntry _buildEntry({
     clipCount: clipCount,
     totalSizeBytes: totalSizeBytes,
     lastClipAt: lastClipAt,
+    iconPath: iconPath,
   );
 }

@@ -8,6 +8,7 @@ import '../clip/clip_library.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
+import '../games/league/ddragon.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
@@ -40,6 +41,11 @@ class Shell extends StatefulWidget {
   /// leading-tile thumbnails. Null (e.g. every existing Shell test) always
   /// renders ClipTile's placeholder.
   final ThumbnailCache? thumbnails;
+
+  /// Forwarded to each game hub for match-card/detail champion+item art.
+  /// Null (e.g. every existing Shell test) always renders the monogram/
+  /// blank fallbacks.
+  final DDragon? ddragon;
 
   /// Live buffer state (toggled by the tray's pause/resume). When null the
   /// deck assumes the buffer is running iff capture came up without error.
@@ -97,6 +103,7 @@ class Shell extends StatefulWidget {
     this.onHotkeyRecording,
     this.onSetCaptureApp,
     this.thumbnails,
+    this.ddragon,
     super.key,
   });
 
@@ -192,6 +199,7 @@ class _ShellState extends State<Shell> {
           hotkeyLabel: widget.hotkeyLabel,
           onSettingsChanged: widget.onSettingsChanged,
           thumbnails: widget.thumbnails,
+          ddragon: widget.ddragon,
         ),
       SupportedGamesDestination() => SupportedGamesScreen(
           key: const ValueKey('supportedGamesScreen'),

@@ -16,6 +16,7 @@ import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
+import 'src/games/league/ddragon.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/file_log.dart';
 import 'src/log/log.dart';
@@ -84,6 +85,10 @@ Future<void> main() async {
   // Per-match kills/deaths (matches.json beside the clips), for the match
   // cards' K/D summaries.
   final matchStats = await MatchStatsStore.load(clipsDir);
+  // Champion/item art (Data Dragon, Riot's public static-asset CDN — see
+  // docs/COMPLIANCE.md), cached under a `.ddragon/` dir beside the clips so
+  // a match in progress never pays a network cost.
+  final ddragon = DDragon(cacheDir: Directory('${clipsDir.path}/.ddragon'));
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
   // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
   unawaited(removeOrphanThumbnails(library.all, clipsDir));
@@ -287,6 +292,7 @@ Future<void> main() async {
     // source menu opens, so a game launched after Rewind still appears.
     listApps: () => engine?.listCapturableApps() ?? const <AppInfo>[],
     thumbnails: thumbnailCache,
+    ddragon: ddragon,
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     settingsRevision: settingsRevision,
     onSettingsChanged: (s) async {
@@ -357,6 +363,7 @@ class RewindApp extends StatefulWidget {
   final ValueListenable<int>? settingsRevision;
   final void Function(String bundleId)? onSetCaptureApp;
   final ThumbnailCache? thumbnails;
+  final DDragon? ddragon;
 
   const RewindApp({
     required this.coordinator,
@@ -373,6 +380,7 @@ class RewindApp extends StatefulWidget {
     this.settingsRevision,
     this.onSetCaptureApp,
     this.thumbnails,
+    this.ddragon,
     super.key,
   });
 
@@ -416,6 +424,7 @@ class _RewindAppState extends State<RewindApp> {
               onHotkeyRecording: widget.onHotkeyRecording,
               onSetCaptureApp: widget.onSetCaptureApp,
               thumbnails: widget.thumbnails,
+              ddragon: widget.ddragon,
             ),
     );
   }

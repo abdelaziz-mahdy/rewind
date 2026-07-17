@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,10 @@ void main() {
   tearDown(() => tmp.deleteSync(recursive: true));
 
   final start = DateTime(2026, 7, 14, 20);
+
+  MatchPlayer mp(String championName, {String? riotId, String? championKey}) =>
+      MatchPlayer(
+          championName: championName, riotId: riotId, championKey: championKey);
 
   test('records kills and deaths per (game, session)', () async {
     final store = MatchStatsStore(dir: tmp);
@@ -51,33 +56,42 @@ void main() {
     store.recordMatchInfo('league_of_legends', start,
         gameMode: 'Arena',
         champion: 'Ahri',
-        allies: ['Lux'],
-        enemies: ['Zed', 'Yasuo']);
+        allies: [
+          mp('Lux', riotId: 'Mate#EUW')
+        ],
+        enemies: [
+          mp('Zed', riotId: 'Foe1#EUW'),
+          mp('Yasuo', riotId: 'Foe2#EUW')
+        ]);
     var s = store.statsFor('league_of_legends', start)!;
     expect(s.gameMode, 'Arena');
     expect(s.champion, 'Ahri');
-    expect(s.allies, ['Lux']);
-    expect(s.enemies, ['Zed', 'Yasuo']);
+    expect(s.allies, [mp('Lux', riotId: 'Mate#EUW')]);
+    expect(s.enemies,
+        [mp('Zed', riotId: 'Foe1#EUW'), mp('Yasuo', riotId: 'Foe2#EUW')]);
 
     // A later empty poll must not wipe the earlier capture.
     store.recordMatchInfo('league_of_legends', start,
         champion: '', allies: const []);
     s = store.statsFor('league_of_legends', start)!;
     expect(s.champion, 'Ahri');
-    expect(s.allies, ['Lux']);
+    expect(s.allies, [mp('Lux', riotId: 'Mate#EUW')]);
   });
 
   test('metadata round-trips through matches.json', () async {
     final store = MatchStatsStore(dir: tmp);
     store.recordMatchInfo('league_of_legends', start,
-        gameMode: 'ARAM', champion: 'Lux', allies: ['Ahri'], enemies: ['Zed']);
+        gameMode: 'ARAM',
+        champion: 'Lux',
+        allies: [mp('Ahri', riotId: 'Mate#EUW')],
+        enemies: [mp('Zed', riotId: 'Foe#EUW')]);
     await store.save();
     final loaded = await MatchStatsStore.load(tmp);
     final s = loaded.statsFor('league_of_legends', start)!;
     expect(s.gameMode, 'ARAM');
     expect(s.champion, 'Lux');
-    expect(s.allies, ['Ahri']);
-    expect(s.enemies, ['Zed']);
+    expect(s.allies, [mp('Ahri', riotId: 'Mate#EUW')]);
+    expect(s.enemies, [mp('Zed', riotId: 'Foe#EUW')]);
   });
 
   test('persists and reloads through matches.json', () async {
@@ -99,5 +113,146 @@ void main() {
     final loaded = await MatchStatsStore.load(tmp);
     expect(loaded.statsFor('x', start), isNull);
     expect(File('${tmp.path}/matches.json.bad').existsSync(), isTrue);
+  });
+
+  test('recordMatchInfo also captures championKey/skinName, never blanked', () {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordMatchInfo('league_of_legends', start,
+        rawChampionName: 'game_character_displayname_MonkeyKing',
+        skinName: 'Astronaut Wukong');
+    var s = store.statsFor('league_of_legends', start)!;
+    expect(s.championKey, 'game_character_displayname_MonkeyKing');
+    expect(s.skinName, 'Astronaut Wukong');
+
+    // A later empty poll must not wipe the earlier capture.
+    store.recordMatchInfo('league_of_legends', start,
+        rawChampionName: '', skinName: '');
+    s = store.statsFor('league_of_legends', start)!;
+    expect(s.championKey, 'game_character_displayname_MonkeyKing');
+    expect(s.skinName, 'Astronaut Wukong');
+  });
+
+  test('recordStatsUpdate records assists/creepScore/wardScore/items', () {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordStatsUpdate('league_of_legends', start,
+        assists: 3,
+        creepScore: 120,
+        wardScore: 12.5,
+        items: const [
+          MatchItemSlot(itemId: 1001, slot: 0),
+          MatchItemSlot(itemId: 3006, slot: 1),
+        ]);
+    final s = store.statsFor('league_of_legends', start)!;
+    expect(s.assists, 3);
+    expect(s.creepScore, 120);
+    expect(s.wardScore, 12.5);
+    expect(s.items, [
+      const MatchItemSlot(itemId: 1001, slot: 0),
+      const MatchItemSlot(itemId: 3006, slot: 1),
+    ]);
+  });
+
+  test('recordStatsUpdate does not persist/notify when nothing changed', () {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordStatsUpdate('g', start, assists: 1, creepScore: 10);
+    var n = 0;
+    store.addListener(() => n++);
+    // Identical values: must be a no-op (matches.json is written often;
+    // an idle match must not rewrite it every poll).
+    store.recordStatsUpdate('g', start, assists: 1, creepScore: 10);
+    expect(n, 0);
+
+    store.recordStatsUpdate('g', start, assists: 2);
+    expect(n, 1);
+  });
+
+  test('MatchStats round-trips the full stat line through matches.json',
+      () async {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordMatchInfo('league_of_legends', start,
+        gameMode: 'ARAM',
+        champion: 'Lux',
+        rawChampionName: 'game_character_displayname_Lux',
+        skinName: 'Elderwood Lux');
+    store.recordStatsUpdate('league_of_legends', start,
+        assists: 7,
+        creepScore: 40,
+        wardScore: 3.0,
+        items: const [MatchItemSlot(itemId: 3157, slot: 0)]);
+    await store.save();
+
+    final loaded = await MatchStatsStore.load(tmp);
+    final s = loaded.statsFor('league_of_legends', start)!;
+    expect(s.championKey, 'game_character_displayname_Lux');
+    expect(s.skinName, 'Elderwood Lux');
+    expect(s.assists, 7);
+    expect(s.creepScore, 40);
+    expect(s.wardScore, 3.0);
+    expect(s.items, [const MatchItemSlot(itemId: 3157, slot: 0)]);
+  });
+
+  test(
+      'loading a legacy matches.json (no new fields) never crashes and '
+      'defaults sanely', () async {
+    // A real pre-feature matches.json shape (kills/deaths/gameMode/champion/
+    // allies/enemies only) — must load without throwing.
+    File('${tmp.path}/matches.json').writeAsStringSync(jsonEncode({
+      'matches': [
+        {
+          'gameId': 'league_of_legends',
+          'startedAt': start.toIso8601String(),
+          'kills': 4,
+          'deaths': 2,
+          'gameMode': 'ARAM',
+          'champion': 'Ahri',
+          'allies': ['Lux'],
+          'enemies': ['Zed'],
+        }
+      ]
+    }));
+
+    final loaded = await MatchStatsStore.load(tmp);
+    final s = loaded.statsFor('league_of_legends', start)!;
+    expect(s.kills, 4);
+    expect(s.deaths, 2);
+    expect(s.champion, 'Ahri');
+    expect(s.championKey, isNull);
+    expect(s.skinName, isNull);
+    expect(s.assists, 0);
+    expect(s.creepScore, 0);
+    expect(s.wardScore, 0.0);
+    expect(s.items, isEmpty);
+    // The pre-username shape stored allies/enemies as bare champion-name
+    // strings: must still parse into MatchPlayers, with no name attached.
+    expect(s.allies, [const MatchPlayer(championName: 'Lux')]);
+    expect(s.enemies, [const MatchPlayer(championName: 'Zed')]);
+    expect(s.allies.single.riotId, isNull);
+  });
+
+  group('MatchPlayer.fromDynamic', () {
+    test('parses the current object shape', () {
+      final p = MatchPlayer.fromDynamic(const {
+        'championName': 'Ahri',
+        'championKey': 'game_character_displayname_Ahri',
+        'riotId': 'Me#EUW',
+      });
+      expect(p.championName, 'Ahri');
+      expect(p.championKey, 'game_character_displayname_Ahri');
+      expect(p.riotId, 'Me#EUW');
+    });
+
+    test('parses a legacy bare champion-name string with no name', () {
+      final p = MatchPlayer.fromDynamic('Ahri');
+      expect(p.championName, 'Ahri');
+      expect(p.championKey, isNull);
+      expect(p.riotId, isNull);
+    });
+
+    test('round-trips through toJson', () {
+      const p = MatchPlayer(
+          championName: 'Ahri', championKey: 'raw', riotId: 'Me#EUW');
+      final round = MatchPlayer.fromDynamic(p.toJson());
+      expect(round, p);
+    });
   });
 }

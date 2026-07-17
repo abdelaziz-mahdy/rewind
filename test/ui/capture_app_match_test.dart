@@ -118,4 +118,31 @@ void main() {
       expect(grouped.others, isEmpty);
     });
   });
+
+  group('usesOfficialLogo (Riot policy: no official logos, art assets OK)', () {
+    test('true for both of League\'s known gameIds', () {
+      expect(usesOfficialLogo(gameId: 'league_of_legends'), isTrue);
+      expect(usesOfficialLogo(gameId: 'app:league_of_legends'), isTrue);
+    });
+
+    test('true for a bundle id under com.riotgames.*, regardless of gameId',
+        () {
+      expect(
+          usesOfficialLogo(
+              gameId: 'app:some_other_riot_title',
+              bundleId: 'com.riotgames.LeagueClientUx'),
+          isTrue);
+    });
+
+    test('false for an unrelated game (icon capture proceeds normally)', () {
+      expect(usesOfficialLogo(gameId: 'app:cs2', bundleId: 'com.valve.cs2'),
+          isFalse);
+      expect(usesOfficialLogo(gameId: 'app:cs2'), isFalse);
+    });
+
+    test('false for a Wine game (no bundle id at all)', () {
+      expect(
+          usesOfficialLogo(gameId: 'app:penguinhotel_win64_shipping'), isFalse);
+    });
+  });
 }

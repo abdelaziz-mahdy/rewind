@@ -273,6 +273,7 @@ class _GameRow extends StatelessWidget {
                 GameTileAvatar(
                   gameId: entry.gameId,
                   displayName: entry.displayName,
+                  iconPath: entry.iconPath,
                   size: 26,
                 ),
                 const SizedBox(width: 8),

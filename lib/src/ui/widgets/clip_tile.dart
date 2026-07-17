@@ -45,6 +45,7 @@ Color eventColor(BuildContext context, GameEventKind kind) {
     case GameEventKind.death:
       return scheme.error;
     case GameEventKind.matchInfo:
+    case GameEventKind.statsUpdate:
     case GameEventKind.other:
       return scheme.outline;
     case GameEventKind.kill:

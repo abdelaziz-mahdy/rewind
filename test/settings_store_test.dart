@@ -141,6 +141,25 @@ void main() {
         'PenguinHotel-Win64-Shipping');
   });
 
+  test('GameConfig.iconPath round-trips through toJson/fromJson', () {
+    final s = AppSettings();
+    s.setConfig(GameConfig(
+        gameId: 'league_of_legends',
+        iconPath: '/Applications/League of Legends.app/Contents/Resources/'
+            'icon.icns'));
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(
+        loaded.configFor('league_of_legends').iconPath,
+        '/Applications/League of Legends.app/Contents/Resources/'
+        'icon.icns');
+  });
+
+  test('GameConfig.iconPath defaults to null when absent', () {
+    final s = AppSettings()..setConfig(GameConfig(gameId: 'g'));
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.configFor('g').iconPath, isNull);
+  });
+
   group('storage/cleanup settings', () {
     test('maxStorageGb defaults to 20 and round-trips', () {
       expect(AppSettings().maxStorageGb, 20);
