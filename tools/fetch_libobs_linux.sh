@@ -105,8 +105,19 @@ done
 # without it configure dies ~2 minutes in with "Could not find a package
 # configuration file provided by ECM", which names a CMake package rather than
 # the apt package you actually need. Fail fast with the real answer instead.
-if ! ls /usr/share/ECM/cmake/ECMConfig.cmake \
-      /usr/lib/*/cmake/ECM/ECMConfig.cmake >/dev/null 2>&1; then
+# NB: test each candidate separately — `ls a b` exits non-zero when ANY arg is
+# missing, so a single ls over several paths reports "not found" even when ECM
+# is installed (which is exactly how this check failed its first CI run).
+ecm_found=0
+for ecm_cand in /usr/share/ECM/cmake/ECMConfig.cmake \
+                /usr/share/cmake/ECM/ECMConfig.cmake \
+                /usr/lib/*/cmake/ECM/ECMConfig.cmake; do
+  if [ -e "$ecm_cand" ]; then
+    ecm_found=1
+    break
+  fi
+done
+if [ "$ecm_found" -eq 0 ]; then
   echo "ERROR: KDE Extra CMake Modules (ECM) not found — obs-studio's" >&2
   echo "  cmake/linux/defaults.cmake requires it." >&2
   echo "  Install it:  sudo apt-get install -y extra-cmake-modules" >&2
