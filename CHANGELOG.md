@@ -49,6 +49,21 @@ All notable changes to Rewind are documented here. Format based on
   work doesn't wire up end-to-end — a real Linux app needs more than this
   backend alone.
 
+### Changed
+- **Settings screen redesigned around real tabs** instead of one long scroll
+  with a sticky jump-nav: Capture / Hotkey / Quality / Storage / About are
+  now switched with tabs (default: Capture), only the selected tab's section
+  is built, and the selected tab carries a bottom-indicator bar in addition
+  to accent text (a non-colour cue, same reasoning as the event-matrix
+  chips' check mark). Every setting in Capture/Hotkey/Quality/Storage now
+  follows one row grammar (label + optional muted hint on the left, control
+  sized to its own content on the right, a hairline divider between rows)
+  instead of a mix of label-above-control and label-left/control-right. The
+  content column is left-aligned beside the rail instead of centered in the
+  window. About keeps its prose/buttons/disclaimer layout, unchanged. Purely
+  a layout change — no setting's behavior, callback, or persisted value
+  changed.
+
 ## [0.1.0] - 2026-07-16
 
 First tagged release. macOS is the validated platform (real capture, League

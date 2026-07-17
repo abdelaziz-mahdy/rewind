@@ -19,6 +19,14 @@ Future<void> _startRecording(WidgetTester t) async {
   await t.pump();
 }
 
+/// Switches to the given settings tab ("Capture", "Hotkey", "Quality",
+/// "Storage", "About"). With real tabs, only the selected tab's section is
+/// built — every test reaching into a non-default tab must call this first.
+Future<void> openTab(WidgetTester t, String name) async {
+  await t.tap(find.byKey(ValueKey('settingsTab:$name')));
+  await t.pump();
+}
+
 void main() {
   testWidgets('recording Alt+F10 updates settings and fires onChanged',
       (t) async {
@@ -29,6 +37,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     await _startRecording(t);
     expect(find.text('Press keys…'), findsOneWidget);
 
@@ -54,6 +63,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.keyS);
     await t.pump();
@@ -74,6 +84,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.escape);
     await t.pump();
@@ -93,6 +104,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.f9);
     await t.pump();
@@ -116,6 +128,7 @@ void main() {
       onHotkeyRecording: (r) async => recording.add(r),
     )));
 
+    await openTab(t, 'Hotkey');
     // Start listening, then cancel with Escape.
     await _startRecording(t);
     expect(recording, [true]);
@@ -149,6 +162,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     expect(find.text('Alt+F10'), findsOneWidget); // save hotkey
     expect(find.text('Alt+F9'), findsOneWidget); // record hotkey
   });
@@ -156,11 +170,6 @@ void main() {
   testWidgets(
       'recording a combo in the record hotkey field updates '
       'settings.recordHotkey without touching settings.hotkey', (t) async {
-    // The record field sits below the (mic-toggle-taller) Capture section —
-    // off the default viewport's ListView build extent.
-    t.view.physicalSize = const Size(1200, 3000);
-    t.view.devicePixelRatio = 1.0;
-    addTearDown(t.view.reset);
     final calls = <AppSettings>[];
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -168,6 +177,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'Hotkey');
     await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
     await t.pump();
     expect(find.text('Press keys…'), findsOneWidget);
@@ -187,9 +197,6 @@ void main() {
   testWidgets(
       'onHotkeyRecording fires for the record field too, same as the '
       'save field', (t) async {
-    t.view.physicalSize = const Size(1200, 3000);
-    t.view.devicePixelRatio = 1.0;
-    addTearDown(t.view.reset);
     final recording = <bool>[];
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -198,6 +205,7 @@ void main() {
       onHotkeyRecording: (r) async => recording.add(r),
     )));
 
+    await openTab(t, 'Hotkey');
     await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
     await t.pump();
     expect(recording, [true]);
@@ -435,28 +443,18 @@ void main() {
         isFalse);
   });
 
-  Future<void> pumpTall(WidgetTester t, Widget child) async {
-    // The settings ListView is long; without a tall viewport lower sections
-    // never build (see CLAUDE.md's testing gotchas).
-    t.view.physicalSize = const Size(1200, 4000);
-    t.view.devicePixelRatio = 1.0;
-    addTearDown(t.view.reset);
-    await t.pumpWidget(child);
-  }
-
   group('Recording quality section', () {
     testWidgets('framerate, resolution, and system audio commit + persist',
         (t) async {
       final settings = AppSettings();
       final calls = <AppSettings>[];
-      await pumpTall(
-          t,
-          _app(SettingsScreen(
-            settings: settings,
-            onChanged: (s) async => calls.add(s),
-            displays: const [],
-          )));
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
 
+      await openTab(t, 'Quality');
       await t.tap(find.text('30 fps'));
       await t.pump();
       expect(settings.captureFps, 30);
@@ -485,14 +483,13 @@ void main() {
         (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await pumpTall(
-          t,
-          _app(SettingsScreen(
-            settings: settings,
-            onChanged: (s) async => calls.add(s),
-            displays: const [],
-          )));
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
 
+      await openTab(t, 'Storage');
       final field = find.byKey(const ValueKey('maxStorageField'));
       await t.enterText(field, '50');
       await t.pump();
@@ -514,14 +511,13 @@ void main() {
     testWidgets('max age (days) commits ints; blank commits null (never)',
         (t) async {
       final settings = AppSettings();
-      await pumpTall(
-          t,
-          _app(SettingsScreen(
-            settings: settings,
-            onChanged: (_) async {},
-            displays: const [],
-          )));
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+      )));
 
+      await openTab(t, 'Storage');
       final field = find.byKey(const ValueKey('maxAgeField'));
       await t.enterText(field, '14');
       await t.pump();
@@ -537,14 +533,13 @@ void main() {
         'the default', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings(clipsDirPath: '/Volumes/gaming/Clips');
-      await pumpTall(
-          t,
-          _app(SettingsScreen(
-            settings: settings,
-            onChanged: (s) async => calls.add(s),
-            displays: const [],
-          )));
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
 
+      await openTab(t, 'Storage');
       expect(find.text('/Volumes/gaming/Clips'), findsOneWidget);
 
       await t.tap(find.byKey(const ValueKey('resetClipsDirButton')));
@@ -604,6 +599,7 @@ void main() {
       displays: const [],
     )));
 
+    await openTab(t, 'About');
     final text =
         t.widget<Text>(find.byKey(const ValueKey('riotDisclaimer'))).data!;
     expect(text, kRiotDisclaimer);
@@ -614,5 +610,77 @@ void main() {
         'or managing Riot Games properties. Riot Games and all associated '
         'properties are trademarks or registered trademarks of Riot Games, '
         'Inc.');
+  });
+
+  group('Tabs', () {
+    testWidgets('the default tab is Capture', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.text('Save clip'), findsNothing);
+    });
+
+    testWidgets('switching tabs shows that section and hides the previous one',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.text('Save clip'), findsNothing);
+
+      await openTab(t, 'Hotkey');
+      expect(find.text('Save clip'), findsOneWidget);
+      expect(find.text('Default buffer'), findsNothing);
+
+      await openTab(t, 'Quality');
+      expect(find.text('Framerate'), findsOneWidget);
+      expect(find.text('Save clip'), findsNothing);
+
+      await openTab(t, 'Storage');
+      expect(find.text('Max storage (GB)'), findsOneWidget);
+      expect(find.text('Framerate'), findsNothing);
+
+      await openTab(t, 'About');
+      expect(find.byKey(const ValueKey('riotDisclaimer')), findsOneWidget);
+      expect(find.text('Max storage (GB)'), findsNothing);
+
+      await openTab(t, 'Capture');
+      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.byKey(const ValueKey('riotDisclaimer')), findsNothing);
+    });
+
+    testWidgets(
+        'the selected tab carries a non-colour indicator, not just accent '
+        'text', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      BorderSide bottomBorderOf(String tab) {
+        final container = t.widget<Container>(find.descendant(
+          of: find.byKey(ValueKey('settingsTab:$tab')),
+          matching: find.byType(Container),
+        ));
+        return (container.decoration! as BoxDecoration).border!.bottom;
+      }
+
+      // Capture is the default tab: its indicator is drawn, Hotkey's isn't.
+      expect(bottomBorderOf('Capture').width, greaterThan(0));
+      expect(bottomBorderOf('Capture').color, isNot(Colors.transparent));
+      expect(bottomBorderOf('Hotkey').color, Colors.transparent);
+
+      await openTab(t, 'Hotkey');
+      expect(bottomBorderOf('Hotkey').color, isNot(Colors.transparent));
+      expect(bottomBorderOf('Capture').color, Colors.transparent);
+    });
   });
 }
