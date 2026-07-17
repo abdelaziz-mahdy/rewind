@@ -103,7 +103,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _bufferSeconds = widget.settings.defaultBufferSeconds;
-    _customBuffer = _bufferSeconds != 30 && _bufferSeconds != 60;
+    // Must list every preset segment above, or a saved value that HAS a
+    // segment (15) falls through to "Custom" and no segment ever highlights.
+    _customBuffer =
+        _bufferSeconds != 15 && _bufferSeconds != 30 && _bufferSeconds != 60;
     _customBufferController = TextEditingController(text: '$_bufferSeconds');
     _maxStorageController = TextEditingController(
         text: widget.settings.maxStorageGb?.toString() ?? '');
@@ -293,390 +296,432 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: SingleChildScrollView(
               controller: _scroll,
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Section(
-                    key: _sectionKeys['Capture'],
-                    title: 'Capture',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Default buffer',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(value: '30', label: Text('30 s')),
-                            ButtonSegment(value: '60', label: Text('60 s')),
-                            ButtonSegment(
-                                value: 'custom', label: Text('Custom')),
-                          ],
-                          selected: {
-                            _customBuffer ? 'custom' : '$_bufferSeconds'
-                          },
-                          onSelectionChanged: (selection) {
-                            final value = selection.first;
-                            if (value == 'custom') {
-                              _selectCustom();
-                            } else {
-                              _selectBuffer(int.parse(value));
-                            }
-                          },
-                        ),
-                        if (_customBuffer) ...[
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _customBufferController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                                labelText: 'Seconds (5-300)'),
-                            onChanged: _handleCustomBufferChanged,
-                          ),
-                        ],
-                        if (widget.displays.isNotEmpty) ...[
-                          const SizedBox(height: 20),
-                          Text('Capture display',
-                              style: Theme.of(context).textTheme.body),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _selectedDisplayUuid(),
-                            items: [
-                              for (var i = 0; i < widget.displays.length; i++)
-                                DropdownMenuItem(
-                                  value: widget.displays[i].uuid,
-                                  child: Text(
-                                      _displayLabel(i, widget.displays[i])),
-                                ),
-                            ],
-                            onChanged: _handleDisplayChanged,
-                          ),
-                        ],
-                        if (widget.capturableApps.isNotEmpty) ...[
-                          const SizedBox(height: 20),
-                          Text('Capture application',
-                              style: Theme.of(context).textTheme.body),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String?>(
-                            initialValue: _selectedAppBundleId(),
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                child: Text('Entire display'),
-                              ),
-                              for (final app in widget.capturableApps)
-                                DropdownMenuItem<String?>(
-                                  value: app.bundleId,
-                                  child: Text(app.name),
-                                ),
-                            ],
-                            onChanged: _handleAppChanged,
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        Row(
+              // Settings is a single column of label→control pairs, so it must
+              // NOT track the window width. Unconstrained on a wide display it
+              // stretched a 4-way segmented control past 1900px (one "30 s"
+              // button ~600px wide) and parked every toggle ~1800px from the
+              // label it belongs to, which breaks the proximity that says
+              // which switch controls what. It also ran help text far past a
+              // readable line length.
+              child: Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: settingsMaxContentWidth),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Section(
+                        key: _sectionKeys['Capture'],
+                        title: 'Capture',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Follow the game',
-                                      style: Theme.of(context).textTheme.body),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    "Switch capture to a game's window when it "
-                                    'launches',
-                                    style:
-                                        Theme.of(context).textTheme.bodyMuted,
-                                  ),
-                                ],
-                              ),
+                            Text('Default buffer',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            SegmentedButton<String>(
+                              // Same choices as a game hub's per-game override
+                              // (game_hub_screen.dart): the global default offered
+                              // no 15 s while a per-game override did, so the
+                              // shortest buffer the app advertises ("the last
+                              // 15-60 s") couldn't be set as the default.
+                              segments: const [
+                                ButtonSegment(value: '15', label: Text('15 s')),
+                                ButtonSegment(value: '30', label: Text('30 s')),
+                                ButtonSegment(value: '60', label: Text('60 s')),
+                                ButtonSegment(
+                                    value: 'custom', label: Text('Custom')),
+                              ],
+                              selected: {
+                                _customBuffer ? 'custom' : '$_bufferSeconds'
+                              },
+                              onSelectionChanged: (selection) {
+                                final value = selection.first;
+                                if (value == 'custom') {
+                                  _selectCustom();
+                                } else {
+                                  _selectBuffer(int.parse(value));
+                                }
+                              },
                             ),
-                            Switch(
-                              key: const ValueKey('autoSwitchCaptureSwitch'),
-                              value: widget.settings.autoSwitchCapture,
-                              onChanged: _handleAutoSwitchChanged,
+                            if (_customBuffer) ...[
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _customBufferController,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                    labelText: 'Seconds (5-300)'),
+                                onChanged: _handleCustomBufferChanged,
+                              ),
+                            ],
+                            if (widget.displays.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              Text('Capture display',
+                                  style: Theme.of(context).textTheme.body),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                initialValue: _selectedDisplayUuid(),
+                                items: [
+                                  for (var i = 0;
+                                      i < widget.displays.length;
+                                      i++)
+                                    DropdownMenuItem(
+                                      value: widget.displays[i].uuid,
+                                      child: Text(
+                                          _displayLabel(i, widget.displays[i])),
+                                    ),
+                                ],
+                                onChanged: _handleDisplayChanged,
+                              ),
+                            ],
+                            if (widget.capturableApps.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              Text('Capture application',
+                                  style: Theme.of(context).textTheme.body),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String?>(
+                                initialValue: _selectedAppBundleId(),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    child: Text('Entire display'),
+                                  ),
+                                  for (final app in widget.capturableApps)
+                                    DropdownMenuItem<String?>(
+                                      value: app.bundleId,
+                                      child: Text(app.name),
+                                    ),
+                                ],
+                                onChanged: _handleAppChanged,
+                              ),
+                            ],
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Follow the game',
+                                          style:
+                                              Theme.of(context).textTheme.body),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "Switch capture to a game's window when it "
+                                        'launches',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMuted,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Switch(
+                                  key:
+                                      const ValueKey('autoSwitchCaptureSwitch'),
+                                  value: widget.settings.autoSwitchCapture,
+                                  onChanged: _handleAutoSwitchChanged,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Capture microphone',
+                                          style:
+                                              Theme.of(context).textTheme.body),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Mix your mic into clips and recordings, '
+                                        'alongside system audio',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMuted,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Switch(
+                                  key:
+                                      const ValueKey('captureMicrophoneSwitch'),
+                                  value: widget.settings.captureMicrophone,
+                                  onChanged: _handleMicrophoneChanged,
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        Row(
+                      ),
+                      _Section(
+                        key: _sectionKeys['Hotkey'],
+                        title: 'Hotkey',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Capture microphone',
-                                      style: Theme.of(context).textTheme.body),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Mix your mic into clips and recordings, '
-                                    'alongside system audio',
-                                    style:
-                                        Theme.of(context).textTheme.bodyMuted,
-                                  ),
-                                ],
-                              ),
+                            Text('Save clip',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            _HotkeyRecorderField(
+                              key: const ValueKey('saveHotkeyField'),
+                              value: widget.settings.hotkey,
+                              onChanged: _handleHotkeyChanged,
+                              onRecording: widget.onHotkeyRecording,
                             ),
-                            Switch(
-                              key: const ValueKey('captureMicrophoneSwitch'),
-                              value: widget.settings.captureMicrophone,
-                              onChanged: _handleMicrophoneChanged,
+                            const SizedBox(height: 20),
+                            Text('Record',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            _HotkeyRecorderField(
+                              key: const ValueKey('recordHotkeyField'),
+                              value: widget.settings.recordHotkey,
+                              onChanged: _handleRecordHotkeyChanged,
+                              onRecording: widget.onHotkeyRecording,
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    key: _sectionKeys['Hotkey'],
-                    title: 'Hotkey',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Save clip',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        _HotkeyRecorderField(
-                          key: const ValueKey('saveHotkeyField'),
-                          value: widget.settings.hotkey,
-                          onChanged: _handleHotkeyChanged,
-                          onRecording: widget.onHotkeyRecording,
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Record', style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        _HotkeyRecorderField(
-                          key: const ValueKey('recordHotkeyField'),
-                          value: widget.settings.recordHotkey,
-                          onChanged: _handleRecordHotkeyChanged,
-                          onRecording: widget.onHotkeyRecording,
-                        ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    key: _sectionKeys['Quality'],
-                    title: 'Recording quality',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Framerate',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        SegmentedButton<int>(
-                          key: const ValueKey('fpsSegments'),
-                          segments: const [
-                            ButtonSegment(value: 30, label: Text('30 fps')),
-                            ButtonSegment(value: 60, label: Text('60 fps')),
-                          ],
-                          selected: {widget.settings.captureFps},
-                          onSelectionChanged: (s) => _handleFpsChanged(s.first),
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Resolution',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        SegmentedButton<int>(
-                          key: const ValueKey('resolutionSegments'),
-                          // 0 stands for "source" (null maxHeight); the segments map
-                          // to the output-height cap.
-                          segments: const [
-                            ButtonSegment(value: 0, label: Text('Source')),
-                            ButtonSegment(value: 1440, label: Text('1440p')),
-                            ButtonSegment(value: 1080, label: Text('1080p')),
-                            ButtonSegment(value: 720, label: Text('720p')),
-                          ],
-                          selected: {widget.settings.captureMaxHeight ?? 0},
-                          onSelectionChanged: (s) => _handleResolutionChanged(
-                              s.first == 0 ? null : s.first),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Higher framerate and resolution mean smoother, sharper '
-                          'clips but more CPU and disk. Applies on next launch.',
-                          style: Theme.of(context).textTheme.bodyMuted,
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Game / system audio',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        SegmentedButton<AudioMode>(
-                          key: const ValueKey('audioModeSegments'),
-                          segments: const [
-                            ButtonSegment(
-                                value: AudioMode.off, label: Text('None')),
-                            ButtonSegment(
-                                value: AudioMode.app, label: Text('Game only')),
-                            ButtonSegment(
-                                value: AudioMode.all, label: Text('All apps')),
-                          ],
-                          selected: {widget.settings.audioMode},
-                          onSelectionChanged: (s) =>
-                              _handleAudioModeChanged(s.first),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          switch (widget.settings.audioMode) {
-                            AudioMode.off =>
-                              'No system audio. Clips are silent unless the mic is on.',
-                            AudioMode.app =>
-                              "Only the captured game/app's sound (no Discord, music, "
-                                  'etc.). Requires a specific app as the capture source.',
-                            AudioMode.all =>
-                              "Every app's sound (desktop audio).",
-                          },
-                          style: Theme.of(context).textTheme.bodyMuted,
-                        ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    key: _sectionKeys['Storage'],
-                    title: 'Storage',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (widget.library case final lib?) ...[
-                          ListenableBuilder(
-                            listenable: lib,
-                            builder: (context, _) => Text(
-                              '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
+                      ),
+                      _Section(
+                        key: _sectionKeys['Quality'],
+                        title: 'Recording quality',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text('Framerate',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            SegmentedButton<int>(
+                              key: const ValueKey('fpsSegments'),
+                              segments: const [
+                                ButtonSegment(value: 30, label: Text('30 fps')),
+                                ButtonSegment(value: 60, label: Text('60 fps')),
+                              ],
+                              selected: {widget.settings.captureFps},
+                              onSelectionChanged: (s) =>
+                                  _handleFpsChanged(s.first),
+                            ),
+                            const SizedBox(height: 20),
+                            Text('Resolution',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            SegmentedButton<int>(
+                              key: const ValueKey('resolutionSegments'),
+                              // 0 stands for "source" (null maxHeight); the segments map
+                              // to the output-height cap.
+                              segments: const [
+                                ButtonSegment(value: 0, label: Text('Source')),
+                                ButtonSegment(
+                                    value: 1440, label: Text('1440p')),
+                                ButtonSegment(
+                                    value: 1080, label: Text('1080p')),
+                                ButtonSegment(value: 720, label: Text('720p')),
+                              ],
+                              selected: {widget.settings.captureMaxHeight ?? 0},
+                              onSelectionChanged: (s) =>
+                                  _handleResolutionChanged(
+                                      s.first == 0 ? null : s.first),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Higher framerate and resolution mean smoother, sharper '
+                              'clips but more CPU and disk. Applies on next launch.',
                               style: Theme.of(context).textTheme.bodyMuted,
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        Text('Max storage (GB)',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        TextField(
-                          key: const ValueKey('maxStorageField'),
-                          controller: _maxStorageController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              hintText: 'Blank = unlimited'),
-                          onChanged: (v) => _handleLimitChanged(
-                              v, (gb) => widget.settings.maxStorageGb = gb),
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Delete clips older than (days)',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        TextField(
-                          key: const ValueKey('maxAgeField'),
-                          controller: _maxAgeController,
-                          keyboardType: TextInputType.number,
-                          decoration:
-                              const InputDecoration(hintText: 'Blank = never'),
-                          onChanged: (v) => _handleLimitChanged(v,
-                              (days) => widget.settings.maxClipAgeDays = days),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Oldest clips are removed first when a limit is hit. '
-                          'Protected clips are never auto-deleted.',
-                          style: Theme.of(context).textTheme.bodyMuted,
-                        ),
-                        const SizedBox(height: 20),
-                        Text('Recordings folder',
-                            style: Theme.of(context).textTheme.body),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                resolveClipsDirPath(
-                                    widget.settings.clipsDirPath),
-                                key: const ValueKey('clipsDirLabel'),
-                                style: Theme.of(context).textTheme.bodyMuted,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
+                            const SizedBox(height: 20),
+                            Text('Game / system audio',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            SegmentedButton<AudioMode>(
+                              key: const ValueKey('audioModeSegments'),
+                              segments: const [
+                                ButtonSegment(
+                                    value: AudioMode.off, label: Text('None')),
+                                ButtonSegment(
+                                    value: AudioMode.app,
+                                    label: Text('Game only')),
+                                ButtonSegment(
+                                    value: AudioMode.all,
+                                    label: Text('All apps')),
+                              ],
+                              selected: {widget.settings.audioMode},
+                              onSelectionChanged: (s) =>
+                                  _handleAudioModeChanged(s.first),
                             ),
-                            const SizedBox(width: 8),
-                            TextButton(
-                              key: const ValueKey('chooseClipsDirButton'),
-                              onPressed: _pickClipsDir,
-                              child: const Text('Choose…'),
+                            const SizedBox(height: 8),
+                            Text(
+                              switch (widget.settings.audioMode) {
+                                AudioMode.off =>
+                                  'No system audio. Clips are silent unless the mic is on.',
+                                AudioMode.app =>
+                                  "Only the captured game/app's sound (no Discord, music, "
+                                      'etc.). Requires a specific app as the capture source.',
+                                AudioMode.all =>
+                                  "Every app's sound (desktop audio).",
+                              },
+                              style: Theme.of(context).textTheme.bodyMuted,
                             ),
-                            if (widget.settings.clipsDirPath != null)
-                              TextButton(
-                                key: const ValueKey('resetClipsDirButton'),
-                                onPressed: _resetClipsDir,
-                                child: const Text('Reset'),
-                              ),
                           ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Applies on next launch. Existing clips stay where '
-                          'they are.',
-                          style: Theme.of(context).textTheme.bodyMuted,
-                        ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    key: _sectionKeys['About'],
-                    title: 'About & help',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Rewind — open-source instant replay for macOS & Windows. '
-                          'GPLv3.',
-                          style: Theme.of(context).textTheme.bodyMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
+                      ),
+                      _Section(
+                        key: _sectionKeys['Storage'],
+                        title: 'Storage',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            OutlinedButton.icon(
-                              key: const ValueKey('showOnboardingButton'),
-                              onPressed: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => OnboardingScreen(
-                                    settings: widget.settings,
-                                    onChanged: widget.onChanged,
-                                    onDone: () => Navigator.of(context).pop(),
-                                  ),
+                            if (widget.library case final lib?) ...[
+                              ListenableBuilder(
+                                listenable: lib,
+                                builder: (context, _) => Text(
+                                  '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
+                                  style: Theme.of(context).textTheme.bodyMuted,
                                 ),
                               ),
-                              icon: const Icon(Icons.school_outlined, size: 18),
-                              label: const Text('Getting-started guide'),
+                              const SizedBox(height: 16),
+                            ],
+                            Text('Max storage (GB)',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            TextField(
+                              key: const ValueKey('maxStorageField'),
+                              controller: _maxStorageController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                  hintText: 'Blank = unlimited'),
+                              onChanged: (v) => _handleLimitChanged(
+                                  v, (gb) => widget.settings.maxStorageGb = gb),
                             ),
-                            OutlinedButton.icon(
-                              key: const ValueKey('githubRepoButton'),
-                              onPressed: () => openUrl(kRepoUrl),
-                              icon: const Icon(Icons.code_outlined, size: 18),
-                              label: const Text('GitHub repo'),
+                            const SizedBox(height: 20),
+                            Text('Delete clips older than (days)',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            TextField(
+                              key: const ValueKey('maxAgeField'),
+                              controller: _maxAgeController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                  hintText: 'Blank = never'),
+                              onChanged: (v) => _handleLimitChanged(
+                                  v,
+                                  (days) =>
+                                      widget.settings.maxClipAgeDays = days),
                             ),
-                            OutlinedButton.icon(
-                              key: const ValueKey('reportIssueButton'),
-                              onPressed: () => openUrl('$kRepoUrl/issues'),
-                              icon: const Icon(Icons.bug_report_outlined,
-                                  size: 18),
-                              label: const Text('Report an issue'),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Oldest clips are removed first when a limit is hit. '
+                              'Protected clips are never auto-deleted.',
+                              style: Theme.of(context).textTheme.bodyMuted,
+                            ),
+                            const SizedBox(height: 20),
+                            Text('Recordings folder',
+                                style: Theme.of(context).textTheme.body),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    resolveClipsDirPath(
+                                        widget.settings.clipsDirPath),
+                                    key: const ValueKey('clipsDirLabel'),
+                                    style:
+                                        Theme.of(context).textTheme.bodyMuted,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton(
+                                  key: const ValueKey('chooseClipsDirButton'),
+                                  onPressed: _pickClipsDir,
+                                  child: const Text('Choose…'),
+                                ),
+                                if (widget.settings.clipsDirPath != null)
+                                  TextButton(
+                                    key: const ValueKey('resetClipsDirButton'),
+                                    onPressed: _resetClipsDir,
+                                    child: const Text('Reset'),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Applies on next launch. Existing clips stay where '
+                              'they are.',
+                              style: Theme.of(context).textTheme.bodyMuted,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        // Required, verbatim, by Riot's Developer API Policy
-                        // ("You must post the following legal boilerplate to
-                        // your product in a location that is readily visible
-                        // to players") because Rewind reads League's Live
-                        // Client Data API and shows Data Dragon art. Do not
-                        // reword or hide this. See docs/COMPLIANCE.md.
-                        Text(
-                          kRiotDisclaimer,
-                          key: const ValueKey('riotDisclaimer'),
-                          style: Theme.of(context).textTheme.bodyMuted,
+                      ),
+                      _Section(
+                        key: _sectionKeys['About'],
+                        title: 'About & help',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Rewind — open-source instant replay for macOS & Windows. '
+                              'GPLv3.',
+                              style: Theme.of(context).textTheme.bodyMuted,
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                OutlinedButton.icon(
+                                  key: const ValueKey('showOnboardingButton'),
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => OnboardingScreen(
+                                        settings: widget.settings,
+                                        onChanged: widget.onChanged,
+                                        onDone: () =>
+                                            Navigator.of(context).pop(),
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.school_outlined,
+                                      size: 18),
+                                  label: const Text('Getting-started guide'),
+                                ),
+                                OutlinedButton.icon(
+                                  key: const ValueKey('githubRepoButton'),
+                                  onPressed: () => openUrl(kRepoUrl),
+                                  icon:
+                                      const Icon(Icons.code_outlined, size: 18),
+                                  label: const Text('GitHub repo'),
+                                ),
+                                OutlinedButton.icon(
+                                  key: const ValueKey('reportIssueButton'),
+                                  onPressed: () => openUrl('$kRepoUrl/issues'),
+                                  icon: const Icon(Icons.bug_report_outlined,
+                                      size: 18),
+                                  label: const Text('Report an issue'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            // Required, verbatim, by Riot's Developer API Policy
+                            // ("You must post the following legal boilerplate to
+                            // your product in a location that is readily visible
+                            // to players") because Rewind reads League's Live
+                            // Client Data API and shows Data Dragon art. Do not
+                            // reword or hide this. See docs/COMPLIANCE.md.
+                            Text(
+                              kRiotDisclaimer,
+                              key: const ValueKey('riotDisclaimer'),
+                              style: Theme.of(context).textTheme.bodyMuted,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

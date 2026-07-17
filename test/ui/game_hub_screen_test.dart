@@ -474,4 +474,88 @@ void main() {
       expect(find.byKey(const ValueKey('liveEventsSlot')), findsNothing);
     });
   });
+
+  group('event toggle chips', () {
+    /// The chip's label colour, by event kind.
+    Color labelColor(WidgetTester t, GameEventKind kind) => t
+        .widget<Text>(find.descendant(
+          of: find.byKey(ValueKey('eventToggle:${kind.name}')),
+          matching: find.byType(Text),
+        ))
+        .style!
+        .color!;
+
+    testWidgets(
+        'an ENABLED event is more prominent than a disabled one — the state '
+        'used to be inverted', (t) async {
+      // Regression: unselected chips drew full-brightness `tokens.text` while
+      // selected ones drew the dimmer accent, so a hub's loudest elements
+      // were the events the player had switched OFF (KILL enabled read as a
+      // whisper next to DRAGON KILL disabled shouting in white).
+      final settings = AppSettings()
+        ..setConfig(GameConfig(
+          gameId: 'league_of_legends',
+          enabledEvents: {GameEventKind.kill},
+        ));
+      await _pump(
+          t,
+          _app(GameHubScreen(
+            gameId: 'league_of_legends',
+            library: library,
+            coordinator: ClipCoordinator(
+              registry: GameRegistry(sources: []),
+              library: library,
+              storage: StorageManager(library),
+              settings: settings,
+              outDir: tmp.path,
+              engine: FakeCaptureEngine(),
+            ),
+            hotkeyLabel: 'Alt+F10',
+            onSettingsChanged: (_) async {},
+          )));
+      await expandSettings(t);
+
+      final on = labelColor(t, GameEventKind.kill);
+      final off = labelColor(t, GameEventKind.dragonKill);
+      expect(on, isNot(off));
+      // The real assertion: ON must not be dimmer than OFF.
+      expect(on.computeLuminance(), greaterThan(off.computeLuminance()),
+          reason: 'an enabled event must not read dimmer than a disabled one');
+    });
+
+    testWidgets('state is not signalled by colour alone — ON carries a check',
+        (t) async {
+      // ~14 same-size, same-shape chips distinguished only by hue is nothing
+      // to a colour-blind player, so "on" also shows a check glyph.
+      final settings = AppSettings()
+        ..setConfig(GameConfig(
+          gameId: 'league_of_legends',
+          enabledEvents: {GameEventKind.kill},
+        ));
+      await _pump(
+          t,
+          _app(GameHubScreen(
+            gameId: 'league_of_legends',
+            library: library,
+            coordinator: ClipCoordinator(
+              registry: GameRegistry(sources: []),
+              library: library,
+              storage: StorageManager(library),
+              settings: settings,
+              outDir: tmp.path,
+              engine: FakeCaptureEngine(),
+            ),
+            hotkeyLabel: 'Alt+F10',
+            onSettingsChanged: (_) async {},
+          )));
+      await expandSettings(t);
+
+      Finder checkIn(GameEventKind k) => find.descendant(
+            of: find.byKey(ValueKey('eventToggle:${k.name}')),
+            matching: find.byIcon(Icons.check),
+          );
+      expect(checkIn(GameEventKind.kill), findsOneWidget);
+      expect(checkIn(GameEventKind.dragonKill), findsNothing);
+    });
+  });
 }

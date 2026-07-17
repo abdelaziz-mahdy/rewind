@@ -359,3 +359,16 @@ extension RewindTypography on TextTheme {
         fontFeatures: const [FontFeature.tabularFigures()],
       );
 }
+
+/// Max width for a single column of settings (label → control pairs).
+///
+/// Settings-style columns must not track the window width. Unconstrained on a
+/// wide display, a 4-way segmented control stretches past 1900px — a ~600px
+/// "30 s" button — and a row's toggle ends up ~1800px from the label it
+/// belongs to, so nothing visually says which control does what. Capping the
+/// column also keeps help text near a readable line length.
+///
+/// Used by the Settings screen and by a game hub's capture-settings panel,
+/// which has the same shape. Grids of cards (clips, matches) are deliberately
+/// NOT capped — those genuinely want the whole window.
+const double settingsMaxContentWidth = 720;

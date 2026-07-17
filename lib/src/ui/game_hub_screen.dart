@@ -543,7 +543,19 @@ class _GameHubScreenState extends State<GameHubScreen> {
               ? Padding(
                   key: const ValueKey('captureSettingsBody'),
                   padding: const EdgeInsets.only(top: 12, bottom: 4),
-                  child: _captureSettingsBody(context),
+                  // Same single-column label→control shape as the Settings
+                  // screen, so it gets the same cap: left-aligned, not
+                  // stretched across the window (which stranded the Auto-clip
+                  // toggle a window-width away from its label). The Matches
+                  // grid below is deliberately left uncapped.
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                          maxWidth: settingsMaxContentWidth),
+                      child: _captureSettingsBody(context),
+                    ),
+                  ),
                 )
               : const SizedBox(width: double.infinity),
         ),
@@ -757,10 +769,27 @@ class _EventToggleChip extends StatelessWidget {
             border: Border.fromBorderSide(
                 selected ? BorderSide(color: accent) : hairlineBorder()),
           ),
-          child: Text(
-            eventBadge(kind),
-            style: theme.textTheme.label
-                .copyWith(color: selected ? accent : tokens.text),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // A non-colour cue for "on". State was previously carried by hue
+              // alone (green vs white), which reads as nothing to a
+              // colour-blind player — and every chip is the same size and
+              // shape, so hue was the ONLY signal.
+              if (selected) ...[
+                Icon(Icons.check, size: 13, color: accent),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                eventBadge(kind),
+                // OFF is muted, ON is the accent. This used to be inverted:
+                // an unselected chip drew full-brightness `tokens.text` while
+                // a selected one drew the dimmer accent, so a hub's LOUDEST
+                // elements were the events the player had switched off.
+                style: theme.textTheme.label
+                    .copyWith(color: selected ? accent : tokens.textMuted),
+              ),
+            ],
           ),
         ),
       ),
