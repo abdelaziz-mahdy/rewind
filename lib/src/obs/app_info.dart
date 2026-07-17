@@ -30,12 +30,23 @@ class AppInfo {
   /// empty [bundleId] gives [CaptureEngine.setCaptureApp] nothing to match.
   final int windowId;
 
+  /// Whether this app's emitted window is currently visible on a display
+  /// (`kCGWindowIsOnscreen`). Since enumeration spans ALL Spaces (so the
+  /// picker can list a fullscreen game on its own Space), this is how the
+  /// "follow the game" auto-switch tells the VISIBLE match from a hidden one:
+  /// native League runs its client/lobby AND the match as separate windows
+  /// both named "League of Legends", and only the on-screen one is the game
+  /// being played. Defaults to true when absent (older shim, tests) so
+  /// callers that don't care see no behaviour change.
+  final bool onScreen;
+
   const AppInfo({
     required this.bundleId,
     required this.name,
     required this.pid,
     this.iconPath,
     this.windowId = 0,
+    this.onScreen = true,
   });
 
   factory AppInfo.fromJson(Map<String, dynamic> j) {
@@ -46,6 +57,7 @@ class AppInfo {
       pid: j['pid'] as int,
       iconPath: (icon == null || icon.isEmpty) ? null : icon,
       windowId: j['window_id'] as int? ?? 0,
+      onScreen: j['on_screen'] as bool? ?? true,
     );
   }
 
