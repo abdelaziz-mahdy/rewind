@@ -70,6 +70,12 @@ All notable changes to Rewind are documented here. Format based on
   list came back empty (a display asleep/clamshell, the screen locked, or a
   game holding a Space), which removed the only app-picker in the main
   window for the whole session. It now shows whenever anything is pickable.
+- **A saved capture-display choice is no longer erased when display
+  enumeration returns empty**: an empty list means enumeration failed, not
+  that the monitor was unplugged, so the choice is kept and applied (only a
+  non-empty list that lacks the display now drops it). Previously this
+  silently fell capture back to the main display and recorded the wrong
+  monitor.
 
 ## [0.1.0] - 2026-07-16
 
