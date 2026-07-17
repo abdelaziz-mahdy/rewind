@@ -26,6 +26,10 @@
 # Requires (Ubuntu/Debian package names; see the pkg-config checks below for
 # the exact module names this script verifies before configuring):
 #   build-essential cmake ninja-build git python3 pkg-config
+#   extra-cmake-modules  (KDE's ECM: obs-studio's cmake/linux/defaults.cmake
+#                         does find_package(ECM) — without it CMake fails at
+#                         configure with "Could not find a package
+#                         configuration file provided by ECM")
 #   libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev
 #   libavutil-dev libswresample-dev libswscale-dev
 #   zlib1g-dev uthash-dev libjansson-dev libsimde-dev
@@ -42,6 +46,7 @@
 # was written):
 #   sudo apt-get install -y --no-install-recommends \
 #     build-essential cmake ninja-build git python3 pkg-config \
+#     extra-cmake-modules \
 #     libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
 #     libavutil-dev libswresample-dev libswscale-dev \
 #     zlib1g-dev uthash-dev libjansson-dev libsimde-dev \
@@ -94,6 +99,19 @@ for tool in cmake ninja git python3 pkg-config; do
     exit 1
   }
 done
+
+# KDE's Extra CMake Modules isn't a binary, so the loop above can't catch it —
+# but obs-studio's cmake/linux/defaults.cmake does find_package(ECM), and
+# without it configure dies ~2 minutes in with "Could not find a package
+# configuration file provided by ECM", which names a CMake package rather than
+# the apt package you actually need. Fail fast with the real answer instead.
+if ! ls /usr/share/ECM/cmake/ECMConfig.cmake \
+      /usr/lib/*/cmake/ECM/ECMConfig.cmake >/dev/null 2>&1; then
+  echo "ERROR: KDE Extra CMake Modules (ECM) not found — obs-studio's" >&2
+  echo "  cmake/linux/defaults.cmake requires it." >&2
+  echo "  Install it:  sudo apt-get install -y extra-cmake-modules" >&2
+  exit 1
+fi
 
 # pkg-config module presence check for the handful of libraries that would
 # otherwise fail deep inside CMake configure with a much less obvious error

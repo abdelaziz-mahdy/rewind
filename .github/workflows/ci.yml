@@ -114,6 +114,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git python3 pkg-config \
+            extra-cmake-modules \
             libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
             libavutil-dev libswresample-dev libswscale-dev \
             zlib1g-dev uthash-dev libjansson-dev libsimde-dev \
