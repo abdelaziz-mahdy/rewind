@@ -231,11 +231,21 @@ class ClipCoordinator {
       return;
     }
 
+    // Prefer the on-screen (visible) match over a hidden one. Enumeration
+    // spans all Spaces, so a game like native League surfaces BOTH its hidden
+    // client/lobby window and its visible in-match window — both named
+    // "League of Legends". Binding capture to the lobby records the wrong
+    // screen; the on-screen window is the game actually being played. Fall
+    // back to the first match when none is on-screen (e.g. the window hasn't
+    // appeared yet, or an older shim that didn't report visibility).
     final needle = processMatch.toLowerCase();
     AppInfo? match;
     for (final app in capture.listCapturableApps()) {
-      if (app.name.toLowerCase().contains(needle) ||
-          app.bundleId.toLowerCase().contains(needle)) {
+      final matches = app.name.toLowerCase().contains(needle) ||
+          app.bundleId.toLowerCase().contains(needle);
+      if (!matches) continue;
+      match ??= app;
+      if (app.onScreen) {
         match = app;
         break;
       }

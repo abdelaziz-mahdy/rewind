@@ -81,6 +81,12 @@ All notable changes to Rewind are documented here. Format based on
   non-empty list that lacks the display now drops it). Previously this
   silently fell capture back to the main display and recorded the wrong
   monitor.
+- **"Follow the game" auto-switch now binds to the on-screen game window,
+  not a hidden lobby (macOS)**: native League runs its client/lobby and the
+  in-match window as separate windows both named "League of Legends";
+  capture could bind to the lobby and record the wrong screen. The
+  auto-switch now prefers the visible match; the picker still lists every
+  window.
 
 ## [0.1.0] - 2026-07-16
 

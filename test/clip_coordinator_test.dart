@@ -1040,6 +1040,56 @@ void main() {
       expect(engine.captureAppCalls, isEmpty);
     });
 
+    test(
+        'prefers the ON-SCREEN match over a hidden one (native League: bind '
+        'to the in-match window, not the client/lobby)', () async {
+      // Both windows match processMatch "stub.one" by bundle id; the hidden
+      // lobby is enumerated FIRST, the visible game second. Auto-switch must
+      // bind capture to the visible one — binding to the hidden lobby is
+      // exactly the "recorded the wrong screen" bug.
+      engine.apps = const [
+        AppInfo(
+          bundleId: 'com.rewind.stub.one.lobby',
+          name: 'Stub App One',
+          pid: 5001,
+          onScreen: false,
+        ),
+        AppInfo(
+          bundleId: 'com.rewind.stub.one.game',
+          name: 'Stub App One',
+          pid: 5002,
+          onScreen: true,
+        ),
+      ];
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, ['com.rewind.stub.one.game']);
+    });
+
+    test(
+        'falls back to the first match when NONE is on-screen (window not '
+        'visible yet, or an older shim without visibility)', () async {
+      engine.apps = const [
+        AppInfo(
+            bundleId: 'com.rewind.stub.one.a',
+            name: 'A',
+            pid: 6001,
+            onScreen: false),
+        AppInfo(
+            bundleId: 'com.rewind.stub.one.b',
+            name: 'B',
+            pid: 6002,
+            onScreen: false),
+      ];
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.captureAppCalls, ['com.rewind.stub.one.a']);
+    });
+
     test('sets autoSwitchedAppName to the matched app on activation switch',
         () async {
       expect(coordinator.autoSwitchedAppName.value, isNull);
