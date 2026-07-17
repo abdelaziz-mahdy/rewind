@@ -12,6 +12,7 @@ import 'onboarding_screen.dart';
 import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
+import 'widgets/setting_row.dart';
 
 /// Hotkey, default buffer length, capture display/app, and the follow-the-
 /// game toggle — grouped into tabbed sections (Capture / Hotkey / Quality /
@@ -252,7 +253,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      // Left-aligned, not centred: everything below it (tabs, labels, rows)
+      // reads off the left edge, so a centred title puts a second, competing
+      // axis on the screen and there's no single edge to scan from.
+      appBar: AppBar(title: const Text('Settings'), centerTitle: false),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -311,8 +315,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _captureTab(BuildContext context) {
-    return _tabContent(_SettingRows([
-      _SettingRow(
+    return _tabContent(SettingRows([
+      SettingRow(
         label: 'Default buffer',
         // Same choices as a game hub's per-game override (game_hub_screen.
         // dart): the global default offered no 15 s while a per-game
@@ -337,7 +341,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       if (_customBuffer)
-        _SettingRow(
+        SettingRow(
           label: 'Custom buffer',
           control: SizedBox(
             width: 200,
@@ -350,7 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       if (widget.displays.isNotEmpty)
-        _SettingRow(
+        SettingRow(
           label: 'Capture display',
           control: SizedBox(
             width: 300,
@@ -369,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       if (widget.capturableApps.isNotEmpty)
-        _SettingRow(
+        SettingRow(
           label: 'Capture application',
           control: SizedBox(
             width: 300,
@@ -390,7 +394,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
-      _SettingRow(
+      SettingRow(
         label: 'Follow the game',
         hint: Text(
           "Switch capture to a game's window when it launches",
@@ -402,7 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: _handleAutoSwitchChanged,
         ),
       ),
-      _SettingRow(
+      SettingRow(
         label: 'Capture microphone',
         hint: Text(
           'Mix your mic into clips and recordings, alongside system audio',
@@ -418,8 +422,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _hotkeyTab(BuildContext context) {
-    return _tabContent(_SettingRows([
-      _SettingRow(
+    return _tabContent(SettingRows([
+      SettingRow(
         label: 'Save clip',
         control: SizedBox(
           width: 300,
@@ -431,7 +435,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
-      _SettingRow(
+      SettingRow(
         label: 'Record',
         control: SizedBox(
           width: 300,
@@ -447,8 +451,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _qualityTab(BuildContext context) {
-    return _tabContent(_SettingRows([
-      _SettingRow(
+    return _tabContent(SettingRows([
+      SettingRow(
         label: 'Framerate',
         control: SegmentedButton<int>(
           key: const ValueKey('fpsSegments'),
@@ -460,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onSelectionChanged: (s) => _handleFpsChanged(s.first),
         ),
       ),
-      _SettingRow(
+      SettingRow(
         label: 'Resolution',
         control: SegmentedButton<int>(
           key: const ValueKey('resolutionSegments'),
@@ -479,7 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         footnote: 'Higher framerate and resolution mean smoother, sharper '
             'clips but more CPU and disk. Applies on next launch.',
       ),
-      _SettingRow(
+      SettingRow(
         label: 'Game / system audio',
         control: SegmentedButton<AudioMode>(
           key: const ValueKey('audioModeSegments'),
@@ -517,8 +521,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        _SettingRows([
-          _SettingRow(
+        SettingRows([
+          SettingRow(
             label: 'Max storage (GB)',
             control: SizedBox(
               width: 200,
@@ -533,7 +537,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          _SettingRow(
+          SettingRow(
             label: 'Delete clips older than (days)',
             control: SizedBox(
               width: 200,
@@ -549,7 +553,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             footnote: 'Oldest clips are removed first when a limit is hit. '
                 'Protected clips are never auto-deleted.',
           ),
-          _SettingRow(
+          SettingRow(
             label: 'Recordings folder',
             hint: Text(
               resolveClipsDirPath(widget.settings.clipsDirPath),
@@ -691,86 +695,6 @@ class _SettingsTabButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// The settings screen's one row grammar: a label (+ optional muted hint
-/// widget beneath it) on the LEFT in an [Expanded], the control sized to its
-/// own content on the RIGHT — replacing the old, inconsistent mix of
-/// label-above-control and label-left/control-right. [footnote], if given,
-/// is a full-width caption below the row (e.g. "Applies on next launch"),
-/// still inside this row rather than a separate one, since it explains this
-/// row's control specifically.
-class _SettingRow extends StatelessWidget {
-  final String label;
-  final Widget? hint;
-  final Widget control;
-  final String? footnote;
-
-  const _SettingRow({
-    required this.label,
-    this.hint,
-    required this.control,
-    this.footnote,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: theme.textTheme.body),
-                    if (hint case final h?) ...[
-                      const SizedBox(height: 4),
-                      h,
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              control,
-            ],
-          ),
-          if (footnote != null) ...[
-            const SizedBox(height: 8),
-            Text(footnote!, style: theme.textTheme.bodyMuted),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Lays out a tab's [_SettingRow]s with ONE hairline divider between each
-/// pair — never before the first row or after the last, per the row
-/// grammar's "a hairline divider between rows (not after the last)".
-class _SettingRows extends StatelessWidget {
-  final List<Widget> rows;
-
-  const _SettingRows(this.rows);
-
-  @override
-  Widget build(BuildContext context) {
-    final hairline = context.rewindTokens.hairline;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < rows.length; i++) ...[
-          if (i > 0) Divider(height: 1, thickness: 1, color: hairline),
-          rows[i],
-        ],
-      ],
     );
   }
 }

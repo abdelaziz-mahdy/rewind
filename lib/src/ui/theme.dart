@@ -371,4 +371,10 @@ extension RewindTypography on TextTheme {
 /// Used by the Settings screen and by a game hub's capture-settings panel,
 /// which has the same shape. Grids of cards (clips, matches) are deliberately
 /// NOT capped — those genuinely want the whole window.
-const double settingsMaxContentWidth = 720;
+///
+/// Sized so the column owns most of the pane rather than hugging one edge: at
+/// 720 it left ~550px of dead space stacked entirely on the right, which read
+/// as unfinished rather than as margin. The row grammar (label left, control
+/// right, hairline between) is what keeps a label bound to its control at this
+/// width — the hairline does the work narrowness used to.
+const double settingsMaxContentWidth = 960;
