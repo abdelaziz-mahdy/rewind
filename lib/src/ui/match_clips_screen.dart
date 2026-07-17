@@ -4,6 +4,7 @@ import '../clip/clip_library.dart';
 import '../clip/match_stats.dart';
 import '../clip/thumbnail_cache.dart';
 import '../games/league/ddragon.dart';
+import '../games/league/game_modes.dart';
 import 'clip_sessions.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
@@ -28,9 +29,11 @@ class _MatchInfoCard extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     final champion = stats.champion;
+    // Resolved at render, never from storage — see games/league/game_modes.dart.
+    final mode = friendlyLeagueGameMode(stats.gameMode);
     final headline = [
       if (champion != null) champion,
-      if (stats.gameMode != null) stats.gameMode!,
+      if (mode != null) mode,
     ].join(' · ');
 
     Widget team(String label, List<MatchPlayer> players, Color color) => Column(
