@@ -147,3 +147,14 @@ Rewind is licensed under the **GNU General Public License v3.0** — see [LICENS
 ## Contributing
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [ROADMAP.md](ROADMAP.md) for where help is most useful.
+
+## Legal
+
+Rewind is not endorsed by Riot Games and does not reflect the views or opinions
+of Riot Games or anyone officially involved in producing or managing Riot Games
+properties. Riot Games and all associated properties are trademarks or
+registered trademarks of Riot Games, Inc.
+
+(Required by Riot's Developer API Policy, since Rewind reads League's official
+local Live Client Data API and renders Data Dragon static art — see
+[docs/COMPLIANCE.md](docs/COMPLIANCE.md).)

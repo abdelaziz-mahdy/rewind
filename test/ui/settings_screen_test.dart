@@ -5,6 +5,7 @@ import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
+import 'package:rewind/src/ui/system_settings.dart';
 import 'package:rewind/src/ui/theme.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
@@ -554,5 +555,30 @@ void main() {
       // Back on the default: the Reset button disappears.
       expect(find.byKey(const ValueKey('resetClipsDirButton')), findsNothing);
     });
+  });
+
+  testWidgets('About shows Riot\'s required legal boilerplate verbatim',
+      (t) async {
+    // Riot's Developer API Policy REQUIRES this text, unmodified, "in a
+    // location that is readily visible to players" for any product using
+    // their APIs or game-specific static data — Rewind does both (Live
+    // Client Data API + Data Dragon art). This test exists so it can't be
+    // reworded or dropped by accident. See docs/COMPLIANCE.md.
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    final text =
+        t.widget<Text>(find.byKey(const ValueKey('riotDisclaimer'))).data!;
+    expect(text, kRiotDisclaimer);
+    expect(
+        text,
+        'Rewind is not endorsed by Riot Games and does not reflect the views '
+        'or opinions of Riot Games or anyone officially involved in producing '
+        'or managing Riot Games properties. Riot Games and all associated '
+        'properties are trademarks or registered trademarks of Riot Games, '
+        'Inc.');
   });
 }
