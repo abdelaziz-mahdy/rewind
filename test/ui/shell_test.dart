@@ -274,14 +274,16 @@ void main() {
     testWidgets('the Settings destination renders the embedded SettingsScreen',
         (t) async {
       await t.pumpWidget(_app(shell()));
-      expect(find.text('CAPTURE'), findsNothing);
+      expect(find.text('Default buffer'), findsNothing);
 
       await t.tap(navItem('settings'));
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('CAPTURE'), findsOneWidget);
-      expect(find.text('HOTKEY'), findsOneWidget);
+      // Capture is the default tab; Hotkey is reachable alongside it as a
+      // real tab (only the selected tab's section is built at a time).
+      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.byKey(const ValueKey('settingsTab:Hotkey')), findsOneWidget);
     });
 
     testWidgets('the Supported Games screen renders for + Add game', (t) async {
