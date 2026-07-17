@@ -64,6 +64,13 @@ All notable changes to Rewind are documented here. Format based on
   a layout change — no setting's behavior, callback, or persisted value
   changed.
 
+### Fixed
+- **The capture-source picker no longer disappears when no displays
+  enumerate (macOS)**: it was hidden entirely whenever the startup display
+  list came back empty (a display asleep/clamshell, the screen locked, or a
+  game holding a Space), which removed the only app-picker in the main
+  window for the whole session. It now shows whenever anything is pickable.
+
 ## [0.1.0] - 2026-07-16
 
 First tagged release. macOS is the validated platform (real capture, League

@@ -43,8 +43,10 @@ class RecorderCluster extends StatelessWidget {
   /// Live buffer state; null means "running iff no capture error".
   final ValueListenable<bool>? bufferActive;
 
-  /// Connected displays the source line can switch between. The line is
-  /// hidden entirely when this is empty (e.g. capture failed to start).
+  /// Connected displays the source line can switch between (startup
+  /// snapshot). No longer the sole gate on the line's visibility — see the
+  /// visibility comment in [build]; a live [listApps] keeps the picker up
+  /// even when this snapshot came back empty.
   final List<DisplayInfo> displays;
 
   /// Applications the source line can switch to, alongside displays — the
@@ -167,7 +169,18 @@ class RecorderCluster extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (displays.isNotEmpty) ...[
+          // Show the picker whenever ANYTHING is pickable — not only when the
+          // startup `displays` snapshot is non-empty. `displays`/
+          // `capturableApps` are a one-shot snapshot (main.dart); a single
+          // empty `listDisplays()` at launch (a display asleep/clamshell, the
+          // screen locked, or a fullscreen game holding its own Space) used to
+          // hide the ONLY app-picker in the main window for the whole session.
+          // A live engine (`listApps != null`) re-enumerates on menu open, so
+          // always show it and let it self-heal; tests with no live enumerator
+          // fall back to the snapshot.
+          if (displays.isNotEmpty ||
+              capturableApps.isNotEmpty ||
+              listApps != null) ...[
             ValueListenableBuilder<String?>(
               valueListenable: coordinator.autoSwitchedAppName,
               builder: (context, autoName, _) => _SourceLine(
