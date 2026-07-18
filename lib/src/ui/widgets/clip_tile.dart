@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
+import '../../clip/match_stats.dart';
 import '../../clip/thumbnail_cache.dart';
 import '../../events/game_catalog.dart';
 import '../../events/game_event.dart';
@@ -140,11 +141,18 @@ class ClipTile extends StatefulWidget {
   /// Whether the footer shows the clip's game name (see class doc).
   final bool showGameName;
 
+  /// The clip's match events (see `MatchStats.events`), forwarded to
+  /// `PlayerScreen` on open so it can draw timeline markers. Empty (the
+  /// default) for any caller with no `MatchStats` handy — that's not an
+  /// error, just a plain seek bar (see `clip_markers.dart`'s honesty note).
+  final List<MatchEventStamp> events;
+
   const ClipTile({
     required this.clip,
     required this.library,
     this.thumbnails,
     this.showGameName = true,
+    this.events = const [],
     super.key,
   });
 
@@ -170,7 +178,7 @@ class _ClipTileState extends State<ClipTile> {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          onTap: () => _openInApp(context, clip),
+          onTap: () => _openInApp(context, clip, widget.events),
           onFocusChange: (focused) => setState(() => _focused = focused),
           borderRadius: BorderRadius.circular(tokens.radiusCard),
           child: AnimatedContainer(
@@ -330,10 +338,11 @@ class _ClipTileState extends State<ClipTile> {
     }
   }
 
-  static void _openInApp(BuildContext context, Clip clip) {
+  static void _openInApp(
+      BuildContext context, Clip clip, List<MatchEventStamp> events) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       settings: const RouteSettings(name: playerScreenRouteName),
-      builder: (_) => PlayerScreen(clip: clip),
+      builder: (_) => PlayerScreen(clip: clip, events: events),
     ));
   }
 

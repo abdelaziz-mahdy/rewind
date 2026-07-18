@@ -517,18 +517,17 @@ class ClipCoordinator {
     final cutoff = DateTime.now().subtract(_recentEventsRetention);
     _recentEvents.removeWhere((ev) => ev.time.isBefore(cutoff));
 
-    // Match K/D: attribute kills/deaths to the game's CURRENT session (the
-    // same stamp its clips carry, see [Clip.sessionAt]). Counted for the
-    // whole match regardless of clip settings — a death is never clipped
-    // but still counts toward the match summary.
+    // Match K/D + timeline markers: attribute every event to the game's
+    // CURRENT session (the same stamp its clips carry, see [Clip.sessionAt])
+    // via the single [MatchStatsStore.recordEvent] path — counted/stamped
+    // for the whole match regardless of clip settings, so a death (never
+    // clipped) still counts toward the match summary, and every kind (kills,
+    // deaths, objectives, aces) lands a marker on the player timeline (see
+    // `lib/src/clip/clip_markers.dart`).
     final sessionStart = _sessionStartedAt[e.gameId];
     final stats = matchStats;
     if (sessionStart != null && stats != null) {
-      if (e.kind == GameEventKind.kill) {
-        stats.recordKill(e.gameId, sessionStart);
-      } else if (e.kind == GameEventKind.death) {
-        stats.recordDeath(e.gameId, sessionStart);
-      }
+      stats.recordEvent(e.gameId, sessionStart, e.kind, e.time);
     }
   }
 

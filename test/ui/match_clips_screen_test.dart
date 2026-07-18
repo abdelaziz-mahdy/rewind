@@ -9,6 +9,7 @@ import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/clip_tile.dart';
 
 void main() {
   late Directory tmp;
@@ -161,5 +162,49 @@ void main() {
     await t.pump();
 
     expect(find.textContaining(' K · '), findsNothing);
+  });
+
+  group('marker plumbing (Task 8)', () {
+    // Asserted at the widget-contract level (what ClipTile was built with),
+    // never by building PlayerScreen — see clip_tile.dart's/player_screen.
+    // dart's doc on why PlayerScreen can't be built in a widget test.
+    testWidgets('passes the match\'s events down to each ClipTile', (t) async {
+      final events = [
+        MatchEventStamp(kind: GameEventKind.kill, at: DateTime.now()),
+        MatchEventStamp(kind: GameEventKind.dragonKill, at: DateTime.now()),
+      ];
+      final stats = MatchStats(
+        gameId: 'league_of_legends',
+        startedAt: session.startedAt,
+        events: events,
+      );
+
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: stats,
+        library: library,
+      )));
+      await t.pump();
+
+      expect(
+        t.widget<ClipTile>(find.byType(ClipTile)).events,
+        same(events),
+      );
+    });
+
+    testWidgets(
+        'no stats means ClipTile gets no events (plain seek bar, '
+        'not an error)', (t) async {
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Session',
+        stats: null,
+        library: library,
+      )));
+      await t.pump();
+
+      expect(t.widget<ClipTile>(find.byType(ClipTile)).events, isEmpty);
+    });
   });
 }

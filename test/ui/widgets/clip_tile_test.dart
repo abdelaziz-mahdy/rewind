@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/clip/thumbnail_cache.dart';
 import 'package:rewind/src/events/game_catalog.dart';
 import 'package:rewind/src/events/game_event.dart';
@@ -106,6 +107,23 @@ void main() {
     await t.tap(find.byWidgetPredicate((w) => w is PopupMenuButton));
     await t.pumpAndSettle();
     expect(find.text('Stop keeping'), findsOneWidget);
+  });
+
+  testWidgets('events defaults to empty (no MatchStats handy — not an error)',
+      (t) async {
+    await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
+    expect(t.widget<ClipTile>(find.byType(ClipTile)).events, isEmpty);
+  });
+
+  testWidgets(
+      'a caller-supplied events list is retained on the widget '
+      '(the contract PlayerScreen is opened with on tap)', (t) async {
+    final events = [
+      MatchEventStamp(kind: GameEventKind.kill, at: DateTime.now()),
+    ];
+    await t.pumpWidget(
+        app(ClipTile(clip: clip, library: library, events: events)));
+    expect(t.widget<ClipTile>(find.byType(ClipTile)).events, same(events));
   });
 
   group('thumbnail', () {

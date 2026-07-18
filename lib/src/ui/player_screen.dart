@@ -6,27 +6,21 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../clip/clip.dart';
+import '../clip/clip_markers.dart';
+import '../clip/match_stats.dart';
 import '../events/game_catalog.dart';
+import 'format_duration.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
+import 'widgets/timeline_markers.dart';
+
+export 'format_duration.dart' show formatDuration;
 
 /// Route name used when pushing [PlayerScreen] — lets tests assert a push
 /// happened (via a [NavigatorObserver]) without ever building the screen,
 /// which would construct a real media_kit [Player] and require the native
 /// libmpv libraries that aren't loaded in the widget-test host process.
 const playerScreenRouteName = '/player';
-
-/// Formats a [Duration] as `M:SS`, or `H:MM:SS` once past an hour. Used for
-/// the elapsed/total readout next to the seek bar.
-String formatDuration(Duration d) {
-  if (d.isNegative) d = Duration.zero;
-  final hours = d.inHours;
-  final minutes = d.inMinutes.remainder(60);
-  final seconds = d.inSeconds.remainder(60);
-  final mm = minutes.toString().padLeft(hours > 0 ? 2 : 1, '0');
-  final ss = seconds.toString().padLeft(2, '0');
-  return hours > 0 ? '$hours:$mm:$ss' : '$mm:$ss';
-}
 
 /// Which speaker glyph represents a media_kit [volume] (0-100, see
 /// `Player.state.volume`): muted at zero, a lower glyph below the halfway
@@ -51,7 +45,16 @@ IconData volumeIcon(double volume) {
 class PlayerScreen extends StatefulWidget {
   final Clip clip;
 
-  const PlayerScreen({required this.clip, super.key});
+  /// The match's recorded events (see `MatchStats.events`), from which
+  /// [computeClipMarkers] derives this clip's timeline markers once the
+  /// player reports a real duration (see [_PlayerScreenState.build]).
+  /// Default empty — a caller with no `MatchStats` for this clip (an older
+  /// session, a game with no event API, or a pusher that simply has no
+  /// store handy) just gets a plain seek bar; that's not an error (see
+  /// CLAUDE.md/this feature's honesty note).
+  final List<MatchEventStamp> events;
+
+  const PlayerScreen({required this.clip, this.events = const [], super.key});
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -135,6 +138,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Only meaningful once the real duration is known (see
+    // computeClipMarkers's doc) — before then this is always empty, so the
+    // seek bar renders plain until the player reports one.
+    final markers = _duration > Duration.zero
+        ? computeClipMarkers(
+            clip: widget.clip, duration: _duration, events: widget.events)
+        : const <ClipMarker>[];
     return Scaffold(
       // No hard-coded background: inherit rewindTheme's scaffoldBackgroundColor
       // (RewindTokens.dark.bg) so this stays in step with the shared palette.
@@ -163,6 +173,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               position: _position,
               duration: _duration,
               volume: _volume,
+              markers: markers,
               onTogglePlay: _togglePlay,
               onSeek: (d) => _player.seek(d),
               onToggleMute: _toggleMute,
@@ -220,6 +231,12 @@ class _Controls extends StatelessWidget {
   final Duration position;
   final Duration duration;
   final double volume;
+
+  /// This clip's event markers (empty when there's nothing to show — see
+  /// [PlayerScreen.events]'s doc). Rendered as a [TimelineMarkers] strip
+  /// directly above the seek bar, sharing its width.
+  final List<ClipMarker> markers;
+
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
   final VoidCallback onToggleMute;
@@ -229,6 +246,7 @@ class _Controls extends StatelessWidget {
     required this.position,
     required this.duration,
     required this.volume,
+    required this.markers,
     required this.onTogglePlay,
     required this.onSeek,
     required this.onToggleMute,
@@ -257,12 +275,20 @@ class _Controls extends StatelessWidget {
           ),
           Text(formatDuration(position), style: durationStyle),
           Expanded(
-            child: Slider(
-              value: positionMs.toDouble(),
-              max: totalMs > 0 ? totalMs.toDouble() : 1.0,
-              onChanged: totalMs > 0
-                  ? (v) => onSeek(Duration(milliseconds: v.round()))
-                  : null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (markers.isNotEmpty)
+                  TimelineMarkers(
+                      markers: markers, duration: duration, onSeek: onSeek),
+                Slider(
+                  value: positionMs.toDouble(),
+                  max: totalMs > 0 ? totalMs.toDouble() : 1.0,
+                  onChanged: totalMs > 0
+                      ? (v) => onSeek(Duration(milliseconds: v.round()))
+                      : null,
+                ),
+              ],
             ),
           ),
           Text(formatDuration(duration), style: durationStyle),

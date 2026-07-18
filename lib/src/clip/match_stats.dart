@@ -5,6 +5,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../events/game_event.dart';
+import '../log/log.dart';
+
 /// One item in a match's final build: `itemID`/`slot` are exactly the keys
 /// the Live Client Data API's `playerlist[].items[]` uses (verified live
 /// 2026-07-16) — kept minimal deliberately (no display name/price/etc.),
@@ -89,6 +92,37 @@ class MatchPlayer {
   String toString() => 'MatchPlayer($championName, riotId: $riotId)';
 }
 
+/// A single timestamped moment inside a match — the raw material for the
+/// player's timeline markers (`lib/src/clip/clip_markers.dart`). Recorded for
+/// every event `ClipCoordinator` already routes (kills, deaths, objectives,
+/// aces, ...), not just the ones that trigger a clip save, so a clip's
+/// markers reflect everything that happened during its footage window.
+@immutable
+class MatchEventStamp {
+  final GameEventKind kind;
+  final DateTime at;
+
+  const MatchEventStamp({required this.kind, required this.at});
+
+  Map<String, dynamic> toJson() =>
+      {'kind': kind.name, 'at': at.toIso8601String()};
+
+  /// Unknown/missing `kind` falls back to [GameEventKind.other] rather than
+  /// throwing — same defensive shape as [Clip.fromJson]'s event parsing.
+  factory MatchEventStamp.fromJson(Map<String, dynamic> j) => MatchEventStamp(
+        kind: GameEventKind.values.firstWhere((k) => k.name == j['kind'],
+            orElse: () => GameEventKind.other),
+        at: DateTime.parse(j['at'] as String),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is MatchEventStamp && other.kind == kind && other.at == at;
+
+  @override
+  int get hashCode => Object.hash(kind, at);
+}
+
 /// Kills and deaths the player accumulated in one match (play session),
 /// keyed by the session's start time — the same [Clip.sessionAt] stamp the
 /// coordinator writes onto that match's clips, so a match card can look up
@@ -134,6 +168,12 @@ class MatchStats {
   /// whatever `playerlist[].items` reported).
   List<MatchItemSlot> items;
 
+  /// Every timestamped event recorded during this match (see
+  /// [MatchEventStamp]), oldest first, capped at [MatchStatsStore.maxEvents]
+  /// — a long match must not grow `matches.json` unboundedly. Empty for
+  /// matches from before this feature (or any match with no combat).
+  List<MatchEventStamp> events;
+
   MatchStats({
     required this.gameId,
     required this.startedAt,
@@ -149,9 +189,11 @@ class MatchStats {
     this.creepScore = 0,
     this.wardScore = 0.0,
     List<MatchItemSlot>? items,
+    List<MatchEventStamp>? events,
   })  : allies = allies ?? [],
         enemies = enemies ?? [],
-        items = items ?? [];
+        items = items ?? [],
+        events = events ?? [];
 
   Map<String, dynamic> toJson() => {
         'gameId': gameId,
@@ -168,6 +210,7 @@ class MatchStats {
         'creepScore': creepScore,
         'wardScore': wardScore,
         'items': items.map((i) => i.toJson()).toList(),
+        'events': events.map((e) => e.toJson()).toList(),
       };
 
   /// Backward-compatible with `matches.json` files written before this
@@ -196,6 +239,10 @@ class MatchStats {
             .map((e) =>
                 MatchItemSlot.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
+        events: ((j['events'] as List?) ?? const [])
+            .map((e) =>
+                MatchEventStamp.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
       );
 }
 
@@ -205,6 +252,17 @@ class MatchStats {
 class MatchStatsStore extends ChangeNotifier {
   final Directory dir;
   final Map<String, MatchStats> _byKey = {};
+
+  /// Cap on [MatchStats.events] per match (see [recordEvent]) — a long match
+  /// must not grow `matches.json` unboundedly; oldest entries are dropped
+  /// first since the timeline only needs each clip's own nearby window, not
+  /// the full match history.
+  static const int maxEvents = 500;
+
+  /// Whether the [maxEvents] cap has already been logged once this session —
+  /// a match that stays over the cap for its whole remaining runtime must
+  /// not spam the log on every single subsequent event.
+  bool _loggedEventCap = false;
 
   MatchStatsStore({required this.dir});
 
@@ -223,15 +281,37 @@ class MatchStatsStore extends ChangeNotifier {
         () => MatchStats(gameId: gameId, startedAt: startedAt),
       );
 
-  void recordKill(String gameId, DateTime startedAt) {
-    _ensure(gameId, startedAt).kills++;
+  /// The ONE code path that records a match event: bumps [MatchStats.kills]/
+  /// [MatchStats.deaths] for those two kinds, and appends an [MatchEventStamp]
+  /// for every kind (so the player timeline has markers for objectives/aces/
+  /// etc. too) — see that class's doc. [recordKill]/[recordDeath] are thin
+  /// wrappers over this so there is exactly one place a kill/death is ever
+  /// counted (no double-counting risk from two independent increment sites).
+  void recordEvent(
+      String gameId, DateTime startedAt, GameEventKind kind, DateTime at) {
+    final m = _ensure(gameId, startedAt);
+    if (kind == GameEventKind.kill) {
+      m.kills++;
+    } else if (kind == GameEventKind.death) {
+      m.deaths++;
+    }
+    m.events.add(MatchEventStamp(kind: kind, at: at));
+    if (m.events.length > maxEvents) {
+      m.events.removeRange(0, m.events.length - maxEvents);
+      if (!_loggedEventCap) {
+        _loggedEventCap = true;
+        talker.warning(
+            'Match event log capped at $maxEvents; dropping oldest entries.');
+      }
+    }
     _persist();
   }
 
-  void recordDeath(String gameId, DateTime startedAt) {
-    _ensure(gameId, startedAt).deaths++;
-    _persist();
-  }
+  void recordKill(String gameId, DateTime startedAt) =>
+      recordEvent(gameId, startedAt, GameEventKind.kill, DateTime.now());
+
+  void recordDeath(String gameId, DateTime startedAt) =>
+      recordEvent(gameId, startedAt, GameEventKind.death, DateTime.now());
 
   /// Records the League match metadata (captured once per match). Only
   /// overwrites fields that are provided and non-empty, so a later poll

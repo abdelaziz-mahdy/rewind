@@ -744,6 +744,48 @@ void main() {
       expect(s.deaths, 1);
     });
 
+    test(
+        'every routed event kind (kills, deaths, objectives, aces) is '
+        'stamped for the player timeline, not just kill/death', () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emit(GameEventKind.kill);
+      localLeague.emit(GameEventKind.dragonKill);
+      localLeague.emit(GameEventKind.ace);
+      localLeague.emit(GameEventKind.death);
+      await Future<void>.delayed(Duration.zero);
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.events.map((e) => e.kind).toList(), [
+        GameEventKind.kill,
+        GameEventKind.dragonKill,
+        GameEventKind.ace,
+        GameEventKind.death,
+      ]);
+      // Only kill/death actually bump counts — objectives/aces are stamped
+      // for the timeline but don't inflate K/D.
+      expect(s.kills, 1);
+      expect(s.deaths, 1);
+    });
+
     test('a matchInfo event records champion/teams/mode, never a clip',
         () async {
       final statsStore = MatchStatsStore(dir: tmp);
