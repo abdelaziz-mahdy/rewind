@@ -406,13 +406,19 @@ class _MatchClipsScreenState extends State<MatchClipsScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
               child: _MatchSummaryBand(stats: s, ddragon: widget.ddragon),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-            child: Text(
-              'Kills counted from the live game, even for fights not clipped.',
-              style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+          // Only when the match actually HAS live-tracked stats: the line
+          // explains League's Live-Client kill counting, and rendering it on
+          // a process-detected game's session ("Kills counted from the live
+          // game" with no live game feed in sight) was plain wrong.
+          if (s != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Text(
+                'Kills counted from the live game, even for fights not '
+                'clipped.',
+                style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+              ),
             ),
-          ),
           if (hasRoster)
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),

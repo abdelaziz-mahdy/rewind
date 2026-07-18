@@ -186,6 +186,25 @@ void main() {
     );
   });
 
+  testWidgets(
+      'the footnote is ABSENT for a session with no live-tracked stats — '
+      '"kills counted from the live game" is a lie for a process game',
+      (t) async {
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'PenguinHotel session',
+      stats: null,
+      library: library,
+    )));
+    await t.pump();
+
+    expect(
+      find.text(
+          'Kills counted from the live game, even for fights not clipped.'),
+      findsNothing,
+    );
+  });
+
   group('roster disclosure', () {
     MatchStats statsWithRoster() => MatchStats(
           gameId: 'league_of_legends',
