@@ -200,8 +200,16 @@ void main() {
     test('capture quality + audio defaults and round-trip', () {
       final d = AppSettings();
       expect(d.captureFps, 60);
-      expect(d.captureMaxHeight, isNull); // source
+      // 1080, the Balanced tier — deliberately NOT null/native (see
+      // VideoPreset's doc: the default must be universally disk-safe).
+      expect(d.captureMaxHeight, 1080);
       expect(d.audioMode, AudioMode.all);
+
+      // An existing file that stored a deliberate null (= Source) keeps it —
+      // the new constructor default must not override a saved choice.
+      final sourceUser = AppSettings.fromJson(
+          AppSettings(captureMaxHeight: null).toJson());
+      expect(sourceUser.captureMaxHeight, isNull);
 
       final s = AppSettings(
           captureFps: 30, captureMaxHeight: 1080, audioMode: AudioMode.app);
