@@ -19,10 +19,14 @@ Owns everything the user sees and most of the logic:
 - **UI** (`lib/src/ui/`) — a game-centric shell: a persistent left rail
   (games as first-class destinations, built by `game_directory.dart`), a
   recorder deck (buffer state, capture-source picker, save), per-game hub
-  screens (clips, event filters, detection status, inline settings), a
-  supported-games catalog, in-app player (media_kit), and tray presence.
-  Design system: `RewindTokens` in `theme.dart`; full spec in
-  `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`.
+  screens (clips, matches, detection status, and a glanceable
+  capture-settings summary card), a supported-games catalog, in-app player
+  (media_kit), and tray presence. Settings is a **full-page screen** with
+  its own sidebar (GENERAL pages + a MY GAMES page per configured game —
+  all per-game editing lives there; the hub card links into it). Design
+  system: `RewindTokens` in `theme.dart`; base spec in
+  `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`, settings
+  redesign rationale in the 2026-07-18 research pass (variants artifact).
 - **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. First implementation: `LeagueEventWatcher`, which polls the League **Live Client Data API** at `https://127.0.0.1:2999/liveclientdata/eventdata`.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
 - **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,
