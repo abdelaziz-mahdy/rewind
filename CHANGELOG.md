@@ -7,6 +7,12 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Event markers on the clip player's timeline**: kills, deaths and
+  objectives are now timestamped as they happen (into `matches.json`;
+  older matches predate the data and show a plain bar), and the player's
+  seek bar draws a colored tick per event — click one to jump to 2 seconds
+  before the moment. First step of the player roadmap (next: trimming, the
+  full-match timeline view, and full-match export).
 - **Configurable post-event delay for auto-clips** (default 5 s): how long
   Rewind keeps recording after the last event before saving the clip — a
   follow-up kill during the window extends the same clip (the burst logic
@@ -60,6 +66,10 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **Match detail screen compacted**: one summary band (champion · mode ·
+  K/D/A/CS/WS · items) instead of a tall card, the full-roster chips
+  collapsed behind "Champions in this game (N)", the duplicate stats line
+  removed — the clips grid gets the space.
 - **Settings rebuilt as a full-page screen** (research-backed redesign —
   competitor teardown of 8 apps + NN/g/HIG/Material evidence + preset-design
   research): Settings now covers the whole window with its own sidebar as
@@ -96,6 +106,18 @@ All notable changes to Rewind are documented here. Format based on
   changed.
 
 ### Fixed
+- **Storage limits no longer apply per keystroke** — typing "15" into Max
+  storage passed through "1", and the immediate retention sweep deleted
+  clips at the transient 1 GB limit with no confirmation. Limits now
+  commit only when you leave the field; invalid text snaps back; the
+  Clean up button remains the explicit immediate path.
+- **The hotkey field shows the newly captured combo immediately** — the
+  new binding was applied correctly, but the field kept displaying the old
+  combo until you left the page.
+- **Process-detected games no longer offer "Highlights"** on their
+  settings page — there's no event feed to auto-clip from, so the
+  capture-mode choice was a lie; a plain statement of hotkey capture
+  replaces it.
 - **Running fullscreen games now appear in the capture-source picker
   (macOS)**: app enumeration listed only windows on the active Space, so a
   game — almost always fullscreen on its own Space — was invisible the
