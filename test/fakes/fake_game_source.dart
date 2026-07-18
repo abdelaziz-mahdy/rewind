@@ -9,10 +9,17 @@ class FakeGameSource implements GameEventSource {
   final String displayName;
   @override
   final bool countsAsPlaying;
+  @override
+  final String? processMatch;
   bool running = false;
   final _events = StreamController<GameEvent>.broadcast();
 
-  FakeGameSource(this.gameId, [String? name, this.countsAsPlaying = true])
+  // Trailing positional-optional (not named — Dart forbids mixing `[]` and
+  // `{}` optional params, and every call site already passes these
+  // positionally): a fourth slot for the auto-switch needle, alongside the
+  // existing display name / countsAsPlaying overrides.
+  FakeGameSource(this.gameId,
+      [String? name, this.countsAsPlaying = true, this.processMatch])
       : displayName = name ?? gameId;
 
   void emit(GameEventKind kind) =>

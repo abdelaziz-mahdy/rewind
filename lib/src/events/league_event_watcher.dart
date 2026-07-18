@@ -101,6 +101,25 @@ class LeagueEventWatcher implements GameEventSource {
   @override
   bool get countsAsPlaying => true;
 
+  /// League is TWO separate macOS apps. The CLIENT the user browses
+  /// lobby/champ-select/post-game in is `…/LoL/League of Legends.app`
+  /// (bundle `com.riotgames.LeagueofLegends.LeagueClientUx`, display name
+  /// "League of Legends") — the app the catalog's process-watch entry
+  /// detects (`ProcessWatcherSource`, processMatch `LeagueClientUx`). The
+  /// actual match runs in a SEPARATE app, `…/LoL/Game/LeagueofLegends.app`
+  /// (bundle `com.riotgames.LeagueofLegends.GameClient`, CFBundleName
+  /// `LeagueofLegends`), which only exists while a game is live. The client
+  /// HIDES itself once a match starts, so binding capture to it for the
+  /// whole match records a black canvas with just the cursor composited on
+  /// top (verified live, 2026-07-18: a 28.7 s clip of exactly that).
+  ///
+  /// This watcher's activation IS match-live (see the class doc), so it
+  /// re-aims capture at "GameClient" — deliberately NOT "LeagueClientUx" —
+  /// which matches only the actual game app and never wrong-falls-back to
+  /// the (by then hidden) client.
+  @override
+  String get processMatch => 'GameClient';
+
   @override
   Future<bool> isGameRunning() async =>
       await _fetch('/liveclientdata/gamestats') != null;

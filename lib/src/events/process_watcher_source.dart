@@ -134,7 +134,10 @@ class ProcessWatcherSource implements GameEventSource {
   final String displayName;
 
   /// Case-insensitive substring matched against running process/executable
-  /// names (basename only — paths are normalized before matching).
+  /// names (basename only — paths are normalized before matching). Also
+  /// satisfies [GameEventSource.processMatch] — the same substring doubles
+  /// as the auto-switch needle against capturable windows.
+  @override
   final String processMatch;
 
   @override

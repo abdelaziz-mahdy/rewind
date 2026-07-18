@@ -77,6 +77,11 @@ void main() {
       // coordinator that keeps a real window.
       manualCoalesceWindow: Duration.zero,
     )..start(supervise: false); // subscribes to streams, no periodic timer
+    // Auto-switch's retry loop (Task 15) uses a real Timer at the default
+    // 2 s interval; a "no match" activation (e.g. noMatchGame below) would
+    // otherwise leave one ticking after the test completes. dispose()
+    // cancels it.
+    addTearDown(coordinator.dispose);
   });
 
   /// Waits out the burst debounce (60 ms) plus save + file-settle latency
@@ -1381,6 +1386,148 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(coordinator.autoSwitchedAppName.value, isNull);
+    });
+  });
+
+  group('auto-switch retry (League two-app split, Task 15)', () {
+    // Mirrors the real League client/game split (see CLAUDE.md and
+    // LeagueEventWatcher's doc): the client is hidden once a match starts,
+    // so binding capture to it records black frames. The vendor watcher's
+    // processMatch ("GameClient") must match only the game app, never the
+    // client, and must tolerate the game app's window enumerating slightly
+    // after the vendor watcher activates.
+    const clientBundleId = 'com.riotgames.LeagueofLegends.LeagueClientUx';
+    const gameBundleId = 'com.riotgames.LeagueofLegends.GameClient';
+    const clientApp = AppInfo(
+      bundleId: clientBundleId,
+      name: 'League of Legends',
+      pid: 7001,
+      onScreen: false,
+    );
+    const gameApp = AppInfo(
+      bundleId: gameBundleId,
+      name: 'LeagueofLegends',
+      pid: 7002,
+      onScreen: true,
+    );
+
+    ({
+      ClipCoordinator coordinator,
+      GameRegistry registry,
+      FakeGameSource source,
+      FakeCaptureEngine engine,
+    }) buildHarness({Duration interval = const Duration(milliseconds: 15)}) {
+      final harnessTmp = Directory.systemTemp.createTempSync('rewind_retry');
+      addTearDown(() {
+        try {
+          harnessTmp.deleteSync(recursive: true);
+        } on FileSystemException {
+          // best-effort cleanup, same as the outer tearDown
+        }
+      });
+      final harnessEngine = FakeCaptureEngine();
+      final harnessSource = FakeGameSource(
+          'league_of_legends', 'League of Legends', true, 'GameClient');
+      final harnessRegistry = GameRegistry(sources: [harnessSource]);
+      final harnessLibrary = ClipLibrary(clipsDir: harnessTmp);
+      final harnessSettings = AppSettings();
+      final harnessCoordinator = ClipCoordinator(
+        registry: harnessRegistry,
+        library: harnessLibrary,
+        storage: StorageManager(harnessLibrary),
+        settings: harnessSettings,
+        outDir: harnessTmp.path,
+        engine: harnessEngine,
+        autoSwitchRetryInterval: interval,
+      )..start(supervise: false);
+      addTearDown(harnessCoordinator.dispose);
+      return (
+        coordinator: harnessCoordinator,
+        registry: harnessRegistry,
+        source: harnessSource,
+        engine: harnessEngine,
+      );
+    }
+
+    test(
+        'activation with BOTH the (hidden) client and the (on-screen) game '
+        'app switches capture to the game app', () async {
+      final h = buildHarness();
+      h.engine.apps = const [clientApp, gameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.engine.captureAppCalls, [gameBundleId]);
+    });
+
+    test(
+        'the needle does not match the client alone — no switch, a retry '
+        'is scheduled instead', () async {
+      final h = buildHarness();
+      h.engine.apps = const [clientApp]; // game app not up yet
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.engine.captureAppCalls, isEmpty);
+    });
+
+    test(
+        'a match that appears later (loading screen) is picked up on a '
+        'subsequent retry tick', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 20));
+      h.engine.apps = const [clientApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.engine.captureAppCalls, isEmpty);
+
+      // The game app's window enumerates mid-loading-screen, before the
+      // next retry tick.
+      h.engine.apps = const [clientApp, gameApp];
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(h.engine.captureAppCalls, [gameBundleId]);
+    });
+
+    test(
+        'retry is cancelled on deactivation — no switch after the match '
+        'ends, even if a match arrives later', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 20));
+      h.engine.apps = const [clientApp]; // never matches while active
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.running = false;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // Arrives after the game already ended — must not be picked up.
+      h.engine.apps = const [clientApp, gameApp];
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureAppCalls, isEmpty);
+    });
+
+    test(
+        'the retry loop gives up after the max attempts — a later match is '
+        'never picked up', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 5));
+      h.engine.apps = const [clientApp]; // never matches
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // 15 attempts * 5 ms plus generous margin for the loop to exhaust.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(h.engine.captureAppCalls, isEmpty);
+
+      h.engine.apps = const [clientApp, gameApp];
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(h.engine.captureAppCalls, isEmpty,
+          reason: 'the retry loop already gave up');
     });
   });
 
