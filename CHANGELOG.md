@@ -7,6 +7,14 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Onboarding that proves it works**: the Screen Recording step is now
+  live — it knows whether permission is granted, fires the macOS system
+  prompt directly ("Grant Screen Recording"), flips to a checkmark the
+  moment you approve, and is honest about the relaunch a mid-session
+  grant requires (with a Relaunch button that does it). A new final
+  "Try it now" step has you press the save hotkey and watches the real
+  clip land. The games step names a supported game if it's already
+  running. Setup choices (buffer, mic, follow-the-game) unchanged.
 - **Event markers on the clip player's timeline**: kills, deaths and
   objectives are now timestamped as they happen (into `matches.json`;
   older matches predate the data and show a plain bar), and the player's
