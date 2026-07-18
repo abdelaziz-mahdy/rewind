@@ -336,6 +336,38 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets(
+        "tapping the hub's capture summary card opens Settings directly on "
+        "that game's MY GAMES page, and the close button returns to the hub",
+        (t) async {
+      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
+          DateTime(2026, 7, 2)));
+      await _pumpTall(t, _app(shell()));
+
+      await t.tap(navGame('league_of_legends'));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.byKey(const ValueKey('gameHubScreen:league_of_legends')),
+          findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('captureSummaryCard')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      // Settings is full-page (the rail is gone), landed directly on
+      // League's MY GAMES page — its description line only ever renders on
+      // a per-game page, never the GENERAL Capture page.
+      expect(find.byType(NavRail), findsNothing);
+      expect(find.textContaining('Overrides for this game'), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(find.byKey(const ValueKey('gameHubScreen:league_of_legends')),
+          findsOneWidget);
+    });
+
     testWidgets('the Supported Games screen renders for + Add game', (t) async {
       await t.pumpWidget(_app(shell()));
       await t.tap(navItem('addGame'));

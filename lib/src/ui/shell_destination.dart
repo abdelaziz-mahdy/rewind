@@ -18,8 +18,8 @@ class AllClipsDestination extends ShellDestination {
 }
 
 /// A single game's hub (`game_hub_screen.dart`, T4): header stats,
-/// integration status, inline per-game capture settings, and this game's
-/// scoped clip list.
+/// integration status, a capture-settings summary card (tap to edit on
+/// Settings), and this game's scoped clip list.
 class GameDestination extends ShellDestination {
   final String gameId;
 
@@ -46,11 +46,20 @@ class SupportedGamesDestination extends ShellDestination {
 
 /// The app's settings, embedded as a destination.
 class SettingsDestination extends ShellDestination {
-  const SettingsDestination();
+  /// When set, Settings opens directly on this game's MY GAMES page instead
+  /// of the default Capture page — the game hub's summary card sets this so
+  /// tapping it jumps straight to "this game's overrides" (`SettingsScreen.
+  /// initialGameId`). Null for every other entry point (the rail's Settings
+  /// item, the recorder deck's "Custom…" path), which always open plain
+  /// Settings.
+  final String? initialGameId;
+
+  const SettingsDestination({this.initialGameId});
 
   @override
-  bool operator ==(Object other) => other is SettingsDestination;
+  bool operator ==(Object other) =>
+      other is SettingsDestination && other.initialGameId == initialGameId;
 
   @override
-  int get hashCode => (SettingsDestination).hashCode;
+  int get hashCode => Object.hash(SettingsDestination, initialGameId);
 }
