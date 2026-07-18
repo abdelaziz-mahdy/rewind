@@ -5,22 +5,28 @@ import 'package:flutter/services.dart';
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
+import '../events/game_event.dart';
 import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
+import '../settings/game_config.dart';
 import '../settings/video_preset.dart';
+import 'game_directory.dart';
 import 'onboarding_screen.dart';
 import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
+import 'widgets/event_matrix.dart';
+import 'widgets/game_tile_avatar.dart';
 
 /// Full-page Settings (the research-locked "variant G" design, see
 /// docs/superpowers/specs — settings covers the whole window; its own left
 /// sidebar (§`_SettingsSidebar`) is the ONLY navigation while it's open, the
 /// app rail is hidden by the caller (`shell.dart`)). One GENERAL section
-/// (Capture / Hotkeys / Storage / About) for now; per-game pages land under
-/// a MY GAMES section in a later pass.
+/// (Capture / Hotkeys / Storage / About), plus one MY GAMES page per
+/// [gameEntries] entry ([_GameSettingsPage]) — overrides for that game only,
+/// everything else falling back to the GENERAL Capture page's defaults.
 ///
 /// `onChanged` is called with the (mutated in place) [AppSettings] whenever
 /// a field commits a valid value — the caller persists it and rebinds the
@@ -76,6 +82,20 @@ class SettingsScreen extends StatefulWidget {
   /// renders (it's a fixed part of the full-page chrome) but no-ops.
   final VoidCallback? onClose;
 
+  /// The MY GAMES sidebar section's rows, one per entry, in the exact order
+  /// shown — build with `buildGameDirectory(...)` the same way the rail
+  /// does (see `game_directory.dart`'s doc on the League two-gameId merge)
+  /// so the two navs never disagree on naming/icons/ordering. Empty (the
+  /// default) hides the MY GAMES header entirely rather than showing it
+  /// with nothing under it.
+  final List<GameEntry> gameEntries;
+
+  /// When set to a [gameEntries] id, Settings opens directly on that game's
+  /// page instead of the default Capture page — used by the game hub's
+  /// summary card to jump straight to "this game's overrides". Ignored (falls
+  /// back to Capture) if it doesn't match any [gameEntries] entry.
+  final String? initialGameId;
+
   const SettingsScreen({
     required this.settings,
     required this.onChanged,
@@ -85,6 +105,8 @@ class SettingsScreen extends StatefulWidget {
     this.library,
     this.onCleanUpStorage,
     this.onClose,
+    this.gameEntries = const [],
+    this.initialGameId,
     super.key,
   });
 
@@ -104,7 +126,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _maxStorageController;
   late final TextEditingController _maxAgeController;
 
-  _SettingsPage _selectedPage = _SettingsPage.capture;
+  /// The current GENERAL page, or null while a MY GAMES page
+  /// ([_selectedGameId]) is showing — exactly one of the two is non-null at
+  /// any time (see [_selectGeneralPage]/[_selectGame]).
+  _SettingsPage? _selectedGeneralPage = _SettingsPage.capture;
+  String? _selectedGameId;
 
   /// Whether the Custom video-preset card has been tapped this session —
   /// reveals the Resolution/Framerate rows without writing to [AppSettings]
@@ -130,7 +156,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         text: widget.settings.maxStorageGb?.toString() ?? '');
     _maxAgeController = TextEditingController(
         text: widget.settings.maxClipAgeDays?.toString() ?? '');
+    final initial = widget.initialGameId;
+    if (initial != null && widget.gameEntries.any((e) => e.gameId == initial)) {
+      _selectedGeneralPage = null;
+      _selectedGameId = initial;
+    }
   }
+
+  void _selectGeneralPage(_SettingsPage page) => setState(() {
+        _selectedGeneralPage = page;
+        _selectedGameId = null;
+      });
+
+  void _selectGame(String gameId) => setState(() {
+        _selectedGameId = gameId;
+        _selectedGeneralPage = null;
+      });
 
   @override
   void dispose() {
@@ -364,6 +405,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  Widget _selectedBody(BuildContext context) {
+    final gameId = _selectedGameId;
+    if (gameId != null) {
+      final entry = widget.gameEntries.firstWhere(
+        (e) => e.gameId == gameId,
+        // Defensive only: [_selectGame] is only ever called with an id drawn
+        // from widget.gameEntries, and initState guards initialGameId the
+        // same way — this fallback exists so a gameEntries list that shrinks
+        // out from under an already-open page (a config removed elsewhere)
+        // degrades to a blank page instead of throwing.
+        orElse: () => GameEntry(
+          gameId: gameId,
+          displayName: gameId,
+          detection: const {},
+          active: false,
+          clipCount: 0,
+          totalSizeBytes: 0,
+        ),
+      );
+      return _GameSettingsPage(
+        key: ValueKey('gameSettingsPage:$gameId'),
+        entry: entry,
+        settings: widget.settings,
+        onChanged: widget.onChanged,
+      );
+    }
+    return switch (_selectedGeneralPage!) {
+      _SettingsPage.capture => _capturePage(context),
+      _SettingsPage.hotkey => _hotkeysPage(context),
+      _SettingsPage.storage => _storagePage(context),
+      _SettingsPage.about => _aboutPage(context),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -371,18 +446,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SettingsSidebar(
-            selected: _selectedPage,
-            onSelect: (p) => setState(() => _selectedPage = p),
+            selectedGeneralPage: _selectedGeneralPage,
+            selectedGameId: _selectedGameId,
+            gameEntries: widget.gameEntries,
+            onSelectGeneral: _selectGeneralPage,
+            onSelectGame: _selectGame,
           ),
           Expanded(
             child: Stack(
               children: [
-                switch (_selectedPage) {
-                  _SettingsPage.capture => _capturePage(context),
-                  _SettingsPage.hotkey => _hotkeysPage(context),
-                  _SettingsPage.storage => _storagePage(context),
-                  _SettingsPage.about => _aboutPage(context),
-                },
+                _selectedBody(context),
                 Positioned(
                   top: 18,
                   right: 22,
@@ -396,35 +469,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Wraps a page's content in its own scroll view, left-aligned and capped
-  /// at [settingsPageContentWidth] — the "variant G" column, narrower than
-  /// the shared [settingsMaxContentWidth] a game hub's panel still uses.
-  Widget _page(BuildContext context, String title, List<Widget> children) {
-    final theme = Theme.of(context);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(40, 26, 40, 40),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.display),
-            const SizedBox(height: 20),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _divider(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Divider(
-            height: 1, thickness: 1, color: context.rewindTokens.hairline),
-      );
-
   Widget _capturePage(BuildContext context) {
-    return _page(context, 'Capture', [
+    return _settingsPage(context, 'Capture', [
       _SettingsSection(
         title: 'Instant replay',
         description: 'How far back a saved clip reaches.',
@@ -467,7 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
-      _divider(context),
+      _sectionDivider(context),
       _SettingsSection(
         title: 'Video',
         description: 'One choice — resolution, framerate and disk cost '
@@ -511,7 +557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
-      _divider(context),
+      _sectionDivider(context),
       _SettingsSection(
         title: 'Audio',
         child: Column(
@@ -678,7 +724,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _hotkeysPage(BuildContext context) {
-    return _page(context, 'Hotkeys', [
+    return _settingsPage(context, 'Hotkeys', [
       _FieldRow(
         label: 'Save clip',
         control: SizedBox(
@@ -707,7 +753,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _storagePage(BuildContext context) {
-    return _page(context, 'Storage', [
+    return _settingsPage(context, 'Storage', [
       if (widget.library case final lib?) ...[
         ListenableBuilder(
           listenable: lib,
@@ -791,7 +837,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// pairs, so it deliberately doesn't use the field-row grammar — a normal
   /// column, same shape as before the redesign.
   Widget _aboutPage(BuildContext context) {
-    return _page(context, 'About', [
+    return _settingsPage(context, 'About', [
       Text(
         'Rewind — open-source instant replay for macOS & Windows. GPLv3.',
         style: Theme.of(context).textTheme.bodyMuted,
@@ -848,16 +894,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '${d.isMain ? ' (Main)' : ''}';
 }
 
-/// The full-page's left sidebar — the ONLY navigation while Settings is
-/// open (the app rail is hidden by the caller). One "GENERAL" section for
-/// now; a "MY GAMES" section of per-game pages lands in a later pass. Row
-/// selection mirrors the app rail's own `_NavItem` treatment (raised bg + a
-/// left accent bar) so the two navs read as one visual language.
-class _SettingsSidebar extends StatelessWidget {
-  final _SettingsPage selected;
-  final ValueChanged<_SettingsPage> onSelect;
+/// Wraps a page's content in its own scroll view, left-aligned and capped
+/// at [settingsPageContentWidth] — the "variant G" column, narrower than
+/// the shared [settingsMaxContentWidth] a game hub's panel still uses.
+/// Shared by every GENERAL page and each MY GAMES page ([_GameSettingsPage])
+/// so they read as one design, not two. [description], when given, is a
+/// muted one-line sub-head right under the title — only [_GameSettingsPage]
+/// uses it ("Overrides for this game…"); every GENERAL page leaves it null
+/// and renders exactly as before this param existed.
+Widget _settingsPage(
+  BuildContext context,
+  String title,
+  List<Widget> children, {
+  String? description,
+}) {
+  final theme = Theme.of(context);
+  return SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(40, 26, 40, 40),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.display),
+          if (description case final d?) ...[
+            const SizedBox(height: 4),
+            Text(d, style: theme.textTheme.bodyMuted),
+          ],
+          const SizedBox(height: 20),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
 
-  const _SettingsSidebar({required this.selected, required this.onSelect});
+Widget _sectionDivider(BuildContext context) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Divider(
+          height: 1, thickness: 1, color: context.rewindTokens.hairline),
+    );
+
+/// The full-page's left sidebar — the ONLY navigation while Settings is
+/// open (the app rail is hidden by the caller). A "GENERAL" section, then —
+/// when [gameEntries] is non-empty — a "MY GAMES" section listing one row
+/// per entry (same order as the rail; see [SettingsScreen.gameEntries]'s
+/// doc). Row selection mirrors the app rail's own `_NavItem` treatment
+/// (raised bg + a left accent bar) so the two navs read as one visual
+/// language.
+class _SettingsSidebar extends StatelessWidget {
+  final _SettingsPage? selectedGeneralPage;
+  final String? selectedGameId;
+  final List<GameEntry> gameEntries;
+  final ValueChanged<_SettingsPage> onSelectGeneral;
+  final ValueChanged<String> onSelectGame;
+
+  const _SettingsSidebar({
+    required this.selectedGeneralPage,
+    required this.selectedGameId,
+    required this.gameEntries,
+    required this.onSelectGeneral,
+    required this.onSelectGame,
+  });
 
   static const _items = [
     (
@@ -891,24 +989,319 @@ class _SettingsSidebar extends StatelessWidget {
         color: tokens.surface,
         border: Border(right: hairlineBorder()),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-            child: Text(
-              'GENERAL',
-              style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+              child: Text(
+                'GENERAL',
+                style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+              ),
+            ),
+            for (final (page, keyStr, label, icon) in _items)
+              _SidebarItem(
+                key: ValueKey(keyStr),
+                icon: icon,
+                label: label,
+                selected: page == selectedGeneralPage,
+                onTap: () => onSelectGeneral(page),
+              ),
+            if (gameEntries.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                child: Text(
+                  'MY GAMES',
+                  style:
+                      theme.textTheme.micro.copyWith(color: tokens.textMuted),
+                ),
+              ),
+              for (final entry in gameEntries)
+                _SidebarGameItem(
+                  key: ValueKey('settingsGame:${entry.gameId}'),
+                  entry: entry,
+                  selected: entry.gameId == selectedGameId,
+                  onTap: () => onSelectGame(entry.gameId),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One MY GAMES sidebar row: [GameTileAvatar] + display name — the same
+/// raised-bg/left-accent-bar selection cue as [_SidebarItem], just with a
+/// game icon in place of a fixed [Icon].
+class _SidebarGameItem extends StatelessWidget {
+  final GameEntry entry;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SidebarGameItem({
+    required this.entry,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? tokens.surfaceRaised : null,
+            border: Border(
+              left: BorderSide(
+                color: selected ? tokens.accent : Colors.transparent,
+                width: tokens.radiusRailIndicator,
+              ),
             ),
           ),
-          for (final (page, keyStr, label, icon) in _items)
-            _SidebarItem(
-              key: ValueKey(keyStr),
-              icon: icon,
-              label: label,
-              selected: page == selected,
-              onTap: () => onSelect(page),
-            ),
+          child: Row(
+            children: [
+              GameTileAvatar(
+                gameId: entry.gameId,
+                displayName: entry.displayName,
+                iconPath: entry.iconPath,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  entry.displayName,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: (selected
+                          ? theme.textTheme.title
+                          : theme.textTheme.body)
+                      .copyWith(color: selected ? tokens.accent : tokens.text),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One MY GAMES page: this game's capture mode (manual-only vs. highlights,
+/// plus — for a game with a live vendor API, currently only League — the
+/// event chip matrix), its buffer-length override, and a read-only
+/// "Detection" line. Everything not touched here falls back to the GENERAL
+/// Capture page (see the title-row description). A separate [StatefulWidget]
+/// (not folded into [_SettingsScreenState]) so the caller can key it per
+/// game id (`_SettingsScreenState._selectedBody`) and get fresh local state
+/// on every game switch — the same reason the game hub is its own screen
+/// rather than a case inside some larger state class.
+class _GameSettingsPage extends StatefulWidget {
+  final GameEntry entry;
+  final AppSettings settings;
+  final Future<void> Function(AppSettings) onChanged;
+
+  const _GameSettingsPage({
+    required this.entry,
+    required this.settings,
+    required this.onChanged,
+    super.key,
+  });
+
+  @override
+  State<_GameSettingsPage> createState() => _GameSettingsPageState();
+}
+
+class _GameSettingsPageState extends State<_GameSettingsPage> {
+  late int _bufferSeconds;
+  late bool _autoClip;
+  late Set<GameEventKind> _enabledEvents;
+  bool _advancedOpen = false;
+
+  /// Seeds local editable state from any existing [GameConfig] — read-only
+  /// (unlike [AppSettings.configFor], this never creates/persists a row just
+  /// because the page was opened), mirroring the game hub's own
+  /// `_initLocalConfigState`.
+  GameConfig get _snapshot {
+    final existing = widget.settings.allConfigs
+        .where((c) => c.gameId == widget.entry.gameId);
+    return existing.isNotEmpty
+        ? existing.first
+        : GameConfig(
+            gameId: widget.entry.gameId,
+            bufferSeconds:
+                widget.settings.bufferSecondsFor(widget.entry.gameId),
+          );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final snapshot = _snapshot;
+    _bufferSeconds = snapshot.bufferSeconds;
+    _autoClip = snapshot.autoClip;
+    _enabledEvents = Set.of(snapshot.enabledEvents);
+  }
+
+  /// Every write goes through this same read-mutate-persist-notify path —
+  /// identical to the game hub's own setting handlers.
+  GameConfig _commit(void Function(GameConfig cfg) mutate) {
+    final cfg = widget.settings.configFor(widget.entry.gameId);
+    mutate(cfg);
+    widget.settings.setConfig(cfg);
+    widget.onChanged(widget.settings);
+    return cfg;
+  }
+
+  void _setAutoClip(bool value) {
+    setState(() => _autoClip = value);
+    _commit((cfg) => cfg.autoClip = value);
+  }
+
+  void _setBuffer(int seconds) {
+    setState(() => _bufferSeconds = seconds);
+    _commit((cfg) => cfg.bufferSeconds = seconds);
+  }
+
+  void _toggleEvent(GameEventKind kind, bool value) {
+    setState(() {
+      if (value) {
+        _enabledEvents.add(kind);
+      } else {
+        _enabledEvents.remove(kind);
+      }
+    });
+    _commit((cfg) => cfg.enabledEvents = Set.of(_enabledEvents));
+  }
+
+  String _detectionLabel(GameEntry entry) {
+    if (entry.detection.contains(DetectionMethod.liveClientApi)) {
+      return 'Live Client API (automatic)';
+    }
+    if (entry.detection.contains(DetectionMethod.processWatch)) {
+      return 'Process: ${entry.processMatch}';
+    }
+    return 'Manual — no automatic detection';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final groups = eventGroupsFor(entry);
+    final defaultSeconds = widget.settings.defaultBufferSeconds;
+    // Collapses "explicitly set to the same number as the global default"
+    // into the same dropdown state as "never overridden" — GameConfig.
+    // bufferSeconds is a plain non-nullable int (see its doc), so there is
+    // no separate bit recording "this is following the default" distinct
+    // from the value happening to match it; that's fine, the two are
+    // behaviourally identical either way.
+    final followsDefault = _bufferSeconds == defaultSeconds;
+
+    return _settingsPage(
+      context,
+      entry.displayName,
+      description: 'Overrides for this game — everything not set here '
+          'follows your Capture defaults.',
+      [
+        _SettingsSection(
+          title: 'Capture mode',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _captureModeCards(context),
+              if (groups.isNotEmpty && _autoClip) ...[
+                const SizedBox(height: 12),
+                Column(
+                  key: const ValueKey('gameSettingsEventMatrix'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < groups.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      EventGroup(
+                        label: groups[i].label,
+                        kinds: groups[i].kinds,
+                        selected: _enabledEvents,
+                        onChanged: _toggleEvent,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        _sectionDivider(context),
+        _FieldRow(
+          label: 'Buffer length',
+          control: DropdownButtonFormField<int?>(
+            key: const ValueKey('gameBufferDropdown'),
+            initialValue: followsDefault ? null : _bufferSeconds,
+            isExpanded: true,
+            items: [
+              DropdownMenuItem(
+                child: Text('Use default ($defaultSeconds s)'),
+              ),
+              const DropdownMenuItem(value: 15, child: Text('15 s')),
+              const DropdownMenuItem(value: 30, child: Text('30 s')),
+              const DropdownMenuItem(value: 60, child: Text('60 s')),
+              // Only added when the current value isn't already one of the
+              // items above — a DropdownButtonFormField's items must have
+              // unique values, and its `initialValue` must match one of them.
+              if (!followsDefault &&
+                  _bufferSeconds != 15 &&
+                  _bufferSeconds != 30 &&
+                  _bufferSeconds != 60)
+                DropdownMenuItem(
+                    value: _bufferSeconds, child: Text('$_bufferSeconds s')),
+            ],
+            onChanged: (value) => _setBuffer(value ?? defaultSeconds),
+          ),
+        ),
+        const SizedBox(height: 4),
+        _AdvancedDisclosure(
+          open: _advancedOpen,
+          onToggle: () => setState(() => _advancedOpen = !_advancedOpen),
+          child: _FieldRow(
+            label: 'Detection',
+            control: Text(_detectionLabel(entry),
+                style: Theme.of(context).textTheme.bodyMuted),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _captureModeCards(BuildContext context) {
+    Widget cardFor(bool highlights) {
+      final (title, description) = highlights
+          ? ('Highlights', 'Auto-clip the moments you pick below')
+          : ('Manual only', 'Hotkey saves only — nothing automatic');
+      return _PresetCard(
+        key: ValueKey('captureMode:${highlights ? 'highlights' : 'manual'}'),
+        title: title,
+        description: description,
+        costLine: null,
+        selected: _autoClip == highlights,
+        recommended: false,
+        onTap: () => _setAutoClip(highlights),
+      );
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: cardFor(false)),
+          const SizedBox(width: 10),
+          Expanded(child: cardFor(true)),
         ],
       ),
     );
@@ -1209,7 +1602,13 @@ class _TrailingRow extends StatelessWidget {
 class _PresetCard extends StatelessWidget {
   final String title;
   final String description;
-  final String costLine;
+
+  /// The mono disk-cost line, e.g. "1080p · 60 fps · 30 s buffer ≈ 220 MB".
+  /// Null omits the line entirely — the Capture-mode cards ("Manual only" /
+  /// "Highlights", `_GameSettingsPage`) have no disk cost of their own to
+  /// print (auto-clip doesn't change the buffer's size), unlike the video
+  /// quality presets this card was originally built for.
+  final String? costLine;
   final bool selected;
   final bool recommended;
   final VoidCallback onTap;
@@ -1276,15 +1675,17 @@ class _PresetCard extends StatelessWidget {
                       style: theme.textTheme.bodyMuted
                           .copyWith(color: selected ? tokens.text : null),
                     ),
-                    const SizedBox(height: 7),
-                    Text(
-                      costLine,
-                      style: theme.textTheme.label.copyWith(
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w500,
-                        color: selected ? tokens.accent : tokens.textMuted,
+                    if (costLine case final line?) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        line,
+                        style: theme.textTheme.label.copyWith(
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w500,
+                          color: selected ? tokens.accent : tokens.textMuted,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
