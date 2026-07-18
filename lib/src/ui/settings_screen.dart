@@ -698,8 +698,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     initialValue: _selectedMicDeviceUid(),
                     isExpanded: true,
                     items: [
-                      const DropdownMenuItem<String?>(
-                        child: Text('System default'),
+                      // Name what "default" resolves to RIGHT NOW —
+                      // "System default" alone made the maintainer ask what
+                      // it meant. It follows macOS's Sound → Input choice;
+                      // a named device pins that device instead.
+                      DropdownMenuItem<String?>(
+                        child: Text(switch (widget.audioInputs
+                            .where((i) => i.isDefault)
+                            .toList()) {
+                          [final d, ...] => 'System default (${d.name})',
+                          _ => 'System default',
+                        }),
                       ),
                       for (final input in widget.audioInputs)
                         DropdownMenuItem<String?>(

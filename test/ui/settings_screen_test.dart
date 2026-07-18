@@ -744,7 +744,10 @@ void main() {
       )));
 
       expect(find.text('Microphone'), findsOneWidget);
-      expect(find.text('System default'), findsOneWidget);
+      // The default entry NAMES what "System default" resolves to right now
+      // (the input flagged isDefault) — a bare "System default" made the
+      // maintainer ask what it meant.
+      expect(find.text('System default (Built-in Microphone)'), findsOneWidget);
     });
 
     testWidgets('picking a device writes micDeviceUid and fires onChanged',
@@ -782,7 +785,7 @@ void main() {
 
       await t.tap(find.byKey(const ValueKey('micDeviceDropdown')));
       await t.pumpAndSettle();
-      await t.tap(find.text('System default').last);
+      await t.tap(find.textContaining('System default').last);
       await t.pumpAndSettle();
 
       expect(calls, isNotEmpty);
@@ -801,7 +804,7 @@ void main() {
         audioInputs: micInputs,
       )));
 
-      expect(find.text('System default'), findsOneWidget);
+      expect(find.textContaining('System default'), findsOneWidget);
       expect(settings.micDeviceUid, 'mic-unplugged');
     });
   });
