@@ -15,6 +15,7 @@ import 'game_directory.dart';
 import 'match_clips_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
+import 'widgets/event_matrix.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/match_card.dart';
 import 'widgets/setting_row.dart';
@@ -32,27 +33,6 @@ const _leagueCatalogId = 'app:league_of_legends';
 Set<String> _matchIdsFor(String gameId) => gameId == _leagueVendorId
     ? const {_leagueVendorId, _leagueCatalogId}
     : {gameId};
-
-/// League's `enabledEvents` matrix groups (§3.4): `manual` is excluded
-/// (the hotkey always saves, regardless of this config) and `other` has no
-/// group (it's a generic fallback no source currently emits for League).
-const _combatEvents = [
-  GameEventKind.kill,
-  GameEventKind.doubleKill,
-  GameEventKind.tripleKill,
-  GameEventKind.quadraKill,
-  GameEventKind.pentaKill,
-  GameEventKind.ace,
-];
-const _objectiveEvents = [
-  GameEventKind.dragonKill,
-  GameEventKind.dragonSteal,
-  GameEventKind.baronKill,
-  GameEventKind.baronSteal,
-  GameEventKind.turretKill,
-  GameEventKind.inhibitorKill,
-];
-const _matchEvents = [GameEventKind.victory, GameEventKind.defeat];
 
 /// The Game Hub (§3.4) — the centerpiece of the game-as-entry-point IA.
 ///
@@ -633,43 +613,31 @@ class _GameHubScreenState extends State<GameHubScreen> {
                 key: const ValueKey('gameHubEventMatrix'),
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _eventGroup(context, 'COMBAT', _combatEvents),
+                  EventGroup(
+                    label: 'COMBAT',
+                    kinds: combatEvents,
+                    selected: _enabledEvents,
+                    onChanged: _toggleEvent,
+                  ),
                   const SizedBox(height: 12),
-                  _eventGroup(context, 'OBJECTIVES', _objectiveEvents),
+                  EventGroup(
+                    label: 'OBJECTIVES',
+                    kinds: objectiveEvents,
+                    selected: _enabledEvents,
+                    onChanged: _toggleEvent,
+                  ),
                   const SizedBox(height: 12),
-                  _eventGroup(context, 'MATCH', _matchEvents),
+                  EventGroup(
+                    label: 'MATCH',
+                    kinds: matchEvents,
+                    selected: _enabledEvents,
+                    onChanged: _toggleEvent,
+                  ),
                 ],
               ),
             ),
           ),
         ],
-      ],
-    );
-  }
-
-  Widget _eventGroup(
-      BuildContext context, String label, List<GameEventKind> kinds) {
-    final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final kind in kinds)
-              _EventToggleChip(
-                key: ValueKey('eventToggle:${kind.name}'),
-                kind: kind,
-                selected: _enabledEvents.contains(kind),
-                onChanged: (value) => _toggleEvent(kind, value),
-              ),
-          ],
-        ),
       ],
     );
   }
@@ -741,67 +709,6 @@ class _LiveEventChip extends StatelessWidget {
         Text(relativeAge(event.time),
             style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
       ],
-    );
-  }
-}
-
-/// A checkbox-styled chip for the auto-clip event matrix: accent fill/border
-/// when enabled, hairline otherwise — same visual language as
-/// `EventFilterChips`, but a boolean toggle rather than a single-select.
-class _EventToggleChip extends StatelessWidget {
-  final GameEventKind kind;
-  final bool selected;
-  final ValueChanged<bool> onChanged;
-
-  const _EventToggleChip({
-    required this.kind,
-    required this.selected,
-    required this.onChanged,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    final accent = tokens.accent;
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: () => onChanged(!selected),
-        borderRadius: BorderRadius.circular(tokens.radiusChip),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.16) : tokens.surface,
-            borderRadius: BorderRadius.circular(tokens.radiusChip),
-            border: Border.fromBorderSide(
-                selected ? BorderSide(color: accent) : hairlineBorder()),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // A non-colour cue for "on". State was previously carried by hue
-              // alone (green vs white), which reads as nothing to a
-              // colour-blind player — and every chip is the same size and
-              // shape, so hue was the ONLY signal.
-              if (selected) ...[
-                Icon(Icons.check, size: 13, color: accent),
-                const SizedBox(width: 5),
-              ],
-              Text(
-                eventBadge(kind),
-                // OFF is muted, ON is the accent. This used to be inverted:
-                // an unselected chip drew full-brightness `tokens.text` while
-                // a selected one drew the dimmer accent, so a hub's LOUDEST
-                // elements were the events the player had switched off.
-                style: theme.textTheme.label
-                    .copyWith(color: selected ? accent : tokens.textMuted),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

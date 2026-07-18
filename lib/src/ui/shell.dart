@@ -15,6 +15,7 @@ import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import 'all_clips_screen.dart';
 import 'capture_app_match.dart';
+import 'game_directory.dart';
 import 'game_hub_screen.dart';
 import 'settings_screen.dart';
 import 'shell_destination.dart';
@@ -240,6 +241,14 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
           onClose: _closeSettings,
+          // Same derivation as the rail (`nav_rail.dart`'s `_buildRail`) so
+          // the MY GAMES sidebar section never disagrees with it on naming,
+          // icons, or ordering.
+          gameEntries: buildGameDirectory(
+            settings: widget.coordinator.settings,
+            clips: widget.library.all,
+            activeIds: widget.coordinator.activeGameIds.value,
+          ),
         ),
     };
   }
