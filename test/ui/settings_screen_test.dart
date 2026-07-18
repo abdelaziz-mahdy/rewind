@@ -516,7 +516,7 @@ void main() {
       // all four preset cards actually rendered.
       expect(
           find.textContaining(
-              'Lightest on your Mac and disk — great for quick moments.'),
+              'Lightest on your system and disk — great for quick moments.'),
           findsOneWidget);
       expect(find.text('RECOMMENDED'), findsOneWidget);
     });
@@ -694,7 +694,16 @@ void main() {
   });
 
   group('Storage section', () {
-    testWidgets('max storage commits ints; blank commits null (unlimited)',
+    /// Blur the focused field — limits commit on LEAVING the field, never
+    /// per keystroke (see _commitLimit's doc: typing "15" passes through
+    /// "1", and a per-keystroke commit ran a retention sweep on the
+    /// transient value and deleted real clips).
+    Future<void> blur(WidgetTester t) async {
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+    }
+
+    testWidgets('max storage commits on blur; blank commits null (unlimited)',
         (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
@@ -707,20 +716,56 @@ void main() {
       await openPage(t, 'Storage');
       final field = find.byKey(const ValueKey('maxStorageField'));
       await t.enterText(field, '50');
-      await t.pump();
+      await blur(t);
       expect(settings.maxStorageGb, 50);
 
       await t.enterText(field, '');
-      await t.pump();
+      await blur(t);
       expect(settings.maxStorageGb, isNull);
 
-      // Garbage neither commits nor resets the previous value.
+      // Garbage neither commits nor clears the previous value, and the
+      // field snaps back to what's actually committed.
       await t.enterText(field, '5');
-      await t.pump();
+      await blur(t);
       await t.enterText(field, 'abc');
-      await t.pump();
+      await blur(t);
       expect(settings.maxStorageGb, 5);
+      expect(
+          t.widget<TextField>(field).controller!.text, '5');
       expect(calls, isNotEmpty);
+    });
+
+    testWidgets(
+        'REGRESSION: typing "1" en route to "15" neither commits nor fires '
+        'onChanged until the field is left — a transient keystroke must '
+        'never trigger a retention sweep', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(maxStorageGb: 20);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await openPage(t, 'Storage');
+      final field = find.byKey(const ValueKey('maxStorageField'));
+
+      // Mid-typing: the transient "1" exists only in the text field.
+      await t.enterText(field, '1');
+      await t.pump();
+      expect(settings.maxStorageGb, 20);
+      expect(calls, isEmpty);
+
+      await t.enterText(field, '15');
+      await t.pump();
+      expect(settings.maxStorageGb, 20);
+      expect(calls, isEmpty);
+
+      // Leaving the field commits the FINAL value, exactly once.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+      expect(settings.maxStorageGb, 15);
+      expect(calls, hasLength(1));
     });
 
     testWidgets(
@@ -789,7 +834,7 @@ void main() {
       expect(find.byKey(const ValueKey('cleanUpStorageButton')), findsNothing);
     });
 
-    testWidgets('max age (days) commits ints; blank commits null (never)',
+    testWidgets('max age (days) commits on blur; blank commits null (never)',
         (t) async {
       final settings = AppSettings();
       await t.pumpWidget(_app(SettingsScreen(
@@ -801,11 +846,11 @@ void main() {
       await openPage(t, 'Storage');
       final field = find.byKey(const ValueKey('maxAgeField'));
       await t.enterText(field, '14');
-      await t.pump();
+      await blur(t);
       expect(settings.maxClipAgeDays, 14);
 
       await t.enterText(field, '');
-      await t.pump();
+      await blur(t);
       expect(settings.maxClipAgeDays, isNull);
     });
 

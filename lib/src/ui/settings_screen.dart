@@ -125,6 +125,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _customBufferController;
   late final TextEditingController _maxStorageController;
   late final TextEditingController _maxAgeController;
+  late final FocusNode _maxStorageFocus;
+  late final FocusNode _maxAgeFocus;
 
   /// The current GENERAL page, or null while a MY GAMES page
   /// ([_selectedGameId]) is showing — exactly one of the two is non-null at
@@ -156,6 +158,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         text: widget.settings.maxStorageGb?.toString() ?? '');
     _maxAgeController = TextEditingController(
         text: widget.settings.maxClipAgeDays?.toString() ?? '');
+    // Blur commits — see _commitLimit's doc for why never per keystroke.
+    _maxStorageFocus = FocusNode()
+      ..addListener(() {
+        if (!_maxStorageFocus.hasFocus) _commitMaxStorage();
+      });
+    _maxAgeFocus = FocusNode()
+      ..addListener(() {
+        if (!_maxAgeFocus.hasFocus) _commitMaxAge();
+      });
     final initial = widget.initialGameId;
     if (initial != null && widget.gameEntries.any((e) => e.gameId == initial)) {
       _selectedGeneralPage = null;
@@ -175,16 +186,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // Closing Settings (✕) while a limit field still has focus never fires
+    // the blur listeners — commit any pending edit here so leaving the
+    // screen counts as "moving out of the field", not as discarding it.
+    _commitMaxStorage();
+    _commitMaxAge();
+    _maxStorageFocus.dispose();
+    _maxAgeFocus.dispose();
     _customBufferController.dispose();
     _maxStorageController.dispose();
     _maxAgeController.dispose();
     super.dispose();
   }
 
-  /// Blank commits null (that limit off); only valid positive integers
-  /// commit otherwise — mid-typing garbage neither persists nor fights the
-  /// caret by rewriting the field.
-  /// Non-null only while a "Clean up now" run is in flight; disables the
+  /// True only while a "Clean up now" run is in flight; disables the
   /// button so a double-click can't run two overlapping enforcement passes.
   bool _cleaningUp = false;
 
@@ -212,17 +227,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  void _handleLimitChanged(String value, void Function(int?) write) {
-    final t = value.trim();
-    if (t.isEmpty) {
-      write(null);
-    } else {
+  /// Commits a storage-limit field ON BLUR/SUBMIT, never per keystroke.
+  ///
+  /// Per-keystroke commit was a data-loss bug: typing "15" passes through
+  /// "1", and every settings change runs a retention sweep — so the sweep
+  /// fired on a transient "1 GB" limit and deleted real clips before the
+  /// user finished typing. A limit now only takes effect when the user
+  /// leaves the field (their "wait until I move out"), and the explicit
+  /// Clean up button remains the immediate path.
+  ///
+  /// Invalid text at commit time (garbage, zero, negative) restores the
+  /// field to the last committed value instead of writing anything.
+  void _commitLimit(
+    TextEditingController controller,
+    int? current,
+    void Function(int?) write,
+  ) {
+    final t = controller.text.trim();
+    int? next;
+    if (t.isNotEmpty) {
       final parsed = int.tryParse(t);
-      if (parsed == null || parsed < 1) return;
-      write(parsed);
+      if (parsed == null || parsed < 1) {
+        controller.text = current?.toString() ?? '';
+        return;
+      }
+      next = parsed;
     }
+    if (next == current) return;
+    write(next);
     widget.onChanged(widget.settings);
   }
+
+  void _commitMaxStorage() => _commitLimit(_maxStorageController,
+      widget.settings.maxStorageGb, (gb) => widget.settings.maxStorageGb = gb);
+
+  void _commitMaxAge() => _commitLimit(
+      _maxAgeController,
+      widget.settings.maxClipAgeDays,
+      (days) => widget.settings.maxClipAgeDays = days);
 
   Future<void> _pickClipsDir() async {
     final path = await getDirectoryPath();
@@ -669,7 +711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final (title, description) = switch (preset) {
         VideoPreset.performance => (
             'Performance',
-            'Lightest on your Mac and disk — great for quick moments.'
+            'Lightest on your system and disk — great for quick moments.'
           ),
         VideoPreset.balanced => (
             'Balanced',
@@ -771,10 +813,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: TextField(
             key: const ValueKey('maxStorageField'),
             controller: _maxStorageController,
+            focusNode: _maxStorageFocus,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(hintText: 'Blank = unlimited'),
-            onChanged: (v) => _handleLimitChanged(
-                v, (gb) => widget.settings.maxStorageGb = gb),
+            // Commit on blur/submit ONLY — see _commitLimit's doc for the
+            // typing-"15"-passes-through-"1" data-loss bug this prevents.
+            onSubmitted: (_) => _maxStorageFocus.unfocus(),
           ),
         ),
       ),
@@ -786,14 +830,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: TextField(
             key: const ValueKey('maxAgeField'),
             controller: _maxAgeController,
+            focusNode: _maxAgeFocus,
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(hintText: 'Blank = never'),
-            onChanged: (v) => _handleLimitChanged(
-                v, (days) => widget.settings.maxClipAgeDays = days),
+            onSubmitted: (_) => _maxAgeFocus.unfocus(),
           ),
         ),
-        footnote: 'Oldest clips are removed first when a limit is hit. '
-            'Protected clips are never auto-deleted.',
+        footnote: 'Limits apply when you leave the field. Oldest clips are '
+            'removed first when a limit is hit. Protected clips are never '
+            'auto-deleted.',
       ),
       if (widget.onCleanUpStorage != null)
         _TrailingRow(
@@ -811,20 +856,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         label: 'Recordings folder',
         hint: resolveClipsDirPath(widget.settings.clipsDirPath),
         hintKey: const ValueKey('clipsDirLabel'),
+        // OutlinedButton, matching Clean up above: ONE style for row
+        // actions on this page — a bordered button next to a bare text link
+        // doing the same kind of job read as two different controls.
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextButton(
+            OutlinedButton(
               key: const ValueKey('chooseClipsDirButton'),
               onPressed: _pickClipsDir,
               child: const Text('Choose…'),
             ),
-            if (widget.settings.clipsDirPath != null)
-              TextButton(
+            if (widget.settings.clipsDirPath != null) ...[
+              const SizedBox(width: 8),
+              OutlinedButton(
                 key: const ValueKey('resetClipsDirButton'),
                 onPressed: _resetClipsDir,
                 child: const Text('Reset'),
               ),
+            ],
           ],
         ),
         footnote: 'Applies on next launch. Existing clips stay where they '
