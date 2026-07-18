@@ -315,6 +315,27 @@ void main() {
     expect(AppSettings.fromJson(s.toJson()).captureMicrophone, isTrue);
   });
 
+  test('captureOnlyInGame defaults to OFF and round-trips', () {
+    expect(AppSettings().captureOnlyInGame, isFalse);
+    final s = AppSettings(captureOnlyInGame: true);
+    expect(AppSettings.fromJson(s.toJson()).captureOnlyInGame, isTrue);
+  });
+
+  test('captureOnlyInGame round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(captureOnlyInGame: true));
+    final loaded = await store.load();
+    expect(loaded.captureOnlyInGame, isTrue);
+  });
+
+  test(
+      'fromJson with no captureOnlyInGame key (settings file predating this '
+      'feature) falls back to OFF', () {
+    final json = AppSettings().toJson()..remove('captureOnlyInGame');
+    final loaded = AppSettings.fromJson(json);
+    expect(loaded.captureOnlyInGame, isFalse);
+  });
+
   test('corrupt file is backed up and defaults returned', () async {
     final store = SettingsStore(tmp);
     store.file.writeAsStringSync('{not json');

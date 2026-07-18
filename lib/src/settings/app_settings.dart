@@ -119,6 +119,15 @@ class AppSettings {
   /// says so next to the field).
   String? clipsDirPath;
 
+  /// Whether the replay buffer should auto-pause whenever NO game is
+  /// detected, and resume the moment one activates — killing the always-on
+  /// desktop capture load for users who only ever want game footage.
+  /// Default OFF: always-on buffering (works for anything, including manual
+  /// hotkey saves at the desktop) is the product's default pitch. See
+  /// `main.dart`'s `applyBufferPolicy` — the single buffer-control point
+  /// this setting feeds into, alongside the tray's manual Pause/Resume.
+  bool captureOnlyInGame;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
@@ -142,6 +151,7 @@ class AppSettings {
     this.maxClipAgeDays,
     this.onboardingComplete = false,
     this.clipsDirPath,
+    this.captureOnlyInGame = false,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -189,6 +199,7 @@ class AppSettings {
         'maxClipAgeDays': maxClipAgeDays,
         'onboardingComplete': onboardingComplete,
         'clipsDirPath': clipsDirPath,
+        'captureOnlyInGame': captureOnlyInGame,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -213,6 +224,9 @@ class AppSettings {
         maxClipAgeDays: j['maxClipAgeDays'] as int?,
         onboardingComplete: j['onboardingComplete'] as bool? ?? false,
         clipsDirPath: j['clipsDirPath'] as String?,
+        // Absent key (a settings file predating this feature) falls back to
+        // OFF — the same default as a fresh install.
+        captureOnlyInGame: j['captureOnlyInGame'] as bool? ?? false,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

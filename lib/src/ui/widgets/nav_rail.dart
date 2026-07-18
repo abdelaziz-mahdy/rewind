@@ -39,6 +39,9 @@ class NavRail extends StatelessWidget {
   /// each prop's contract (unchanged from the old `StatusStrip`).
   final String? captureError;
   final ValueListenable<bool>? bufferActive;
+
+  /// See `RecorderCluster.bufferAutoPaused`'s doc.
+  final ValueListenable<bool>? bufferAutoPaused;
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
   final List<AppInfo> Function()? listApps;
@@ -54,6 +57,7 @@ class NavRail extends StatelessWidget {
     required this.onOpenLogs,
     this.captureError,
     this.bufferActive,
+    this.bufferAutoPaused,
     this.displays = const [],
     this.capturableApps = const [],
     this.listApps,
@@ -160,6 +164,7 @@ class NavRail extends StatelessWidget {
             coordinator: coordinator,
             captureError: captureError,
             bufferActive: bufferActive,
+            bufferAutoPaused: bufferAutoPaused,
             displays: displays,
             capturableApps: capturableApps,
             listApps: listApps,

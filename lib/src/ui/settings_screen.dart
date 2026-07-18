@@ -394,6 +394,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// Writes [AppSettings.captureOnlyInGame] straight through, same as every
+  /// other field on this screen; `main.dart`'s `onSettingsChanged` re-runs
+  /// `applyBufferPolicy` afterward so a toggle here takes effect
+  /// immediately, not just on the next game transition.
+  void _handleCaptureOnlyInGameChanged(bool value) {
+    widget.settings.captureOnlyInGame = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   void _handleMicrophoneChanged(bool value) {
     widget.settings.captureMicrophone = value;
     setState(() {});
@@ -592,6 +602,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ],
+            const SizedBox(height: 12),
+            _ToggleRow(
+              label: 'Only record while playing',
+              hint: 'Pause the replay buffer when no game is detected — '
+                  'saves CPU and battery at the desktop.',
+              value: widget.settings.captureOnlyInGame,
+              switchKey: const ValueKey('onlyInGameSwitch'),
+              onChanged: _handleCaptureOnlyInGameChanged,
+            ),
           ],
         ),
       ),

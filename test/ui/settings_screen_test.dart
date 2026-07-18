@@ -439,6 +439,48 @@ void main() {
     expect(settings.captureAppBundleId, 'com.example.stale');
   });
 
+  group('Only record while playing', () {
+    testWidgets('defaults off and toggling writes captureOnlyInGame',
+        (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      expect(
+          t
+              .widget<Switch>(find.byKey(const ValueKey('onlyInGameSwitch')))
+              .value,
+          isFalse);
+
+      await t.tap(find.byKey(const ValueKey('onlyInGameSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.captureOnlyInGame, isTrue);
+      expect(
+          t
+              .widget<Switch>(find.byKey(const ValueKey('onlyInGameSwitch')))
+              .value,
+          isTrue);
+    });
+
+    testWidgets('shows the CPU/battery hint', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(
+          find.text('Pause the replay buffer when no game is detected — '
+              'saves CPU and battery at the desktop.'),
+          findsOneWidget);
+    });
+  });
+
   testWidgets(
       'the MY GAMES section is not built yet — per-game settings still '
       'live in each game\'s hub', (t) async {
