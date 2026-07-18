@@ -39,7 +39,7 @@ void main() {
 
   Widget app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
-  testWidgets('the full stat line shows K/D/A, CS, and ward score', (t) async {
+  testWidgets('the summary band shows the K/D/A/CS/WS line', (t) async {
     final stats = MatchStats(
       gameId: 'league_of_legends',
       startedAt: session.startedAt,
@@ -63,7 +63,48 @@ void main() {
     expect(find.text('5 K · 2 D · 9 A · 88 CS · 12.3 WS'), findsOneWidget);
   });
 
-  testWidgets('the skin name renders when known', (t) async {
+  testWidgets('the old standalone stats line is gone', (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+      champion: 'Ahri',
+      kills: 2,
+      deaths: 24,
+    );
+
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'Ahri match',
+      stats: stats,
+      library: library,
+    )));
+    await t.pump();
+
+    expect(find.textContaining('kills ·'), findsNothing);
+    expect(find.textContaining('clips'), findsNothing);
+  });
+
+  testWidgets('the summary band shows the champion headline and mode',
+      (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+      champion: 'Ahri',
+      gameMode: 'ARAM',
+    );
+
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'Ahri match',
+      stats: stats,
+      library: library,
+    )));
+    await t.pump();
+
+    expect(find.text('Ahri · ARAM'), findsOneWidget);
+  });
+
+  testWidgets('the skin name renders muted beneath the headline', (t) async {
     final stats = MatchStats(
       gameId: 'league_of_legends',
       startedAt: session.startedAt,
@@ -82,52 +123,9 @@ void main() {
     expect(find.text('Spirit Blossom Ahri'), findsOneWidget);
   });
 
-  testWidgets('teammates/enemies show champion + in-game name together',
-      (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      allies: const [MatchPlayer(championName: 'Lux', riotId: 'Mate#EUW')],
-      enemies: const [MatchPlayer(championName: 'Zed', riotId: 'Foe#EUW')],
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(find.text('Lux · Mate#EUW'), findsOneWidget);
-    expect(find.text('Zed · Foe#EUW'), findsOneWidget);
-  });
-
   testWidgets(
-      'a teammate with no known name renders just the champion (no crash, '
-      'no invented name)', (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      allies: const [MatchPlayer(championName: 'Lux')],
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(find.text('Lux'), findsOneWidget);
-    expect(find.textContaining('Lux ·'), findsNothing);
-  });
-
-  testWidgets('the item build renders one tile per item, no DDragon needed',
-      (t) async {
+      'the item build renders one tile per item, no DDragon needed, in the '
+      'summary band', (t) async {
     final stats = MatchStats(
       gameId: 'league_of_legends',
       startedAt: session.startedAt,
@@ -151,7 +149,7 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('no stats at all renders neither the info card nor a stat line',
+  testWidgets('no stats at all renders neither the band nor a stat line',
       (t) async {
     await t.pumpWidget(app(MatchClipsScreen(
       session: session,
@@ -162,6 +160,114 @@ void main() {
     await t.pump();
 
     expect(find.textContaining(' K · '), findsNothing);
+    expect(find.byKey(const ValueKey('rosterDisclosure')), findsNothing);
+  });
+
+  testWidgets('the footnote renders as a caption near the top of the page',
+      (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+      champion: 'Ahri',
+    );
+
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'Ahri match',
+      stats: stats,
+      library: library,
+    )));
+    await t.pump();
+
+    expect(
+      find.text(
+          'Kills counted from the live game, even for fights not clipped.'),
+      findsOneWidget,
+    );
+  });
+
+  group('roster disclosure', () {
+    MatchStats statsWithRoster() => MatchStats(
+          gameId: 'league_of_legends',
+          startedAt: session.startedAt,
+          champion: 'Ahri',
+          allies: const [MatchPlayer(championName: 'Lux', riotId: 'Mate#EUW')],
+          enemies: const [MatchPlayer(championName: 'Zed', riotId: 'Foe#EUW')],
+        );
+
+    testWidgets('shows a collapsed row with the roster count, chips hidden',
+        (t) async {
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: statsWithRoster(),
+        library: library,
+      )));
+      await t.pump();
+
+      expect(find.text('Champions in this game (2)'), findsOneWidget);
+      expect(find.text('Lux · Mate#EUW'), findsNothing);
+      expect(find.text('Zed · Foe#EUW'), findsNothing);
+    });
+
+    testWidgets('tapping the disclosure reveals teammates/enemies chips',
+        (t) async {
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: statsWithRoster(),
+        library: library,
+      )));
+      await t.pump();
+
+      await t.tap(find.byKey(const ValueKey('rosterDisclosure')));
+      await t.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Lux · Mate#EUW'), findsOneWidget);
+      expect(find.text('Zed · Foe#EUW'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a teammate with no known name renders just the champion (no crash, '
+        'no invented name)', (t) async {
+      final stats = MatchStats(
+        gameId: 'league_of_legends',
+        startedAt: session.startedAt,
+        champion: 'Ahri',
+        allies: const [MatchPlayer(championName: 'Lux')],
+      );
+
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: stats,
+        library: library,
+      )));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('rosterDisclosure')));
+      await t.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Lux'), findsOneWidget);
+      expect(find.textContaining('Lux ·'), findsNothing);
+    });
+
+    testWidgets('no roster means no disclosure row at all', (t) async {
+      final stats = MatchStats(
+        gameId: 'league_of_legends',
+        startedAt: session.startedAt,
+        champion: 'Ahri',
+      );
+
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: stats,
+        library: library,
+      )));
+      await t.pump();
+
+      expect(find.byKey(const ValueKey('rosterDisclosure')), findsNothing);
+    });
   });
 
   group('marker plumbing (Task 8)', () {
