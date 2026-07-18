@@ -51,7 +51,22 @@ class ClipLibrary extends ChangeNotifier {
     await save();
   }
 
-  Future<void> save() async {
+  /// Tail of the write chain — every [save] appends to it, so index writes
+  /// are strictly serialized. Two concurrent saves used to race the SAME
+  /// tmp-file path: both wrote `clips.json.tmp`, the first renamed it away,
+  /// and the second's rename threw PathNotFoundException (seen live
+  /// 2026-07-18 16:49 under rapid hotkey presses).
+  Future<void> _pendingSave = Future.value();
+
+  Future<void> save() {
+    final next = _pendingSave.then((_) => _writeIndex());
+    // Keep the chain usable even when a write fails — the NEXT save must
+    // still run, not inherit this one's error.
+    _pendingSave = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _writeIndex() async {
     await clipsDir.create(recursive: true);
     final tmp = File('${_index.path}.tmp');
     await tmp.writeAsString(const JsonEncoder.withIndent('  ')
