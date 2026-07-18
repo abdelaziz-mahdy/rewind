@@ -113,7 +113,11 @@ class AppSettings {
     this.captureAppName,
     this.autoSwitchCapture = true,
     this.captureFps = 60,
-    this.captureMaxHeight,
+    // 1080 (the Balanced tier), NOT null/native: <5% of users ever change a
+    // default, and native-by-default silently eats disk on Retina/1440p rigs
+    // (see VideoPreset's doc). Existing settings files are unaffected —
+    // fromJson reads their stored value, including a deliberate null=Source.
+    this.captureMaxHeight = 1080,
     this.audioMode = AudioMode.all,
     this.captureMicrophone = false,
     this.maxStorageGb = 20,
