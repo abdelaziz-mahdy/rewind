@@ -155,6 +155,13 @@ All notable changes to Rewind are documented here. Format based on
   window. About keeps its prose/buttons/disclaimer layout, unchanged. Purely
   a layout change — no setting's behavior, callback, or persisted value
   changed.
+- **All Clips now groups by match/session across games, newest first**,
+  instead of one flat grid per game — each play session gets a tappable
+  header (game + relative time + clip count) opening the same match detail
+  screen the game hubs use, with its own clip grid beneath, interleaved by
+  recency rather than partitioned by game. Clips opened from All Clips now
+  carry their event timeline markers too, closing the gap with the per-game
+  hub view.
 
 ### Fixed
 - **Storage limits no longer apply per keystroke** — typing "15" into Max

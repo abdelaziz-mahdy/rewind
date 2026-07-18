@@ -4,13 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
+import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show ClipTile, formatSize;
 
-Widget _app(Widget child) =>
-    MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
+/// Records pushed routes so a session-header tap can be asserted by route
+/// name without building MatchClipsScreen (whose ClipTiles need media_kit) —
+/// same pattern as game_hub_screen_test.dart's identical helper.
+class _RouteObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushed = [];
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      pushed.add(route);
+}
+
+Widget _app(Widget child, {List<NavigatorObserver> observers = const []}) =>
+    MaterialApp(
+        theme: rewindTheme(),
+        navigatorObservers: observers,
+        home: Scaffold(body: child));
 
 void main() {
   late Directory tmp;
@@ -23,22 +38,28 @@ void main() {
   tearDown(() => tmp.deleteSync(recursive: true));
 
   Clip clip(String name, String gameId, GameEventKind event, DateTime createdAt,
-          {int sizeBytes = 1024}) =>
+          {int sizeBytes = 1024, DateTime? sessionAt}) =>
       Clip(
           path: '${tmp.path}/$name.mp4',
           gameId: gameId,
           event: event,
           createdAt: createdAt,
-          sizeBytes: sizeBytes);
+          sizeBytes: sizeBytes,
+          sessionAt: sessionAt);
 
   AllClipsScreen screen({
     VoidCallback? onOpenClipsFolder,
+    MatchStatsStore? matchStats,
   }) =>
       AllClipsScreen(
         library: library,
         hotkeyLabel: 'Alt+F10',
         onOpenClipsFolder: onOpenClipsFolder ?? () {},
+        matchStats: matchStats,
       );
+
+  Finder sessionHeader(String gameId, DateTime startedAt) => find
+      .byKey(ValueKey('sessionHeader:$gameId:${startedAt.toIso8601String()}'));
 
   Finder eventChip(String name) =>
       find.byKey(ValueKey('eventFilterChip:$name'));
@@ -176,22 +197,116 @@ void main() {
     });
   });
 
-  testWidgets('clips are sectioned per game, newest game first', (t) async {
-    library
-        .add(clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
-    library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
-        DateTime(2026, 7, 2)));
-    library.add(clip(
-        'c', 'league_of_legends', GameEventKind.kill, DateTime(2026, 7, 3)));
-    await t.pumpWidget(_app(screen()));
+  group('session grouping (Task 17)', () {
+    testWidgets('two sessions of the same game render two session headers',
+        (t) async {
+      final session1 = DateTime(2026, 7, 1, 10);
+      final session2 = DateTime(2026, 7, 3, 20);
+      library.add(clip('a', 'desktop', GameEventKind.manual,
+          session1.add(const Duration(minutes: 5)),
+          sessionAt: session1));
+      library.add(clip('b', 'desktop', GameEventKind.manual,
+          session2.add(const Duration(minutes: 5)),
+          sessionAt: session2));
+      await t.pumpWidget(_app(screen()));
 
-    // Section headers (uppercased display names) with per-section counts.
-    expect(inList(find.text('LEAGUE OF LEGENDS')), findsOneWidget);
-    expect(inList(find.text('DESKTOP')), findsOneWidget);
-    // League has the newest clip, so its section comes first.
-    final leagueY = t.getTopLeft(inList(find.text('LEAGUE OF LEGENDS'))).dy;
-    final desktopY = t.getTopLeft(inList(find.text('DESKTOP'))).dy;
-    expect(leagueY, lessThan(desktopY));
+      expect(sessionHeader('desktop', session1), findsOneWidget);
+      expect(sessionHeader('desktop', session2), findsOneWidget);
+    });
+
+    testWidgets('sessions from different games interleave by recency',
+        (t) async {
+      final leagueOld = DateTime(2026, 7, 1, 10);
+      final desktopMid = DateTime(2026, 7, 2, 10);
+      final leagueNew = DateTime(2026, 7, 3, 10);
+      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
+          leagueOld.add(const Duration(minutes: 5)),
+          sessionAt: leagueOld));
+      library.add(clip('b', 'desktop', GameEventKind.manual,
+          desktopMid.add(const Duration(minutes: 5)),
+          sessionAt: desktopMid));
+      library.add(clip('c', 'league_of_legends', GameEventKind.kill,
+          leagueNew.add(const Duration(minutes: 5)),
+          sessionAt: leagueNew));
+      await t.pumpWidget(_app(screen()));
+
+      // Newest-first across games — NOT game-partitioned: the desktop
+      // session sits between League's two sessions, not after both.
+      final yNew =
+          t.getTopLeft(sessionHeader('league_of_legends', leagueNew)).dy;
+      final yMid = t.getTopLeft(sessionHeader('desktop', desktopMid)).dy;
+      final yOld =
+          t.getTopLeft(sessionHeader('league_of_legends', leagueOld)).dy;
+      expect(yNew, lessThan(yMid));
+      expect(yMid, lessThan(yOld));
+    });
+
+    testWidgets("League's two gameIds sharing one stamp merge into ONE session",
+        (t) async {
+      final started = DateTime(2026, 7, 1, 10);
+      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
+          started.add(const Duration(minutes: 2)),
+          sessionAt: started));
+      // The newer clip of the pair carries the catalog id, so it becomes
+      // the session's representative gameId (see `_sessionFeed`'s doc:
+      // "its newest clip's").
+      library.add(clip('b', 'app:league_of_legends', GameEventKind.manual,
+          started.add(const Duration(minutes: 5)),
+          sessionAt: started));
+      await t.pumpWidget(_app(screen()));
+
+      expect(sessionHeader('app:league_of_legends', started), findsOneWidget);
+      expect(sessionHeader('league_of_legends', started), findsNothing);
+      expect(inList(find.textContaining('2 clips')), findsOneWidget);
+    });
+
+    testWidgets('tapping a session header navigates to the match screen',
+        (t) async {
+      final started = DateTime(2026, 7, 1, 10);
+      library.add(clip('a', 'desktop', GameEventKind.manual,
+          started.add(const Duration(minutes: 5)),
+          sessionAt: started));
+      final observer = _RouteObserver();
+      await t.pumpWidget(_app(screen(), observers: [observer]));
+      observer.pushed.clear();
+
+      await t.tap(sessionHeader('desktop', started));
+      // No further pump: the pushed route's builder (MatchClipsScreen →
+      // ClipTile → media_kit) only runs next frame — assert the push
+      // happened first, same pattern as game_hub_screen_test.dart.
+      expect(observer.pushed.single.settings.name, matchClipsScreenRouteName);
+    });
+
+    testWidgets(
+        "a clip tile in a session with stats receives the stats' events",
+        (t) async {
+      final started = DateTime(2026, 7, 1, 10);
+      final statsStore = MatchStatsStore(dir: tmp);
+      statsStore.recordEvent(
+          'league_of_legends', started, GameEventKind.kill, started);
+      library.add(clip('a', 'league_of_legends', GameEventKind.kill,
+          started.add(const Duration(minutes: 5)),
+          sessionAt: started));
+      await t.pumpWidget(_app(screen(matchStats: statsStore)));
+
+      final stats = statsStore.statsFor('league_of_legends', started)!;
+      expect(stats.events, isNotEmpty);
+      expect(
+        t.widget<ClipTile>(find.byType(ClipTile)).events,
+        same(stats.events),
+      );
+    });
+
+    testWidgets('a session with no stats gives its clip tiles no events',
+        (t) async {
+      final started = DateTime(2026, 7, 1, 10);
+      library.add(clip('a', 'desktop', GameEventKind.manual,
+          started.add(const Duration(minutes: 5)),
+          sessionAt: started));
+      await t.pumpWidget(_app(screen()));
+
+      expect(t.widget<ClipTile>(find.byType(ClipTile)).events, isEmpty);
+    });
   });
 
   testWidgets('folder button sits flush right at wide widths', (t) async {
