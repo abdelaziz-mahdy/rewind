@@ -43,6 +43,13 @@ class RecorderCluster extends StatelessWidget {
   /// Live buffer state; null means "running iff no capture error".
   final ValueListenable<bool>? bufferActive;
 
+  /// True while a STOPPED buffer is paused by the `captureOnlyInGame`
+  /// policy (no game detected), as opposed to a manual tray pause — see
+  /// `main.dart`'s `applyBufferPolicy`. Drives the idle status line's text:
+  /// "Waiting for a game" instead of "Paused". Null (the common case in
+  /// tests) always reads as a plain manual "Paused".
+  final ValueListenable<bool>? bufferAutoPaused;
+
   /// Connected displays the source line can switch between (startup
   /// snapshot). No longer the sole gate on the line's visibility — see the
   /// visibility comment in [build]; a live [listApps] keeps the picker up
@@ -79,21 +86,25 @@ class RecorderCluster extends StatelessWidget {
     required this.onSettingsChanged,
     required this.onOpenSettings,
     this.settingsRevision,
+    this.bufferAutoPaused,
     super.key,
   });
 
   /// Pulsing dot + "Buffering · N s" while running; grey dot + reason
   /// otherwise. [Flexible] + single-line ellipsis so a long localized string
   /// truncates instead of overflowing the 220 px rail.
-  Widget _statusLine(BuildContext context, bool running) {
+  Widget _statusLine(BuildContext context, bool running, bool autoPaused) {
     final theme = Theme.of(context);
     if (!running) {
+      final label = captureError != null
+          ? 'Capture unavailable'
+          : (autoPaused ? 'Waiting for a game' : 'Paused');
       return Row(children: [
         const _IdleDot(),
         const SizedBox(width: 10),
         Flexible(
           child: Text(
-            captureError != null ? 'Capture unavailable' : 'Paused',
+            label,
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
             style: theme.textTheme.body
@@ -137,13 +148,20 @@ class RecorderCluster extends StatelessWidget {
   }
 
   Widget _liveStatusLine(BuildContext context) {
-    if (bufferActive case final active?) {
-      return ValueListenableBuilder<bool>(
-        valueListenable: active,
-        builder: (context, running, _) => _statusLine(context, running),
-      );
+    final active = bufferActive;
+    final autoPaused = bufferAutoPaused;
+    if (active == null) {
+      return _statusLine(context, captureError == null, false);
     }
-    return _statusLine(context, captureError == null);
+    // Merge both listenables so either changing (the buffer starting/
+    // stopping, or the auto-pause reason flipping) refreshes the line — a
+    // single ValueListenableBuilder would miss the other's changes.
+    return ListenableBuilder(
+      listenable:
+          autoPaused != null ? Listenable.merge([active, autoPaused]) : active,
+      builder: (context, _) =>
+          _statusLine(context, active.value, autoPaused?.value ?? false),
+    );
   }
 
   @override

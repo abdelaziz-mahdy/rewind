@@ -7,6 +7,16 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **"Only record while playing"** (Settings → Capture → Instant replay,
+  default OFF): opt in and the replay buffer auto-pauses whenever no game
+  is detected, resuming the instant one activates — cuts the always-on
+  desktop capture load (~30% CPU / 460 MB idle) for anyone who only wants
+  game footage. Composes cleanly with the tray's manual Pause/Resume: a
+  manual pause always wins, a manual resume forces the buffer on until the
+  next game starts or ends, at which point the setting reclaims control.
+  While auto-paused the deck's status line reads "Waiting for a game"
+  instead of "Paused"; pressing the save hotkey during that window reports
+  the same clear "buffer not running" error a manual pause already gives.
 - **Microphone input device picker**: "Record my microphone" now targets a
   specific input device instead of always using the system default. Pick
   one from Settings → Capture → Audio's new "Microphone" sub-row (mirroring

@@ -80,10 +80,14 @@ void main() {
     // Lets a test grab the coordinator before pumping, to set activeGame /
     // autoSwitchedAppName ahead of time.
     ClipCoordinator? coordinatorOverride,
+    ValueListenable<bool>? bufferActive,
+    ValueListenable<bool>? bufferAutoPaused,
   }) =>
       RecorderCluster(
         coordinator: coordinatorOverride ?? makeCoordinator(settings),
         captureError: captureError,
+        bufferActive: bufferActive,
+        bufferAutoPaused: bufferAutoPaused,
         displays: displays,
         capturableApps: capturableApps,
         onSettingsChanged: onSettingsChanged ?? (_) async {},
@@ -129,7 +133,8 @@ void main() {
       expect(find.byIcon(Icons.apps_outlined), findsNothing);
     });
 
-    testWidgets('still shown when apps are pickable but displays came back '
+    testWidgets(
+        'still shown when apps are pickable but displays came back '
         'empty (the empty-displays-at-startup case)', (t) async {
       // A single empty listDisplays() at launch must NOT hide the only
       // app-picker in the main window: apps enumerated fine, so the game is
@@ -533,6 +538,77 @@ void main() {
       // auto-switched label, so this only proves the *plain* (non-auto)
       // label isn't also rendered somewhere.
       expect(find.text('App One'), findsNothing);
+    });
+  });
+
+  group('idle status line', () {
+    testWidgets('reads "Paused" when stopped with no auto-pause signal',
+        (t) async {
+      final active = ValueNotifier<bool>(false);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        bufferActive: active,
+      )));
+      expect(find.text('Paused'), findsOneWidget);
+      expect(find.text('Waiting for a game'), findsNothing);
+    });
+
+    testWidgets(
+        'reads "Waiting for a game" when stopped and bufferAutoPaused is '
+        'true (the captureOnlyInGame policy, not a manual pause)', (t) async {
+      final active = ValueNotifier<bool>(false);
+      final autoPaused = ValueNotifier<bool>(true);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        bufferActive: active,
+        bufferAutoPaused: autoPaused,
+      )));
+      expect(find.text('Waiting for a game'), findsOneWidget);
+      expect(find.text('Paused'), findsNothing);
+    });
+
+    testWidgets('flipping bufferAutoPaused live updates the label', (t) async {
+      final active = ValueNotifier<bool>(false);
+      final autoPaused = ValueNotifier<bool>(false);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        bufferActive: active,
+        bufferAutoPaused: autoPaused,
+      )));
+      expect(find.text('Paused'), findsOneWidget);
+
+      autoPaused.value = true;
+      await t.pump();
+      expect(find.text('Waiting for a game'), findsOneWidget);
+      expect(find.text('Paused'), findsNothing);
+    });
+
+    testWidgets('"Capture unavailable" still wins over "Waiting for a game"',
+        (t) async {
+      final active = ValueNotifier<bool>(false);
+      final autoPaused = ValueNotifier<bool>(true);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        captureError: 'boom',
+        bufferActive: active,
+        bufferAutoPaused: autoPaused,
+      )));
+      expect(find.text('Capture unavailable'), findsOneWidget);
+      expect(find.text('Waiting for a game'), findsNothing);
+    });
+
+    testWidgets('running shows the buffering readout, not the idle label',
+        (t) async {
+      final active = ValueNotifier<bool>(true);
+      final autoPaused = ValueNotifier<bool>(false);
+      await t.pumpWidget(app(cluster(
+        settings: AppSettings(),
+        bufferActive: active,
+        bufferAutoPaused: autoPaused,
+      )));
+      expect(find.textContaining('Buffering'), findsOneWidget);
+      expect(find.text('Waiting for a game'), findsNothing);
+      expect(find.text('Paused'), findsNothing);
     });
   });
 

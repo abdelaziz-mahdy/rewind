@@ -14,6 +14,7 @@ import 'src/clip/match_stats.dart';
 import 'src/clip/storage_manager.dart';
 import 'src/clip/thumbnail_cache.dart';
 import 'src/clip/thumbnail_generator.dart';
+import 'src/coordinator/buffer_policy.dart';
 import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
@@ -285,6 +286,11 @@ Future<void> main() async {
   final bufferActive =
       ValueNotifier<bool>(engine != null && captureError == null);
 
+  // True while a STOPPED buffer is paused BY THE captureOnlyInGame POLICY
+  // (as opposed to a manual tray pause) — see applyBufferPolicy below and
+  // RecorderCluster.bufferAutoPaused's doc.
+  final bufferAutoPaused = ValueNotifier<bool>(false);
+
   // Bumped at the end of every settings change (see RecorderCluster's
   // settingsRevision doc) so the capture-source line and buffer readout
   // refresh immediately after the user picks something, rather than only on
@@ -292,15 +298,50 @@ Future<void> main() async {
   final settingsRevision = ValueNotifier<int>(0);
 
   final tray = TrayService();
-  await tray.init(
-    onSaveClip: coordinator.onHotkey,
-    onToggleBuffer: (start) async {
-      if (start) {
+
+  // ---- "Only record while playing" (AppSettings.captureOnlyInGame) ----
+  //
+  // [applyBufferPolicy] is the SINGLE control point every buffer start/stop
+  // decision flows through — the auto-pause policy, the tray's manual
+  // Pause/Resume, and startup all funnel through it so they can't fight or
+  // desync. It's re-run on: coordinator.activeGameIds changing (a game
+  // transition), the setting changing (onSettingsChanged below), the tray
+  // toggle, and once at startup.
+  //
+  // [manualOverride] is the tray's Pause/Resume override; see
+  // buffer_policy.dart's doc for the exact precedence rule: a manual Pause
+  // always wins (sticky until an explicit Resume), while a manual Resume
+  // only forces the buffer on TEMPORARILY — it's cleared at the very next
+  // game transition, handing control back to the policy.
+  BufferManualOverride manualOverride;
+  void applyBufferPolicy() {
+    final anyGameActive = coordinator.activeGameIds.value.isNotEmpty;
+    final desired = desiredBufferActive(
+      captureOnlyInGame: settings.captureOnlyInGame,
+      anyGameActive: anyGameActive,
+      manualOverride: manualOverride,
+    );
+    if (desired != bufferActive.value) {
+      if (desired) {
         bufferActive.value = engine?.startBuffer() ?? false;
       } else {
         engine?.stopBuffer();
         bufferActive.value = false;
       }
+    }
+    bufferAutoPaused.value = isAutoPaused(
+      captureOnlyInGame: settings.captureOnlyInGame,
+      anyGameActive: anyGameActive,
+      manualOverride: manualOverride,
+    );
+    unawaited(tray.setBufferState(bufferActive.value));
+  }
+
+  await tray.init(
+    onSaveClip: coordinator.onHotkey,
+    onToggleBuffer: (start) async {
+      manualOverride = start;
+      applyBufferPolicy();
     },
     onToggleRecording: coordinator.toggleRecording,
     // No window_manager dependency in v0.1: clicking the tray only offers
@@ -314,10 +355,20 @@ Future<void> main() async {
     },
     onOpenClips: () => _openClipsFolder(clipsDir.path),
   );
-  // Seed the tray's toggle labels from the real startup state — its internal
-  // defaults assume an active buffer and no recording, which is wrong when
-  // capture failed / on every normal cold start respectively.
-  await tray.setBufferState(bufferActive.value);
+  // A game transition (activation OR deactivation) always re-evaluates the
+  // policy from scratch: clears a temporary Resume override so
+  // captureOnlyInGame can reclaim control, but leaves a manual Pause
+  // sticky — see buffer_policy.dart's clearedOverrideAfterTransition doc.
+  coordinator.activeGameIds.addListener(() {
+    manualOverride = clearedOverrideAfterTransition(manualOverride);
+    applyBufferPolicy();
+  });
+  // Startup pass: seeds the tray's buffer label from the real state (its
+  // internal default assumes an active buffer, wrong when capture failed)
+  // AND applies the policy's own verdict — e.g. captureOnlyInGame ON with
+  // no game detected yet immediately stops the buffer the init call above
+  // just started, rather than idling it until the first game transition.
+  applyBufferPolicy();
   await tray.setRecordingState(coordinator.isRecording.value);
   // Keep the tray's "Start/Stop recording" label following the deck button
   // and the record hotkey, same as setBufferState above.
@@ -335,6 +386,7 @@ Future<void> main() async {
     settings: settings,
     captureError: captureError,
     bufferActive: bufferActive,
+    bufferAutoPaused: bufferAutoPaused,
     displays: displays,
     capturableApps: capturableApps,
     audioInputs: audioInputs,
@@ -375,6 +427,10 @@ Future<void> main() async {
       // Tightened Storage limits apply immediately, not at the next save.
       storage.policy = RetentionPolicy.fromSettings(s);
       unawaited(storageSweep());
+      // Re-run the buffer policy in case captureOnlyInGame itself just
+      // changed (or to no-op harmlessly otherwise) — see applyBufferPolicy's
+      // doc, the single control point this must flow through.
+      applyBufferPolicy();
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
@@ -418,6 +474,10 @@ class RewindApp extends StatefulWidget {
   final AppSettings settings;
   final String? captureError;
   final ValueNotifier<bool> bufferActive;
+
+  /// See `RecorderCluster.bufferAutoPaused`'s doc — forwarded straight
+  /// through to `Shell`.
+  final ValueListenable<bool>? bufferAutoPaused;
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
   final List<AudioInputInfo> audioInputs;
@@ -443,6 +503,7 @@ class RewindApp extends StatefulWidget {
     required this.settings,
     required this.captureError,
     required this.bufferActive,
+    this.bufferAutoPaused,
     required this.displays,
     required this.capturableApps,
     this.audioInputs = const [],
@@ -495,6 +556,7 @@ class _RewindAppState extends State<RewindApp> {
               library: widget.library,
               captureError: widget.captureError,
               bufferActive: widget.bufferActive,
+              bufferAutoPaused: widget.bufferAutoPaused,
               hotkeyLabel: widget.settings.hotkey,
               displays: widget.displays,
               capturableApps: widget.capturableApps,

@@ -53,6 +53,9 @@ class Shell extends StatefulWidget {
   /// Live buffer state (toggled by the tray's pause/resume). When null the
   /// deck assumes the buffer is running iff capture came up without error.
   final ValueListenable<bool>? bufferActive;
+
+  /// See `RecorderCluster.bufferAutoPaused`'s doc.
+  final ValueListenable<bool>? bufferAutoPaused;
   final String hotkeyLabel;
 
   /// Connected displays / capturable apps, forwarded to the status strip's
@@ -106,6 +109,7 @@ class Shell extends StatefulWidget {
     required this.library,
     this.captureError,
     this.bufferActive,
+    this.bufferAutoPaused,
     required this.hotkeyLabel,
     this.displays = const [],
     this.capturableApps = const [],
@@ -288,6 +292,7 @@ class _ShellState extends State<Shell> {
             onOpenLogs: _openLogs,
             captureError: widget.captureError,
             bufferActive: widget.bufferActive,
+            bufferAutoPaused: widget.bufferAutoPaused,
             displays: widget.displays,
             capturableApps: widget.capturableApps,
             listApps: widget.listApps,
