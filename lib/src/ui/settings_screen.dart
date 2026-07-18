@@ -283,14 +283,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// combos [HotkeyDescriptor] already accepts, so no validation needed
   /// here — unlike the old free-text field.
   void _handleHotkeyChanged(String value) {
-    widget.settings.hotkey = value;
+    // setState, not a bare mutation: the recorder field renders the value
+    // its PARENT passed it, so without a parent rebuild the field kept
+    // showing the old combo after a successful capture (the maintainer
+    // recorded Ctrl+7, the app correctly bound Ctrl+7 — and the UI showed
+    // Ctrl+6 until they navigated away and back).
+    setState(() => widget.settings.hotkey = value);
     widget.onChanged(widget.settings);
   }
 
   /// Same as [_handleHotkeyChanged], for the independent record-toggle
   /// hotkey field.
   void _handleRecordHotkeyChanged(String value) {
-    widget.settings.recordHotkey = value;
+    setState(() => widget.settings.recordHotkey = value);
     widget.onChanged(widget.settings);
   }
 
