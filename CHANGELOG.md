@@ -7,6 +7,11 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Configurable post-event delay for auto-clips** (default 5 s): how long
+  Rewind keeps recording after the last event before saving the clip — a
+  follow-up kill during the window extends the same clip (the burst logic
+  that already existed, now user-visible). Set per game on its settings
+  page, under the event chips ("Keep recording after the last event").
 - **"Clean up now" in Settings → Storage**: runs the retention limits
   (max storage / max age) over the library immediately instead of waiting
   for the automatic sweep, and reports what it did ("Removed N clips ·
@@ -55,6 +60,27 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **Settings rebuilt as a full-page screen** (research-backed redesign —
+  competitor teardown of 8 apps + NN/g/HIG/Material evidence + preset-design
+  research): Settings now covers the whole window with its own sidebar as
+  the only navigation (✕ returns to where you were). GENERAL pages
+  (Capture, Hotkeys, Storage, About — Quality folded into Capture) plus a
+  **MY GAMES section with a per-game page for every configured game**
+  (capture mode as "Manual only / Highlights" cards, event chips, buffer
+  override, post-event delay, detection info). Content is left-aligned in a
+  720px column, grouped by whitespace and section headers, controls at the
+  trailing edge, one "› Advanced options" disclosure per page. **Video
+  quality is now three outcome-worded presets + Custom** — Performance
+  (1080p·30), Balanced (1080p·60, recommended, the new fresh-install
+  default in place of native res), High (1440p·60) — each printing its
+  honest disk cost ("30 s buffer ≈ 75 MB"); raw resolution/framerate rows
+  live under Custom. Audio is two plain toggles ("Record game & system
+  sound" on by default, "Record my microphone" off until opted in). The
+  **game hub's inline capture editor is replaced by a glanceable summary
+  card** ("30 s buffer · Auto-clip ON · 6 events") that opens the game's
+  settings page — collapsed means summarized, never hidden. Existing
+  settings files keep all stored choices, including a deliberate
+  Source-resolution pick.
 - **Settings screen redesigned around real tabs** instead of one long scroll
   with a sticky jump-nav: Capture / Hotkey / Quality / Storage / About are
   now switched with tabs (default: Capture), only the selected tab's section
