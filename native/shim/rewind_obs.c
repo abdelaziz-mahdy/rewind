@@ -207,6 +207,20 @@ int g_mic_enabled = 0; /* preference; applied at init if set early */
  * default ("default" device_id, per platform). */
 char g_mic_device_uid[256] = "";
 
+/* Microphone recording-level multiplier (see rewind_set_mic_volume), applied
+ * via obs_source_set_volume; 1.0 = unity gain (100%). */
+float g_mic_volume = 1.0f;
+
+/* Live mic-monitoring on/off (see rewind_set_mic_monitoring's doc — stored
+ * and re-applied to every mic source (re)create like g_mic_volume, but
+ * force-cleared at every point a mic source is released as a safety net). */
+int g_mic_monitoring = 0;
+
+/* Set once obs_set_audio_monitoring_device has been called (rewind_set_mic_
+ * monitoring's first-ever enable) — a process-wide libobs setting, not
+ * per-source, so it only needs setting once. */
+int g_monitoring_device_set = 0;
+
 /* System/app audio mode (see rewind_set_audio_mode): 0 = off, 1 = all
  * desktop audio (every app), 2 = only the captured app's audio. Default 1. */
 int g_audio_mode = AUDIO_MODE_ALL;
@@ -314,6 +328,38 @@ int find_obs_sdk_dir(char *out, size_t out_size) {
     return 0;
 }
 
+/* Applies the current mic-volume/monitoring preferences to `mic` — called
+ * right after every (re)creation of the mic source (rewind_obs_init's
+ * best-effort mic setup, rewind_set_mic_enabled's create path, and
+ * rewind_set_mic_device's rebuild path), the same three call sites
+ * rw_plat_create_mic_source() itself is called from. Mirrors how
+ * g_mic_device_uid is threaded through that function; volume/monitoring
+ * don't need a per-platform rw_plat_* seam of their own since
+ * obs_source_set_volume/obs_source_set_monitoring_type are plain obs.h
+ * calls, not platform-specific. */
+static void rw_apply_mic_prefs(obs_source_t *mic) {
+    if (!mic) return;
+    obs_source_set_volume(mic, g_mic_volume);
+    if (g_mic_monitoring) {
+        if (!g_monitoring_device_set) {
+            /* "Default"/"default" are the exact literal name/id obs_startup
+             * itself seeds audio.monitoring_device_name/_id with (see
+             * init_audio() in native/third_party/work/obs-studio/libobs/
+             * obs.c) — asserting them explicitly here rather than relying on
+             * that default is what rewind_set_mic_monitoring's doc promises
+             * ("call obs_set_audio_monitoring_device for the default device
+             * once before first enable"). "default" is also the literal
+             * audio-monitoring/osx/coreaudio-output.c's audio_monitor_init
+             * special-cases to mean "the OS's current default output
+             * device" (skips setting an explicit CFString device on the
+             * AudioQueue) rather than a specific device id. */
+            obs_set_audio_monitoring_device("Default", "default");
+            g_monitoring_device_set = 1;
+        }
+        obs_source_set_monitoring_type(mic, OBS_MONITORING_TYPE_MONITOR_ONLY);
+    }
+}
+
 int rewind_obs_init(const char *out_dir, int seconds) {
     if (g_initialized) return 0;
     g_seconds = seconds > 0 ? seconds : 30;
@@ -410,7 +456,7 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     /* Microphone, if the preference was set before init. */
     if (g_mic_enabled) {
         g_mic = rw_plat_create_mic_source();
-        if (g_mic) obs_set_output_source(2, g_mic);
+        if (g_mic) { obs_set_output_source(2, g_mic); rw_apply_mic_prefs(g_mic); }
         else rw_plat_log_mic_unavailable();
     }
 
@@ -664,6 +710,13 @@ int rewind_obs_shutdown(void) {
     obs_output_release(g_recording);  g_recording = NULL;
     obs_encoder_release(g_venc);    g_venc = NULL;
     obs_encoder_release(g_aenc);    g_aenc = NULL;
+    /* A leaked "listen" toggle must not outlive the session — stop
+     * monitoring on the outgoing mic source before release AND clear the
+     * stored preference, so a later rewind_obs_init doesn't silently resume
+     * monitoring on the next mic source built without a fresh explicit
+     * rewind_set_mic_monitoring(1) call. */
+    if (g_mic) obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
+    g_mic_monitoring = 0;
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);      g_mic = NULL;
     obs_set_output_source(1, NULL);
@@ -713,7 +766,14 @@ int rewind_set_mic_enabled(int enabled) {
         g_mic = rw_plat_create_mic_source();
         if (!g_mic) return fail("microphone source failed (permission not granted?)");
         obs_set_output_source(2, g_mic);
+        rw_apply_mic_prefs(g_mic);
     } else if (!g_mic_enabled && g_mic) {
+        /* Stop monitoring on the outgoing source before release — see
+         * rewind_set_mic_monitoring's doc on this being a safety net
+         * independent of whatever g_mic_monitoring itself is currently set
+         * to (the Dart caller is expected to have already turned it off
+         * explicitly, but this makes it unconditional). */
+        obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
         obs_set_output_source(2, NULL);
         obs_source_release(g_mic);
         g_mic = NULL;
@@ -738,12 +798,40 @@ void rewind_set_mic_device(const char *uid_or_null) {
      * own create path. */
     if (!g_mic) return;
 
+    /* Safety net, same as rewind_set_mic_enabled's disable branch — stop
+     * monitoring on the OUTGOING source before it's released. */
+    obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);
     g_mic = rw_plat_create_mic_source();
-    if (g_mic) obs_set_output_source(2, g_mic);
+    if (g_mic) { obs_set_output_source(2, g_mic); rw_apply_mic_prefs(g_mic); }
     else rw_plat_log_mic_unavailable();
     set_error("");
+}
+
+int rewind_set_mic_volume(float volume) {
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 2.0f) volume = 2.0f;
+    g_mic_volume = volume;
+    if (g_mic) obs_source_set_volume(g_mic, g_mic_volume);
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_monitoring(int enabled) {
+    g_mic_monitoring = enabled ? 1 : 0;
+    if (!g_mic) { set_error(""); return 0; }
+    if (g_mic_monitoring) {
+        if (!g_monitoring_device_set) {
+            obs_set_audio_monitoring_device("Default", "default");
+            g_monitoring_device_set = 1;
+        }
+        obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_MONITOR_ONLY);
+    } else {
+        obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
+    }
+    set_error("");
+    return 0;
 }
 
 int rewind_list_displays(char *json_out, int json_cap) {
@@ -1002,6 +1090,18 @@ int rewind_list_audio_inputs_json(char *json_out, int json_cap) {
 void rewind_set_mic_device(const char *uid_or_null) {
     (void)uid_or_null;
     set_error("");
+}
+
+int rewind_set_mic_volume(float volume) {
+    (void)volume;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_monitoring(int enabled) {
+    (void)enabled;
+    set_error("");
+    return 0;
 }
 
 int rewind_set_capture_quality(int fps, int max_height) {

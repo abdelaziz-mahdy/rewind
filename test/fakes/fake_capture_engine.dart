@@ -189,6 +189,34 @@ class FakeCaptureEngine implements CaptureEngine {
     micDeviceUid = uid;
   }
 
+  /// Every value passed to [setMicVolume], in call order.
+  final List<double> setMicVolumeCalls = [];
+
+  /// Last value passed to [setMicVolume].
+  double? micVolume;
+
+  @override
+  bool setMicVolume(double volume) {
+    calls.add('setMicVolume:$volume');
+    setMicVolumeCalls.add(volume);
+    micVolume = volume;
+    return true;
+  }
+
+  /// Every value passed to [setMicMonitoring], in call order.
+  final List<bool> setMicMonitoringCalls = [];
+
+  /// Last value passed to [setMicMonitoring].
+  bool? micMonitoring;
+
+  @override
+  bool setMicMonitoring(bool enabled) {
+    calls.add('setMicMonitoring:$enabled');
+    setMicMonitoringCalls.add(enabled);
+    micMonitoring = enabled;
+    return true;
+  }
+
   @override
   bool setCaptureQuality(int fps, int maxHeight) {
     calls.add('setCaptureQuality:$fps:$maxHeight');

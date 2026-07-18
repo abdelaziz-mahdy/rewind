@@ -93,6 +93,12 @@ class RewindObsEngine implements CaptureEngine {
   void setMicDevice(String? uid) => _obs.setMicDevice(uid);
 
   @override
+  bool setMicVolume(double volume) => _obs.setMicVolume(volume) == 0;
+
+  @override
+  bool setMicMonitoring(bool enabled) => _obs.setMicMonitoring(enabled) == 0;
+
+  @override
   bool setCaptureQuality(int fps, int maxHeight) =>
       _obs.setCaptureQuality(fps, maxHeight) == 0;
 

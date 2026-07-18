@@ -99,6 +99,19 @@ abstract class CaptureEngine {
   /// live, it is rebuilt on the new device immediately.
   void setMicDevice(String? uid);
 
+  /// Set the microphone recording-level multiplier (1.0 = 100%, clamped to
+  /// 0.0-2.0). Safe to call before [init] (the preference is remembered and
+  /// applied whenever the mic source is next built); if the mic is already
+  /// live, the level changes immediately. Returns false on failure.
+  bool setMicVolume(double volume);
+
+  /// Monitors the microphone live through the speakers/headphones while
+  /// tuning its level — engine-only, transient state (never persisted, see
+  /// `AppSettings`). A no-op with no mic source live (mic capture off, or
+  /// [init] not yet called): the setting is still remembered and applied the
+  /// next time one is built. Returns false on failure.
+  bool setMicMonitoring(bool enabled);
+
   /// Set capture framerate ([fps], e.g. 30 or 60) and output-height cap
   /// ([maxHeight], 0 = source resolution). Applied at [init] — call before
   /// it; after init it only stores the values (a resolution/fps change needs

@@ -104,6 +104,10 @@ class Shell extends StatefulWidget {
   /// capture backend is wired up (dev mode).
   final void Function(String bundleId)? onSetCaptureApp;
 
+  /// Forwarded to the embedded Settings destination's mic-volume "listen"
+  /// button (see `SettingsScreen.onSetMicMonitoring`).
+  final void Function(bool enabled)? onSetMicMonitoring;
+
   const Shell({
     required this.coordinator,
     required this.library,
@@ -121,6 +125,7 @@ class Shell extends StatefulWidget {
     this.onHotkeyRecording,
     this.onCleanUpStorage,
     this.onSetCaptureApp,
+    this.onSetMicMonitoring,
     this.thumbnails,
     this.ddragon,
     super.key,
@@ -252,6 +257,7 @@ class _ShellState extends State<Shell> {
           displays: widget.displays,
           capturableApps: widget.capturableApps,
           audioInputs: widget.audioInputs,
+          onSetMicMonitoring: widget.onSetMicMonitoring,
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
