@@ -124,6 +124,7 @@ class ProcessWatcherSource implements GameEventSource {
     required this.displayName,
     required this.processMatch,
     ProcessLister? lister,
+    this.countsAsPlaying = true,
   }) : _lister = lister ?? const SystemProcessLister();
 
   @override
@@ -135,6 +136,9 @@ class ProcessWatcherSource implements GameEventSource {
   /// Case-insensitive substring matched against running process/executable
   /// names (basename only — paths are normalized before matching).
   final String processMatch;
+
+  @override
+  final bool countsAsPlaying;
 
   final ProcessLister _lister;
   final _controller = StreamController<GameEvent>.broadcast();

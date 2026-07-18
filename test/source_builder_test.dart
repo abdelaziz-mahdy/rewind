@@ -17,7 +17,7 @@ void main() {
 
     test(
         'includes one ProcessWatcherSource per catalog entry, with '
-        'matching gameId/displayName/processMatch', () {
+        'matching gameId/displayName/processMatch/countsAsPlaying', () {
       final sources = buildSources(AppSettings());
       final processSources = {
         for (final s in sources.whereType<ProcessWatcherSource>()) s.gameId: s
@@ -28,7 +28,21 @@ void main() {
         expect(s, isNotNull, reason: 'missing source for ${g.gameId}');
         expect(s!.displayName, g.displayName);
         expect(s.processMatch, g.processMatch);
+        expect(s.countsAsPlaying, g.countsAsPlaying);
       }
+    });
+
+    test(
+        'the League client catalog source does not count as playing, but '
+        'the vendor LeagueEventWatcher does', () {
+      final sources = buildSources(AppSettings());
+      final clientSource = sources
+          .whereType<ProcessWatcherSource>()
+          .singleWhere((s) => s.gameId == 'app:league_of_legends');
+      expect(clientSource.countsAsPlaying, isFalse);
+
+      final vendor = sources.whereType<LeagueEventWatcher>().single;
+      expect(vendor.countsAsPlaying, isTrue);
     });
 
     test(

@@ -158,6 +158,53 @@ void main() {
       await sub.cancel();
       await registry.dispose();
     });
+
+    test(
+        'stamps countsAsPlaying from the source onto GameActivity on '
+        'activation (default true)', () async {
+      final lister = FakeProcessLister()..names = ['MyGame.exe'];
+      final source = ProcessWatcherSource(
+        gameId: 'app:mygame',
+        displayName: 'My Game',
+        processMatch: 'MyGame',
+        lister: lister,
+      );
+      final registry = GameRegistry(sources: [source]);
+      final activity = <GameActivity>[];
+      final sub = registry.activity.listen(activity.add);
+
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(activity.single.countsAsPlaying, isTrue);
+
+      await sub.cancel();
+      await registry.dispose();
+    });
+
+    test(
+        'stamps countsAsPlaying: false through when the source opts out '
+        '(e.g. a client/launcher detector)', () async {
+      final lister = FakeProcessLister()..names = ['LeagueClientUx.exe'];
+      final source = ProcessWatcherSource(
+        gameId: 'app:league_of_legends',
+        displayName: 'League of Legends',
+        processMatch: 'LeagueClientUx',
+        lister: lister,
+        countsAsPlaying: false,
+      );
+      final registry = GameRegistry(sources: [source]);
+      final activity = <GameActivity>[];
+      final sub = registry.activity.listen(activity.add);
+
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(activity.single.countsAsPlaying, isFalse);
+
+      await sub.cancel();
+      await registry.dispose();
+    });
   });
 
   group('SystemProcessLister', () {

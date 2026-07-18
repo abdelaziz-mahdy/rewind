@@ -19,7 +19,15 @@ class GameActivity {
   /// `ClipCoordinator`. Not set on deactivation (not needed for reverts).
   final String? processMatch;
 
-  GameActivity(this.gameId, this.displayName, this.active, {this.processMatch});
+  /// The source's [GameEventSource.countsAsPlaying], stamped on here so the
+  /// coordinator can maintain `playingGameIds` alongside `activeGameIds`
+  /// without reaching back into the registry's sources. Meaningless on
+  /// deactivation (defaults true, but unused — removing a gameId from a set
+  /// it was never added to is a no-op).
+  final bool countsAsPlaying;
+
+  GameActivity(this.gameId, this.displayName, this.active,
+      {this.processMatch, this.countsAsPlaying = true});
 }
 
 /// Holds all known game integrations and supervises which are active.
@@ -81,6 +89,7 @@ class GameRegistry {
           s.displayName,
           true,
           processMatch: s is ProcessWatcherSource ? s.processMatch : null,
+          countsAsPlaying: s.countsAsPlaying,
         ));
       } else if (!running && _active.contains(s.gameId)) {
         _active.remove(s.gameId);

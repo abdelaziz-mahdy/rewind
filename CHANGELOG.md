@@ -17,6 +17,8 @@ All notable changes to Rewind are documented here. Format based on
   While auto-paused the deck's status line reads "Waiting for a game"
   instead of "Paused"; pressing the save hotkey during that window reports
   the same clear "buffer not running" error a manual pause already gives.
+  For League of Legends specifically, this counts as playing only while a
+  match is actually live, not just when the client is open.
 - **Microphone input device picker**: "Record my microphone" now targets a
   specific input device instead of always using the system default. Pick
   one from Settings → Capture → Audio's new "Microphone" sub-row (mirroring

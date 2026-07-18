@@ -93,6 +93,14 @@ class LeagueEventWatcher implements GameEventSource {
   @override
   String get displayName => 'League of Legends';
 
+  /// Match-live IS this watcher's activation (see the class doc: it only
+  /// activates while the Live Client Data API is up), so it always counts
+  /// as playing — unlike the League client's generic catalog process entry
+  /// (`app:league_of_legends`, see `game_catalog.dart`), which fires on the
+  /// client alone.
+  @override
+  bool get countsAsPlaying => true;
+
   @override
   Future<bool> isGameRunning() async =>
       await _fetch('/liveclientdata/gamestats') != null;

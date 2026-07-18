@@ -20,6 +20,11 @@ void main() {
   late Directory tmp;
   late FakeCaptureEngine engine;
   late FakeGameSource league;
+  // The League CLIENT catalog entry's stand-in: same shape as the real
+  // `app:league_of_legends` ProcessWatcherSource built by source_builder.dart
+  // (countsAsPlaying: false) — used by the playingGameIds group below to
+  // prove a client-only activation never resumes the buffer.
+  late FakeGameSource leagueClient;
   // Matches FakeCaptureEngine's "Stub App One" (bundleId com.rewind.stub.one)
   // — used by the auto-switch-capture tests below.
   late FakeProcessLister gameLister;
@@ -37,6 +42,8 @@ void main() {
     tmp = Directory.systemTemp.createTempSync('rewind_test');
     engine = FakeCaptureEngine();
     league = FakeGameSource('league_of_legends', 'League of Legends');
+    leagueClient = FakeGameSource(
+        'app:league_of_legends', 'League of Legends (Client)', false);
     gameLister = FakeProcessLister();
     game = ProcessWatcherSource(
       gameId: 'app:stub_game',
@@ -51,7 +58,7 @@ void main() {
       processMatch: 'totally-unmatched-app',
       lister: noMatchLister,
     );
-    registry = GameRegistry(sources: [league, game, noMatchGame]);
+    registry = GameRegistry(sources: [league, leagueClient, game, noMatchGame]);
     library = ClipLibrary(clipsDir: tmp);
     settings = AppSettings();
     coordinator = ClipCoordinator(
@@ -665,6 +672,74 @@ void main() {
 
       expect(coordinator.activeGameIds.value, hasLength(2));
       expect(coordinator.activeGame.value, isNotNull);
+    });
+  });
+
+  group('playingGameIds', () {
+    test('starts empty', () {
+      expect(coordinator.playingGameIds.value, isEmpty);
+    });
+
+    test(
+        'a client-only activation (countsAsPlaying: false) is excluded, '
+        'even though it still shows up in activeGameIds', () async {
+      leagueClient.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.activeGameIds.value, {'app:league_of_legends'});
+      expect(coordinator.playingGameIds.value, isEmpty);
+    });
+
+    test('a vendor (match-live) activation is included', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.playingGameIds.value, {'league_of_legends'});
+    });
+
+    test('a process-detected game is included', () async {
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.playingGameIds.value, {'app:stub_game'});
+    });
+
+    test(
+        'client active + match ends: still not playing (the client alone '
+        'never counted)', () async {
+      leagueClient.running = true;
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.playingGameIds.value, {'league_of_legends'});
+      expect(coordinator.activeGameIds.value,
+          {'app:league_of_legends', 'league_of_legends'});
+
+      // Match ends; the client (lobby/post-game) is still open.
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.playingGameIds.value, isEmpty);
+      expect(coordinator.activeGameIds.value, {'app:league_of_legends'});
+    });
+
+    test('both client and match end: playingGameIds is empty', () async {
+      leagueClient.running = true;
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      leagueClient.running = false;
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.playingGameIds.value, isEmpty);
+      expect(coordinator.activeGameIds.value, isEmpty);
     });
   });
 

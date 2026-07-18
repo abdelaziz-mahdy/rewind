@@ -23,4 +23,16 @@ abstract class GameEventSource {
 
   /// Stop watching and release resources.
   Future<void> stop();
+
+  /// Whether this source activating means the user is actually PLAYING —
+  /// the signal `ClipCoordinator.playingGameIds` (and, through it, the
+  /// `captureOnlyInGame` buffer policy) narrows down to, as opposed to
+  /// [GameActivity]/`activeGameIds`' broader "detected at all" (which still
+  /// covers e.g. a game's launcher/client being open). True for almost every
+  /// source — the process the source detects generally IS the game. False
+  /// only where detection fires on something short of gameplay, e.g. the
+  /// League client catalog entry (see `game_catalog.dart`), which is running
+  /// throughout lobby/champ-select/post-game, not just while a match is
+  /// live.
+  bool get countsAsPlaying => true;
 }

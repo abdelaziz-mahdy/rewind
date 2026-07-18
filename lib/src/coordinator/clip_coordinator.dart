@@ -51,6 +51,15 @@ class ClipCoordinator {
   /// background app alongside League — and this tracks all of them.
   final ValueNotifier<Set<String>> activeGameIds = ValueNotifier(<String>{});
 
+  /// Every currently-active game that also counts as PLAYING (see
+  /// [GameActivity.countsAsPlaying]) — the buffer policy's input, narrower
+  /// than [activeGameIds]. A game whose detection only means "the
+  /// launcher/client is open" (e.g. League's catalog entry) shows up in
+  /// [activeGameIds] (rail dots, Supported Games, auto-switch, session
+  /// stamping all still see it) but never here, so the replay buffer stays
+  /// paused under `captureOnlyInGame` until gameplay is actually detected.
+  final ValueNotifier<Set<String>> playingGameIds = ValueNotifier(<String>{});
+
   /// The error from the most recent failed save, for the UI to surface
   /// (e.g. a SnackBar). Null when there is no error to show, including
   /// right after a subsequent successful save.
@@ -167,6 +176,9 @@ class ClipCoordinator {
       if (a.active) {
         activeGame.value = a.gameId;
         activeGameIds.value = {...activeGameIds.value, a.gameId};
+        if (a.countsAsPlaying) {
+          playingGameIds.value = {...playingGameIds.value, a.gameId};
+        }
         // One session per continuous activation: every clip saved until
         // this game deactivates shares this timestamp, which is what lets
         // the hub group a match's clips together (Clip.sessionAt).
@@ -184,6 +196,11 @@ class ClipCoordinator {
           engine?.setBufferSeconds(settings.defaultBufferSeconds);
         }
         activeGameIds.value = {...activeGameIds.value}..remove(a.gameId);
+        // Removing an id from a set it was never in (a client-only
+        // activation never added to playingGameIds) is a harmless no-op —
+        // no need to gate this on countsAsPlaying, which isn't set on
+        // deactivation anyway.
+        playingGameIds.value = {...playingGameIds.value}..remove(a.gameId);
         _sessionStartedAt.remove(a.gameId);
         _revertAutoSwitchFor(a);
       }
