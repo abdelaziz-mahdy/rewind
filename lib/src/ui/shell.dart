@@ -229,6 +229,8 @@ class _ShellState extends State<Shell> {
           hotkeyLabel: widget.hotkeyLabel,
           onOpenClipsFolder: widget.onOpenClipsFolder,
           thumbnails: widget.thumbnails,
+          matchStats: widget.coordinator.matchStats,
+          ddragon: widget.ddragon,
         ),
       GameDestination(gameId: final id) => GameHubScreen(
           key: ValueKey('gameHubScreen:$id'),

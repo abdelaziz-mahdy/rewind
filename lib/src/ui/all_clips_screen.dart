@@ -2,50 +2,116 @@ import 'package:flutter/material.dart';
 
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
+import '../clip/match_stats.dart';
 import '../clip/thumbnail_cache.dart';
 import '../events/game_catalog.dart';
 import '../events/game_event.dart';
+import '../games/league/ddragon.dart';
+import '../games/match_presentation.dart';
+import 'clip_sessions.dart';
+import 'match_clips_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
 import 'widgets/game_tile_avatar.dart';
 
-/// One All-Clips section: a game's clips, newest first.
-class _GameGroup {
+/// One session in the All Clips feed, tagged with the display-name bucket it
+/// came from (see [_sessionFeed]).
+class _SessionEntry {
   final String gameId;
   final String displayName;
-  final List<Clip> clips;
-  const _GameGroup(this.gameId, this.displayName, this.clips);
+  final ClipSession session;
+  const _SessionEntry({
+    required this.gameId,
+    required this.displayName,
+    required this.session,
+  });
 }
 
-/// Groups [clips] (already sorted newest-first) into per-game sections,
-/// keyed by DISPLAY name so gameIds that render as the same game (League's
-/// vendor id + its catalog process entry) share one section — the same
-/// merge the rail and hubs apply. Section order = order of first
-/// appearance, i.e. the game with the newest clip comes first.
-List<_GameGroup> _groupByGame(List<Clip> clips) {
-  final groups = <String, _GameGroup>{};
+/// Buckets [clips] (already sorted newest-first) by DISPLAY name — the same
+/// League two-gameId merge `_groupByGame` used to apply (vendor id +
+/// catalog process entry share one bucket, exactly like the rail/hubs) — runs
+/// [groupClipsIntoSessions] per bucket, then flattens every bucket's
+/// sessions into ONE newest-first feed across games. Unlike the old
+/// per-game sectioning, sessions from different games interleave by
+/// recency; only within a single game's own clips does anything get
+/// game-partitioned first.
+///
+/// A session's representative [_SessionEntry.gameId] is its newest clip's —
+/// arbitrary between a merged League session's two ids (either clip could
+/// be newest), but only ever used for the header's icon and to seed
+/// [_statsForSession]/`matchPresentationFor`, where either id is equally
+/// correct.
+List<_SessionEntry> _sessionFeed(List<Clip> clips) {
+  final byName = <String, List<Clip>>{};
   for (final c in clips) {
-    final name = displayNameFor(c.gameId);
-    (groups[name] ??= _GameGroup(c.gameId, name, [])).clips.add(c);
+    (byName[displayNameFor(c.gameId)] ??= []).add(c);
   }
-  return groups.values.toList();
+  final entries = <_SessionEntry>[
+    for (final bucket in byName.entries)
+      for (final session in groupClipsIntoSessions(bucket.value))
+        _SessionEntry(
+          gameId: session.clips.first.gameId,
+          displayName: bucket.key,
+          session: session,
+        ),
+  ];
+  entries.sort((a, b) => b.session.startedAt.compareTo(a.session.startedAt));
+  return entries;
+}
+
+/// Stats are keyed by the SAVING gameId; a merged League session's clips may
+/// carry either of its two gameIds (see `game_hub_screen.dart`'s identical
+/// merge note). Tries every distinct gameId actually present in the
+/// session's clips, in encounter order; the first non-null hit wins.
+MatchStats? _statsForSession(MatchStatsStore? store, ClipSession session) {
+  if (store == null) return null;
+  for (final gameId in {for (final c in session.clips) c.gameId}) {
+    final stats = store.statsFor(gameId, session.startedAt);
+    if (stats != null) return stats;
+  }
+  return null;
+}
+
+/// Mirrors `GameHubScreen._sessionLabel`. All Clips has no [GameEntry] to
+/// ask "does this game have a live-match API" — stats only ever get
+/// recorded by League's vendor integration, so their presence is the honest
+/// proxy for MATCH vs. SESSION here.
+String _sessionLabel(ClipSession session, MatchStats? stats) {
+  final word = stats != null ? 'MATCH' : 'SESSION';
+  final count = session.clips.length;
+  return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
+      '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
 }
 
 /// The cross-game clip library (§3.3): header (title + count + size + open-
-/// folder), an event-kind filter row, and a clip grid — newest first (index
-/// order, i.e. the first [ClipTile] built is the newest clip).
+/// folder), an event-kind filter row, and a newest-first FEED OF SESSIONS —
+/// each play session/match gets a tappable header (game + relative time +
+/// clip count) and its own clip grid beneath, interleaved across games by
+/// recency (not game-partitioned — the per-game hubs already own that view).
 class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
   final VoidCallback onOpenClipsFolder;
   final ThumbnailCache? thumbnails;
 
+  /// Per-match K/D and event history, keyed by (gameId, session start) — see
+  /// [_statsForSession]. Null (every test that doesn't care) just means
+  /// every session renders as a plain SESSION with no timeline markers.
+  final MatchStatsStore? matchStats;
+
+  /// Source of champion/item art for the match screen League opens into.
+  /// Null always renders the monogram/blank art fallbacks — same as
+  /// `GameHubScreen.ddragon`.
+  final DDragon? ddragon;
+
   const AllClipsScreen({
     required this.library,
     required this.hotkeyLabel,
     required this.onOpenClipsFolder,
     this.thumbnails,
+    this.matchStats,
+    this.ddragon,
     super.key,
   });
 
@@ -89,10 +155,66 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
     }
   }
 
+  void _openMatch(
+      BuildContext context, _SessionEntry entry, MatchStats? stats) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: matchClipsScreenRouteName),
+      builder: (_) => MatchClipsScreen(
+        session: entry.session,
+        matchLabel: _sessionLabel(entry.session, stats),
+        stats: stats,
+        library: widget.library,
+        thumbnails: widget.thumbnails,
+        presentation:
+            matchPresentationFor(entry.gameId, ddragon: widget.ddragon),
+      ),
+    ));
+  }
+
+  /// The header + clip grid for one [_SessionEntry] — stats are looked up
+  /// once here and threaded to both the header's tap (for the match label)
+  /// and every [ClipTile] (for timeline markers), so a clip opened from All
+  /// Clips finally carries the same markers it would from its game hub.
+  List<Widget> _sessionSection(BuildContext context, _SessionEntry entry) {
+    final stats = _statsForSession(widget.matchStats, entry.session);
+    return [
+      _SessionHeader(
+        key: ValueKey(
+            'sessionHeader:${entry.gameId}:${entry.session.startedAt.toIso8601String()}'),
+        gameId: entry.gameId,
+        displayName: entry.displayName,
+        session: entry.session,
+        onTap: () => _openMatch(context, entry, stats),
+      ),
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+          mainAxisSpacing: clipGridSpacing,
+          crossAxisSpacing: clipGridSpacing,
+          childAspectRatio: clipGridChildAspectRatio,
+        ),
+        itemCount: entry.session.clips.length,
+        itemBuilder: (context, i) => ClipTile(
+          clip: entry.session.clips[i],
+          library: widget.library,
+          thumbnails: widget.thumbnails,
+          // The section header already names the game.
+          showGameName: false,
+          events: stats?.events ?? const [],
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.library,
+      listenable: widget.matchStats == null
+          ? widget.library
+          : Listenable.merge([widget.library, widget.matchStats!]),
       builder: (context, _) {
         final scoped = widget.library.all;
         if (scoped.isEmpty) {
@@ -153,75 +275,95 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       hotkeyLabel: widget.hotkeyLabel,
                       onOpenClipsFolder: widget.onOpenClipsFolder,
                     )
-                  // Sectioned per game, newest game first (order of first
-                  // appearance in the newest-first clip list). Grouped by
-                  // DISPLAY name so League's two gameIds (vendor + catalog
-                  // process entry) merge here exactly like they do in the
-                  // rail/hub.
                   : ListView(
                       key: const ValueKey('clipsList'),
                       padding: const EdgeInsets.only(bottom: 24),
                       children: [
-                        for (final group in _groupByGame(clips)) ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-                            child: Row(
-                              children: [
-                                GameTileAvatar(
-                                  gameId: group.gameId,
-                                  displayName: group.displayName,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  group.displayName.toUpperCase(),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .micro
-                                      .copyWith(
-                                          color:
-                                              context.rewindTokens.textMuted),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${group.clips.length}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .micro
-                                      .copyWith(
-                                          color:
-                                              context.rewindTokens.textMuted),
-                                ),
-                              ],
-                            ),
-                          ),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                              mainAxisSpacing: clipGridSpacing,
-                              crossAxisSpacing: clipGridSpacing,
-                              childAspectRatio: clipGridChildAspectRatio,
-                            ),
-                            itemCount: group.clips.length,
-                            itemBuilder: (context, i) => ClipTile(
-                              clip: group.clips[i],
-                              library: widget.library,
-                              thumbnails: widget.thumbnails,
-                              // The section header already names the game.
-                              showGameName: false,
-                            ),
-                          ),
-                        ],
+                        for (final entry in _sessionFeed(clips))
+                          ..._sessionSection(context, entry),
                       ],
                     ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// A session's header row in the feed: avatar + display name + relative
+/// time + clip count, tappable (chevron affordance) to open the full
+/// [MatchClipsScreen] for that session — mirrors `GameHubScreen`'s match
+/// card tap, just reached from a cross-game feed instead of a per-game grid.
+class _SessionHeader extends StatelessWidget {
+  final String gameId;
+  final String displayName;
+  final ClipSession session;
+  final VoidCallback onTap;
+
+  const _SessionHeader({
+    required this.gameId,
+    required this.displayName,
+    required this.session,
+    required this.onTap,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    final mutedStyle =
+        Theme.of(context).textTheme.micro.copyWith(color: tokens.textMuted);
+    final count = session.clips.length;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(tokens.radiusControl),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
+          child: Row(
+            children: [
+              GameTileAvatar(
+                gameId: gameId,
+                displayName: displayName,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              // One Expanded filler only (the name/age/count run) — a
+              // second loose flex widget sharing this row with it would hit
+              // the flex-allocation trap the redesign spec calls out.
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayName.toUpperCase(),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: mutedStyle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('·', style: mutedStyle),
+                    const SizedBox(width: 8),
+                    Text(relativeAge(session.startedAt), style: mutedStyle),
+                    const SizedBox(width: 8),
+                    Text(
+                      '· $count ${count == 1 ? 'clip' : 'clips'}',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: mutedStyle,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, size: 16, color: tokens.textMuted),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
