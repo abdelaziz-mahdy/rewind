@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../clip/clip_library.dart';
@@ -18,7 +19,6 @@ import 'widgets/clip_tile.dart';
 import 'widgets/event_matrix.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/match_card.dart';
-import 'widgets/setting_row.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -41,11 +41,12 @@ Set<String> _matchIdsFor(String gameId) => gameId == _leagueVendorId
 /// before clips — but that card's headline (e.g. "MANUAL CAPTURE") just
 /// repeated the header's status pill, and the settings card pushed clips
 /// below the fold. Now: header (avatar/name/status pill/stats + one muted
-/// detail line folded in from the old card) → a collapsed-by-default
-/// "Capture settings" disclosure (buffer/auto-clip/events, expands inline on
-/// tap) → the clip list, immediately visible. The v0.2 live-events feed slot
-/// keeps its own card (it's dynamic, session-scoped content, not a static
-/// repeat of the header) and stays hidden until data arrives, unchanged.
+/// detail line folded in from the old card) → a glanceable capture-settings
+/// summary card (buffer/auto-clip/event-count chips, tap to edit in full-page
+/// Settings — see `onEditCaptureSettings`) → the clip list, immediately
+/// visible. The v0.2 live-events feed slot keeps its own card (it's dynamic,
+/// session-scoped content, not a static repeat of the header) and stays
+/// hidden until data arrives, unchanged.
 ///
 /// [gameId] rather than a precomputed [GameEntry] is deliberate: the header
 /// stats and the active dot all need to react live to clip/activity changes
@@ -69,12 +70,27 @@ class GameHubScreen extends StatefulWidget {
   /// the status strip's buffer quick-set uses.
   final Future<void> Function(AppSettings) onSettingsChanged;
 
+  /// The capture-settings summary card's tap target: editing now happens on
+  /// the full-page Settings screen, opened directly on this game's MY GAMES
+  /// page (see `Shell`, which wires this to
+  /// `SettingsDestination(initialGameId: gameId)`).
+  final VoidCallback onEditCaptureSettings;
+
+  /// Bumped after every settings change (see `Shell.settingsRevision`'s
+  /// doc). Edits now happen on a different destination (Settings), not
+  /// inline here, so the summary card needs this to notice a change made
+  /// while this hub instance stays alive. Optional — every existing test
+  /// that doesn't care loses live refresh, not the card itself.
+  final ValueListenable<int>? settingsRevision;
+
   const GameHubScreen({
     required this.gameId,
     required this.library,
     required this.coordinator,
     required this.hotkeyLabel,
     required this.onSettingsChanged,
+    required this.onEditCaptureSettings,
+    this.settingsRevision,
     this.thumbnails,
     this.ddragon,
     super.key,
@@ -85,18 +101,6 @@ class GameHubScreen extends StatefulWidget {
 }
 
 class _GameHubScreenState extends State<GameHubScreen> {
-  late int _bufferSeconds;
-  late bool _customBuffer;
-  late final TextEditingController _bufferController;
-  late bool _autoClip;
-  late Set<GameEventKind> _enabledEvents;
-
-  /// Whether the "Capture settings" disclosure is open. Collapsed by
-  /// default (§ progressive disclosure) and deliberately not persisted —
-  /// reopening it every visit is a fine YAGNI tradeoff for a rarely-touched
-  /// per-game section.
-  bool _settingsExpanded = false;
-
   /// Only League's vendor integration ever emits `GameEvent`s (see
   /// `docs/COMPLIANCE.md` — process-watched catalog games have no sanctioned
   /// event API), so the live-events slot and the auto-clip event matrix only
@@ -109,7 +113,6 @@ class _GameHubScreenState extends State<GameHubScreen> {
   @override
   void initState() {
     super.initState();
-    _initLocalConfigState();
     if (_isLeague) {
       _eventsSub = widget.coordinator.registry.events
           .where((e) =>
@@ -128,83 +131,28 @@ class _GameHubScreenState extends State<GameHubScreen> {
     }
   }
 
-  /// Seeds local editable state from any existing [GameConfig] — read-only
-  /// (unlike `AppSettings.configFor`, this never creates/persists a row just
-  /// because the hub was opened; a fresh `GameConfig(gameId: ...)` mirrors
-  /// exactly what `configFor` would lazily create on the first real edit).
-  void _initLocalConfigState() {
+  @override
+  void dispose() {
+    _eventsSub?.cancel();
+    super.dispose();
+  }
+
+  /// Read-only snapshot of this game's config, recomputed fresh on every
+  /// build for the summary card — unlike `AppSettings.configFor`, this never
+  /// creates/persists a row just because the hub was opened; a fresh
+  /// `GameConfig(gameId: ...)` mirrors exactly what `configFor` would
+  /// lazily create on the first real edit (now made on the Settings screen,
+  /// not here).
+  GameConfig _configSnapshot() {
     final settings = widget.coordinator.settings;
     final existing =
         settings.allConfigs.where((c) => c.gameId == widget.gameId);
-    final snapshot = existing.isNotEmpty
+    return existing.isNotEmpty
         ? existing.first
         : GameConfig(
             gameId: widget.gameId,
             bufferSeconds: settings.bufferSecondsFor(widget.gameId),
           );
-    _bufferSeconds = snapshot.bufferSeconds;
-    _customBuffer =
-        _bufferSeconds != 15 && _bufferSeconds != 30 && _bufferSeconds != 60;
-    _bufferController = TextEditingController(text: '$_bufferSeconds');
-    _autoClip = snapshot.autoClip;
-    _enabledEvents = Set.of(snapshot.enabledEvents);
-  }
-
-  @override
-  void dispose() {
-    _eventsSub?.cancel();
-    _bufferController.dispose();
-    super.dispose();
-  }
-
-  void _commitBuffer(int seconds) {
-    setState(() {
-      _bufferSeconds = seconds;
-      _customBuffer = false;
-    });
-    final settings = widget.coordinator.settings;
-    final cfg = settings.configFor(widget.gameId);
-    cfg.bufferSeconds = seconds;
-    settings.setConfig(cfg);
-    widget.onSettingsChanged(settings);
-  }
-
-  void _handleCustomBufferChanged(String value) {
-    final clamped =
-        (int.tryParse(value) ?? _bufferSeconds).clamp(5, 300).toInt();
-    setState(() => _bufferSeconds = clamped);
-    if (_bufferController.text != '$clamped') {
-      _bufferController.text = '$clamped';
-    }
-    final settings = widget.coordinator.settings;
-    final cfg = settings.configFor(widget.gameId);
-    cfg.bufferSeconds = clamped;
-    settings.setConfig(cfg);
-    widget.onSettingsChanged(settings);
-  }
-
-  void _setAutoClip(bool value) {
-    setState(() => _autoClip = value);
-    final settings = widget.coordinator.settings;
-    final cfg = settings.configFor(widget.gameId);
-    cfg.autoClip = value;
-    settings.setConfig(cfg);
-    widget.onSettingsChanged(settings);
-  }
-
-  void _toggleEvent(GameEventKind kind, bool value) {
-    setState(() {
-      if (value) {
-        _enabledEvents.add(kind);
-      } else {
-        _enabledEvents.remove(kind);
-      }
-    });
-    final settings = widget.coordinator.settings;
-    final cfg = settings.configFor(widget.gameId);
-    cfg.enabledEvents = Set.of(_enabledEvents);
-    settings.setConfig(cfg);
-    widget.onSettingsChanged(settings);
   }
 
   /// [buildGameDirectory] only surfaces League's merged row once it has a
@@ -251,6 +199,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
       widget.coordinator.activeGameIds,
       // Live K/D: match cards must re-render as kills/deaths land.
       if (widget.coordinator.matchStats != null) widget.coordinator.matchStats!,
+      // The summary card's buffer/auto-clip/event-count chips: edits now
+      // happen on the Settings destination, not inline here, so this hub
+      // must be told when to re-read `_configSnapshot()`.
+      if (widget.settingsRevision != null) widget.settingsRevision!,
     ]);
     return ListenableBuilder(
       listenable: listenable,
@@ -282,14 +234,15 @@ class _GameHubScreenState extends State<GameHubScreen> {
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                 child: _liveEventsCard(context),
               ),
-            // Collapsed by default and placed right under the header, not
-            // at the bottom: the match list can grow unbounded, and burying
-            // settings behind it would hurt discoverability far more than a
-            // single ~40px closed disclosure row costs the "clips first"
-            // goal (see the class doc).
+            // Placed right under the header, not at the bottom: the match
+            // list can grow unbounded, and burying settings behind it would
+            // hurt discoverability far more than a single summary row costs
+            // the "clips first" goal (see the class doc). Collapsed =
+            // summarized, never hidden — the card always shows the current
+            // config; tapping it is the only way to change it now.
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: _captureSettingsDisclosure(context),
+              child: _captureSummaryCard(context, entry),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
@@ -475,170 +428,119 @@ class _GameHubScreenState extends State<GameHubScreen> {
     );
   }
 
-  /// The collapsed-by-default "Capture settings" disclosure (§ progressive
-  /// disclosure): a compact header row (uppercase micro-label + chevron,
-  /// hairline top border acting as a section divider rather than a full
-  /// card) that reveals the buffer/auto-clip/event-matrix controls inline.
-  /// The content is only built into the tree once expanded — not merely
-  /// hidden — so it (and its controls) aren't findable/interactable while
-  /// collapsed.
-  Widget _captureSettingsDisclosure(BuildContext context) {
+  /// The glanceable capture-settings summary card (§ "collapsed = summarized,
+  /// never hidden" — the user must be able to READ their config from the hub
+  /// without opening anything, and only leaves the hub to CHANGE it). One
+  /// bounded, tappable row-card: a micro-label plus chips reporting the
+  /// buffer length and — only for games with an event source
+  /// ([eventGroupsFor]) — the auto-clip on/off state and enabled-event count.
+  /// The whole card opens Settings on this game's MY GAMES page via
+  /// [GameHubScreen.onEditCaptureSettings]; there is no inline editing here
+  /// anymore (see `settings_screen.dart`'s `_GameSettingsPage`).
+  Widget _captureSummaryCard(BuildContext context, GameEntry entry) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Material(
-          type: MaterialType.transparency,
+    final cfg = _configSnapshot();
+    final groups = eventGroupsFor(entry);
+    final showAutoClip = groups.isNotEmpty;
+    // `enabledEvents` always carries `manual` (see GameConfig's default —
+    // the hotkey always saves regardless of this config), which never
+    // appears as a toggle in any group; count only kinds the matrix itself
+    // can show/hide so this number matches what's actually checked there.
+    final matrixKinds = groups.expand((g) => g.kinds).toSet();
+    final enabledEventCount =
+        cfg.enabledEvents.intersection(matrixKinds).length;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: settingsMaxContentWidth),
+      child: Container(
+        key: const ValueKey('captureSummaryCard'),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          border: Border.fromBorderSide(hairlineBorder()),
+        ),
+        // The border/clip live on this outer Container so the InkWell's
+        // hover/press overlay (painted by the Material below, atop its own
+        // `color`) stays visible instead of being painted underneath an
+        // opaque child — see EventToggleChip's identical Material→InkWell
+        // ordering for the same reason.
+        child: Material(
+          color: tokens.surface,
           child: InkWell(
-            key: const ValueKey('captureSettingsToggle'),
-            onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: tokens.hairline)),
-              ),
+            onTap: widget.onEditCaptureSettings,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('CAPTURE SETTINGS',
-                        style: theme.textTheme.micro
-                            .copyWith(color: tokens.textMuted)),
-                  ),
-                  AnimatedRotation(
-                    turns: _settingsExpanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(Icons.expand_more,
-                        size: 18, color: tokens.textMuted),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: _settingsExpanded
-              ? Padding(
-                  key: const ValueKey('captureSettingsBody'),
-                  padding: const EdgeInsets.only(top: 12, bottom: 4),
-                  // Same single-column label→control shape as the Settings
-                  // screen, so it gets the same cap: left-aligned, not
-                  // stretched across the window (which stranded the Auto-clip
-                  // toggle a window-width away from its label). The Matches
-                  // grid below is deliberately left uncapped.
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                          maxWidth: settingsMaxContentWidth),
-                      child: _captureSettingsBody(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('CAPTURE SETTINGS',
+                            style: theme.textTheme.micro
+                                .copyWith(color: tokens.textMuted)),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _SummaryChip(
+                                label:
+                                    '${widget.coordinator.settings.bufferSecondsFor(widget.gameId)} s buffer'),
+                            if (showAutoClip)
+                              _SummaryChip(
+                                key: const ValueKey('captureSummaryAutoClip'),
+                                label: cfg.autoClip
+                                    ? 'Auto-clip ON'
+                                    : 'Auto-clip OFF',
+                                color: cfg.autoClip
+                                    ? tokens.accent
+                                    : tokens.textMuted,
+                              ),
+                            if (showAutoClip && cfg.autoClip)
+                              _SummaryChip(label: '$enabledEventCount events'),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-      ],
-    );
-  }
-
-  Widget _captureSettingsBody(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Same row grammar as the Settings screen (widgets/setting_row.dart):
-        // these are the same settings, so they must not have a second shape
-        // here. This panel used to draw label-ABOVE-control while Settings
-        // drew label-left/control-right.
-        SettingRows([
-          SettingRow(
-            label: 'Buffer length',
-            control: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: '15', label: Text('15 s')),
-                ButtonSegment(value: '30', label: Text('30 s')),
-                ButtonSegment(value: '60', label: Text('60 s')),
-                ButtonSegment(value: 'custom', label: Text('Custom')),
-              ],
-              selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
-              onSelectionChanged: (selection) {
-                final value = selection.first;
-                if (value == 'custom') {
-                  setState(() => _customBuffer = true);
-                } else {
-                  _commitBuffer(int.parse(value));
-                }
-              },
-            ),
-          ),
-          if (_customBuffer)
-            SettingRow(
-              label: 'Custom buffer',
-              control: SizedBox(
-                width: 200,
-                child: TextField(
-                  key: const ValueKey('gameHubBufferField'),
-                  controller: _bufferController,
-                  keyboardType: TextInputType.number,
-                  decoration:
-                      const InputDecoration(labelText: 'Seconds (5-300)'),
-                  onChanged: _handleCustomBufferChanged,
-                ),
-              ),
-            ),
-          // Only League emits events (§3.4 — "the only source that emits
-          // events"): catalog/desktop games get buffer-only settings, with
-          // the event UI hidden entirely rather than shown-and-disabled.
-          if (_isLeague)
-            SettingRow(
-              label: 'Auto-clip',
-              hint: Text('Save a clip automatically when one of these happens',
-                  style: Theme.of(context).textTheme.bodyMuted),
-              control: Switch(
-                key: const ValueKey('gameHubAutoClipSwitch'),
-                value: _autoClip,
-                onChanged: _setAutoClip,
-              ),
-            ),
-        ]),
-        if (_isLeague) ...[
-          const SizedBox(height: 12),
-          Opacity(
-            opacity: _autoClip ? 1 : 0.4,
-            child: IgnorePointer(
-              ignoring: !_autoClip,
-              child: Column(
-                key: const ValueKey('gameHubEventMatrix'),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  EventGroup(
-                    label: 'COMBAT',
-                    kinds: combatEvents,
-                    selected: _enabledEvents,
-                    onChanged: _toggleEvent,
-                  ),
-                  const SizedBox(height: 12),
-                  EventGroup(
-                    label: 'OBJECTIVES',
-                    kinds: objectiveEvents,
-                    selected: _enabledEvents,
-                    onChanged: _toggleEvent,
-                  ),
-                  const SizedBox(height: 12),
-                  EventGroup(
-                    label: 'MATCH',
-                    kinds: matchEvents,
-                    selected: _enabledEvents,
-                    onChanged: _toggleEvent,
-                  ),
+                  const SizedBox(width: 12),
+                  Text('Edit',
+                      style: theme.textTheme.label
+                          .copyWith(color: tokens.textMuted)),
+                  const SizedBox(width: 2),
+                  Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
                 ],
               ),
             ),
           ),
-        ],
-      ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One summary chip in [_GameHubScreenState._captureSummaryCard]: a small
+/// raised-bg pill, same visual language as [_StatusPill].
+class _SummaryChip extends StatelessWidget {
+  final String label;
+  final Color? color;
+
+  const _SummaryChip({required this.label, this.color, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: BorderRadius.circular(tokens.radiusChip),
+        border: Border.fromBorderSide(hairlineBorder()),
+      ),
+      child: Text(label,
+          style: theme.textTheme.micro.copyWith(color: color ?? tokens.text)),
     );
   }
 }
@@ -713,10 +615,11 @@ class _LiveEventChip extends StatelessWidget {
   }
 }
 
-/// A hairline-bordered card — used for the live-events feed slot, the one
-/// remaining card in the hub (capture settings and integration status moved
-/// to a disclosure/header line, § progressive disclosure). Matches
-/// `_Section`'s treatment in the (embedded) Settings destination.
+/// A hairline-bordered card — used for the live-events feed slot (the
+/// capture-settings summary card draws its own near-identical shape inline,
+/// see `_captureSummaryCard`, and the old standalone integration status card
+/// folded into the header, § progressive disclosure). Matches `_Section`'s
+/// treatment in the (embedded) Settings destination.
 class _Card extends StatelessWidget {
   final Widget child;
 

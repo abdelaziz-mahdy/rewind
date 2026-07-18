@@ -32,11 +32,10 @@ Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
 
 /// The hub's content is a single scrollable page (header with a folded-in
-/// status detail line, an optional live-events card, the collapsed-by-
-/// default "Capture settings" disclosure, then the clip list) — League's
-/// version, with the disclosure expanded and its auto-clip switch/event
-/// matrix showing, is tall enough that the default test viewport leaves the
-/// clip list and lower matrix groups outside the sliver's build extent (a
+/// status detail line, an optional live-events card, the capture-settings
+/// summary card, then the clip list) — tall enough for League (header +
+/// live-events card + summary card + several match cards) that the default
+/// test viewport leaves the clip list outside the sliver's build extent (a
 /// lazily-built list never realizes off-screen children, test or not).
 /// Widening the test surface, rather than scrolling per-assertion, keeps
 /// every test able to just `find` what it needs.
@@ -79,6 +78,7 @@ void main() {
     required String gameId,
     ClipCoordinator? coordinatorOverride,
     Future<void> Function(AppSettings)? onSettingsChanged,
+    VoidCallback? onEditCaptureSettings,
   }) =>
       GameHubScreen(
         gameId: gameId,
@@ -86,6 +86,7 @@ void main() {
         coordinator: coordinatorOverride ?? coordinator,
         hotkeyLabel: 'Alt+F10',
         onSettingsChanged: onSettingsChanged ?? (_) async {},
+        onEditCaptureSettings: onEditCaptureSettings ?? () {},
       );
 
   Finder inList(Finder f) =>
@@ -95,13 +96,9 @@ void main() {
       of: find.byKey(const ValueKey('liveEventsSlot')), matching: f);
 
   Finder detailLine() => find.byKey(const ValueKey('gameHubDetailLine'));
-  Finder settingsToggle() =>
-      find.byKey(const ValueKey('captureSettingsToggle'));
-
-  Future<void> expandSettings(WidgetTester t) async {
-    await t.tap(settingsToggle());
-    await t.pumpAndSettle();
-  }
+  Finder summaryCard() => find.byKey(const ValueKey('captureSummaryCard'));
+  Finder inSummaryCard(Finder f) =>
+      find.descendant(of: summaryCard(), matching: f);
 
   group('session grouping', () {
     testWidgets(
@@ -242,94 +239,77 @@ void main() {
     });
   });
 
-  group('capture settings disclosure', () {
+  group('capture settings summary card', () {
     testWidgets(
-        'collapsed by default: buffer/auto-clip/matrix controls are not '
-        'found until the disclosure is expanded', (t) async {
+        'shows the buffer, auto-clip state, and enabled-event count for a '
+        'League config', (t) async {
+      coordinator.settings.setConfig(GameConfig(
+        gameId: 'league_of_legends',
+        bufferSeconds: 60,
+        autoClip: true,
+        enabledEvents: {
+          GameEventKind.kill,
+          GameEventKind.ace,
+          GameEventKind.dragonKill,
+        },
+      ));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(find.text('Buffer length'), findsNothing);
-      expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
-      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
-
-      await expandSettings(t);
-
-      expect(find.text('Buffer length'), findsOneWidget);
-      expect(
-          find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsOneWidget);
-      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsOneWidget);
+      expect(inSummaryCard(find.text('60 s buffer')), findsOneWidget);
+      expect(inSummaryCard(find.text('Auto-clip ON')), findsOneWidget);
+      // `manual` is in `enabledEvents` by default but never counted — it's
+      // not a toggle in any group (the hotkey always saves regardless).
+      expect(inSummaryCard(find.text('3 events')), findsOneWidget);
     });
 
-    testWidgets('a per-game buffer edit fires onSettingsChanged', (t) async {
-      final calls = <AppSettings>[];
-      await _pump(
-          t,
-          _app(hub(
-            gameId: 'app:cs2',
-            onSettingsChanged: (s) async => calls.add(s),
-          )));
-      await expandSettings(t);
-
-      await t.tap(find.text('60 s'));
-      await t.pump();
-
-      expect(calls, isNotEmpty);
-      expect(coordinator.settings.configFor('app:cs2').bufferSeconds, 60);
-    });
-
-    testWidgets('the event matrix and auto-clip switch appear only for League',
-        (t) async {
+    testWidgets('auto-clip OFF hides the event-count chip', (t) async {
+      coordinator.settings
+          .setConfig(GameConfig(gameId: 'league_of_legends', autoClip: false));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
-      await expandSettings(t);
 
-      expect(
-          find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsOneWidget);
-      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsOneWidget);
-      expect(find.text('COMBAT'), findsOneWidget);
-      expect(find.text('OBJECTIVES'), findsOneWidget);
-      expect(find.text('MATCH'), findsOneWidget);
-      // `manual` is never part of the auto-clip matrix (the hotkey always
-      // saves regardless of this config).
-      expect(find.byKey(const ValueKey('eventToggle:manual')), findsNothing);
+      expect(inSummaryCard(find.text('Auto-clip OFF')), findsOneWidget);
+      expect(inSummaryCard(find.textContaining('events')), findsNothing);
     });
 
-    testWidgets('no event matrix or auto-clip switch for catalog/desktop games',
+    testWidgets(
+        'falls back to the app default buffer when no GameConfig exists yet',
         (t) async {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
-      await expandSettings(t);
-      expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
-      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
-
-      await _pump(t, _app(hub(gameId: 'desktop')));
-      await expandSettings(t);
-      expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
-      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
+      expect(inSummaryCard(find.text('30 s buffer')), findsOneWidget);
     });
 
-    testWidgets('toggling an event in the matrix updates enabledEvents',
-        (t) async {
-      final calls = <AppSettings>[];
+    testWidgets(
+        'no auto-clip chip for a process-detected game (no sanctioned event '
+        'source, § docs/COMPLIANCE.md)', (t) async {
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+      expect(inSummaryCard(find.textContaining('Auto-clip')), findsNothing);
+    });
+
+    testWidgets('no auto-clip chip for desktop (manual capture)', (t) async {
+      await _pump(t, _app(hub(gameId: 'desktop')));
+      expect(inSummaryCard(find.textContaining('Auto-clip')), findsNothing);
+    });
+
+    testWidgets('tapping the card fires onEditCaptureSettings', (t) async {
+      var tapped = false;
       await _pump(
           t,
           _app(hub(
             gameId: 'league_of_legends',
-            onSettingsChanged: (s) async => calls.add(s),
+            onEditCaptureSettings: () => tapped = true,
           )));
-      await expandSettings(t);
 
-      // `ace` is enabled by GameConfig's own defaults; toggle it off.
-      await t.tap(find.byKey(const ValueKey('eventToggle:ace')));
+      await t.tap(summaryCard());
       await t.pump();
 
-      expect(calls, isNotEmpty);
-      expect(coordinator.settings.configFor('league_of_legends').enabledEvents,
-          isNot(contains(GameEventKind.ace)));
+      expect(tapped, isTrue);
+    });
 
-      // `dragonKill` is not enabled by default; toggle it on.
-      await t.tap(find.byKey(const ValueKey('eventToggle:dragonKill')));
-      await t.pump();
-      expect(coordinator.settings.configFor('league_of_legends').enabledEvents,
-          contains(GameEventKind.dragonKill));
+    testWidgets('the old inline editor is gone', (t) async {
+      await _pump(t, _app(hub(gameId: 'league_of_legends')));
+      expect(find.byKey(const ValueKey('captureSettingsToggle')), findsNothing);
+      expect(find.byKey(const ValueKey('gameHubAutoClipSwitch')), findsNothing);
+      expect(find.byKey(const ValueKey('gameHubEventMatrix')), findsNothing);
     });
   });
 
@@ -472,90 +452,6 @@ void main() {
         (t) async {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
       expect(find.byKey(const ValueKey('liveEventsSlot')), findsNothing);
-    });
-  });
-
-  group('event toggle chips', () {
-    /// The chip's label colour, by event kind.
-    Color labelColor(WidgetTester t, GameEventKind kind) => t
-        .widget<Text>(find.descendant(
-          of: find.byKey(ValueKey('eventToggle:${kind.name}')),
-          matching: find.byType(Text),
-        ))
-        .style!
-        .color!;
-
-    testWidgets(
-        'an ENABLED event is more prominent than a disabled one — the state '
-        'used to be inverted', (t) async {
-      // Regression: unselected chips drew full-brightness `tokens.text` while
-      // selected ones drew the dimmer accent, so a hub's loudest elements
-      // were the events the player had switched OFF (KILL enabled read as a
-      // whisper next to DRAGON KILL disabled shouting in white).
-      final settings = AppSettings()
-        ..setConfig(GameConfig(
-          gameId: 'league_of_legends',
-          enabledEvents: {GameEventKind.kill},
-        ));
-      await _pump(
-          t,
-          _app(GameHubScreen(
-            gameId: 'league_of_legends',
-            library: library,
-            coordinator: ClipCoordinator(
-              registry: GameRegistry(sources: []),
-              library: library,
-              storage: StorageManager(library),
-              settings: settings,
-              outDir: tmp.path,
-              engine: FakeCaptureEngine(),
-            ),
-            hotkeyLabel: 'Alt+F10',
-            onSettingsChanged: (_) async {},
-          )));
-      await expandSettings(t);
-
-      final on = labelColor(t, GameEventKind.kill);
-      final off = labelColor(t, GameEventKind.dragonKill);
-      expect(on, isNot(off));
-      // The real assertion: ON must not be dimmer than OFF.
-      expect(on.computeLuminance(), greaterThan(off.computeLuminance()),
-          reason: 'an enabled event must not read dimmer than a disabled one');
-    });
-
-    testWidgets('state is not signalled by colour alone — ON carries a check',
-        (t) async {
-      // ~14 same-size, same-shape chips distinguished only by hue is nothing
-      // to a colour-blind player, so "on" also shows a check glyph.
-      final settings = AppSettings()
-        ..setConfig(GameConfig(
-          gameId: 'league_of_legends',
-          enabledEvents: {GameEventKind.kill},
-        ));
-      await _pump(
-          t,
-          _app(GameHubScreen(
-            gameId: 'league_of_legends',
-            library: library,
-            coordinator: ClipCoordinator(
-              registry: GameRegistry(sources: []),
-              library: library,
-              storage: StorageManager(library),
-              settings: settings,
-              outDir: tmp.path,
-              engine: FakeCaptureEngine(),
-            ),
-            hotkeyLabel: 'Alt+F10',
-            onSettingsChanged: (_) async {},
-          )));
-      await expandSettings(t);
-
-      Finder checkIn(GameEventKind k) => find.descendant(
-            of: find.byKey(ValueKey('eventToggle:${k.name}')),
-            matching: find.byIcon(Icons.check),
-          );
-      expect(checkIn(GameEventKind.kill), findsOneWidget);
-      expect(checkIn(GameEventKind.dragonKill), findsNothing);
     });
   });
 }

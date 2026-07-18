@@ -221,6 +221,9 @@ class _ShellState extends State<Shell> {
           coordinator: widget.coordinator,
           hotkeyLabel: widget.hotkeyLabel,
           onSettingsChanged: widget.onSettingsChanged,
+          onEditCaptureSettings: () =>
+              _select(SettingsDestination(initialGameId: id)),
+          settingsRevision: widget.settingsRevision,
           thumbnails: widget.thumbnails,
           ddragon: widget.ddragon,
         ),
@@ -231,7 +234,7 @@ class _ShellState extends State<Shell> {
           onSettingsChanged: widget.onSettingsChanged,
           onOpenGame: (gameId) => _select(GameDestination(gameId)),
         ),
-      SettingsDestination() => SettingsScreen(
+      SettingsDestination(initialGameId: final gameId) => SettingsScreen(
           key: const ValueKey('settingsScreen'),
           settings: widget.coordinator.settings,
           onChanged: widget.onSettingsChanged,
@@ -241,6 +244,7 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
           onClose: _closeSettings,
+          initialGameId: gameId,
           // Same derivation as the rail (`nav_rail.dart`'s `_buildRail`) so
           // the MY GAMES sidebar section never disagrees with it on naming,
           // icons, or ordering.
