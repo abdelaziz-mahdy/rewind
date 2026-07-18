@@ -234,8 +234,9 @@ void main() {
     });
 
     testWidgets(
-        'a process-detected game (no live vendor API) never shows an event '
-        'matrix, even under Highlights', (t) async {
+        'a process-detected game (no live vendor API) shows NO Capture mode '
+        'section at all — offering "Highlights" for a game with no event '
+        'feed was a lie', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -244,18 +245,14 @@ void main() {
         initialGameId: 'valorant',
       )));
 
-      // Highlights is already selected by GameConfig's default, and there's
-      // still no matrix to show.
+      expect(find.byKey(const ValueKey('captureMode:manual')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('captureMode:highlights')), findsNothing);
       expect(
           find.byKey(const ValueKey('gameSettingsEventMatrix')), findsNothing);
-
-      await t.tap(find.byKey(const ValueKey('captureMode:manual')));
-      await t.pump();
-      await t.tap(find.byKey(const ValueKey('captureMode:highlights')));
-      await t.pump();
-
+      // In its place: the plain statement of how this game IS captured.
       expect(
-          find.byKey(const ValueKey('gameSettingsEventMatrix')), findsNothing);
+          find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
     });
   });
 
@@ -380,8 +377,8 @@ void main() {
 
   group('No auto-clip events note (process-detected games)', () {
     testWidgets(
-        'shown under Highlights when eventGroupsFor is empty, in place of '
-        'the delay row', (t) async {
+        'shown unconditionally in place of the Capture mode section, with '
+        'no delay row', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -390,28 +387,11 @@ void main() {
         initialGameId: 'valorant',
       )));
 
-      // Highlights is already selected by GameConfig's default.
       expect(
           find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
-      expect(
-          find.textContaining('clips save with your hotkey'), findsOneWidget);
+      expect(find.textContaining('saved with your hotkey'), findsOneWidget);
       expect(
           find.byKey(const ValueKey('postEventDelayDropdown')), findsNothing);
-    });
-
-    testWidgets('hidden under Manual only', (t) async {
-      await t.pumpWidget(_app(SettingsScreen(
-        settings: AppSettings(),
-        onChanged: (_) async {},
-        displays: const [],
-        gameEntries: const [_valorant],
-        initialGameId: 'valorant',
-      )));
-
-      await t.tap(find.byKey(const ValueKey('captureMode:manual')));
-      await t.pump();
-
-      expect(find.byKey(const ValueKey('noAutoClipEventsNote')), findsNothing);
     });
 
     testWidgets('never shown for a live-API game (League always has groups)',

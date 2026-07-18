@@ -894,14 +894,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '${d.isMain ? ' (Main)' : ''}';
 }
 
-/// Wraps a page's content in its own scroll view, left-aligned and capped
-/// at [settingsPageContentWidth] — the "variant G" column, narrower than
-/// the shared [settingsMaxContentWidth] a game hub's panel still uses.
+/// Wraps a page's content in its own scroll view, CENTERED in the pane and
+/// capped at [settingsPageContentWidth] — the "variant G" column, narrower
+/// than the shared [settingsMaxContentWidth] a game hub's panel still uses.
+///
+/// Centered, not left-anchored, on purpose: in a wide window a left-anchored
+/// capped column dumps ALL the leftover width on the right, and that
+/// lopsided void reads as unfinished (the exact complaint that started the
+/// settings redesign, remade at page level). Centering splits the leftover
+/// space into symmetric framing — the capped-column convention Discord and
+/// macOS System Settings both follow.
+///
 /// Shared by every GENERAL page and each MY GAMES page ([_GameSettingsPage])
 /// so they read as one design, not two. [description], when given, is a
 /// muted one-line sub-head right under the title — only [_GameSettingsPage]
-/// uses it ("Overrides for this game…"); every GENERAL page leaves it null
-/// and renders exactly as before this param existed.
+/// uses it ("Overrides for this game…").
 Widget _settingsPage(
   BuildContext context,
   String title,
@@ -910,27 +917,32 @@ Widget _settingsPage(
 }) {
   final theme = Theme.of(context);
   return SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(40, 26, 40, 40),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.display),
-          if (description case final d?) ...[
-            const SizedBox(height: 4),
-            Text(d, style: theme.textTheme.bodyMuted),
+    padding: const EdgeInsets.fromLTRB(40, 30, 40, 40),
+    child: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.display),
+            if (description case final d?) ...[
+              const SizedBox(height: 4),
+              Text(d, style: theme.textTheme.bodyMuted),
+            ],
+            const SizedBox(height: 28),
+            ...children,
           ],
-          const SizedBox(height: 20),
-          ...children,
-        ],
+        ),
       ),
     ),
   );
 }
 
 Widget _sectionDivider(BuildContext context) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      // Whitespace-first grouping: the air between sections must clearly
+      // exceed the air within them, or the page reads as one undifferentiated
+      // wall (the "bland, don't know where to look" feedback).
+      padding: const EdgeInsets.symmetric(vertical: 26),
       child: Divider(
           height: 1, thickness: 1, color: context.rewindTokens.hairline),
     );
@@ -1218,15 +1230,28 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
       description: 'Overrides for this game — everything not set here '
           'follows your Capture defaults.',
       [
-        _SettingsSection(
-          title: 'Capture mode',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _captureModeCards(context),
-              if (_autoClip) ...[
-                const SizedBox(height: 12),
-                if (groups.isNotEmpty) ...[
+        // Games with NO auto-clip event source (process-detected, desktop)
+        // get no Capture-mode choice at all: offering "Highlights — auto-clip
+        // the moments you pick below" for a game that can never produce an
+        // event was a lie (and Highlights even rendered pre-selected, since
+        // autoClip defaults true). A plain statement of how the game IS
+        // captured replaces it.
+        if (groups.isEmpty)
+          Text(
+            'Clips for this game are saved with your hotkey — no in-game '
+            'event feed exists to auto-clip from yet.',
+            key: const ValueKey('noAutoClipEventsNote'),
+            style: Theme.of(context).textTheme.bodyMuted,
+          )
+        else
+          _SettingsSection(
+            title: 'Capture mode',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _captureModeCards(context),
+                if (_autoClip) ...[
+                  const SizedBox(height: 12),
                   Column(
                     key: const ValueKey('gameSettingsEventMatrix'),
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1244,17 +1269,10 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                   ),
                   const SizedBox(height: 12),
                   _postEventDelayRow(context),
-                ] else
-                  Text(
-                    'No auto-clip events are available for this game yet — '
-                    'clips save with your hotkey.',
-                    key: const ValueKey('noAutoClipEventsNote'),
-                    style: Theme.of(context).textTheme.bodyMuted,
-                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         _sectionDivider(context),
         _FieldRow(
           label: 'Buffer length',
@@ -1471,15 +1489,35 @@ class _SettingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.title),
+        // A small accent tick anchors each section header — the same visual
+        // language as the rail's selection indicator, giving the eye a
+        // scannable landmark per section ("where do I look" feedback on the
+        // first full-page build: title, headers and body were too close in
+        // weight for any of them to lead).
+        Row(children: [
+          Container(
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: tokens.accent,
+              borderRadius: BorderRadius.circular(tokens.radiusRailIndicator),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(title, style: theme.textTheme.title),
+        ]),
         if (description case final d?) ...[
           const SizedBox(height: 2),
-          Text(d, style: theme.textTheme.bodyMuted),
+          Padding(
+            padding: const EdgeInsets.only(left: 11),
+            child: Text(d, style: theme.textTheme.bodyMuted),
+          ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         child,
       ],
     );
