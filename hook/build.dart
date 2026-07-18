@@ -121,6 +121,10 @@ void main(List<String> args) async {
           '-F${obsRoot.path}/lib',
           '-framework', 'libobs',
           '-framework', 'ApplicationServices',
+          // CoreAudio: rw_plat_list_audio_inputs_json's device enumeration
+          // (AudioObjectGetPropertyData et al.) — not pulled in transitively
+          // by ApplicationServices, unlike CoreGraphics/CoreText above.
+          '-framework', 'CoreAudio',
           // Dev-tree runs (flutter run/build before bundling): resolve
           // straight from the fetched SDK via an absolute rpath.
           '-Wl,-rpath,${obsRoot.path}/lib',

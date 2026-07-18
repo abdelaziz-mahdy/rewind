@@ -47,6 +47,31 @@ void main() {
     expect(loaded.captureDisplayUuid, 'display-uuid-456');
   });
 
+  test('micDeviceUid defaults to null (system default)', () {
+    expect(AppSettings().micDeviceUid, isNull);
+  });
+
+  test('micDeviceUid round-trips through toJson/fromJson', () {
+    final s = AppSettings(micDeviceUid: 'mic-uid-123');
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.micDeviceUid, 'mic-uid-123');
+  });
+
+  test('micDeviceUid round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(micDeviceUid: 'mic-uid-456'));
+    final loaded = await store.load();
+    expect(loaded.micDeviceUid, 'mic-uid-456');
+  });
+
+  test(
+      'fromJson with no micDeviceUid key (pre-existing settings file) '
+      'falls back to null, not a crash', () {
+    final json = AppSettings().toJson()..remove('micDeviceUid');
+    final loaded = AppSettings.fromJson(json);
+    expect(loaded.micDeviceUid, isNull);
+  });
+
   test('save/load round-trips per-game config', () async {
     final store = SettingsStore(tmp);
     final s = AppSettings(defaultBufferSeconds: 60, hotkey: 'Ctrl+Shift+S');

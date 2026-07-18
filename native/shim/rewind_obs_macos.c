@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <mach-o/dyld.h>
 #include <ApplicationServices/ApplicationServices.h>
+#include <CoreAudio/CoreAudio.h> /* audio-input (microphone) enumeration */
 #include <libproc.h>
 #include <strings.h> /* strcasecmp */
 #include <string.h>
@@ -647,12 +648,134 @@ int rw_plat_create_encoders(void) {
     return 0;
 }
 
+/* "device_id" is coreaudio_input_capture's own settings key — verified
+ * against the vendored plugin source
+ * (native/third_party/work/obs-studio/plugins/mac-capture/mac-audio.c):
+ * coreaudio_create()/coreaudio_update() read it via
+ * obs_data_get_string(settings, "device_id"), coreaudio_defaults() defaults
+ * it to the literal string "default", and find_device_id_by_uid() treats
+ * "default" (case-insensitively) as "use kAudioHardwarePropertyDefault
+ * InputDevice" — anything else is looked up by CoreAudio device UID via
+ * coreaudio_get_device_id() (audio-device-enum.c), the exact same UID
+ * rw_plat_list_audio_inputs_json below reads via
+ * kAudioDevicePropertyDeviceUID. g_mic_device_uid empty means "use the
+ * default" — pass the literal string only when a device was actually
+ * chosen. */
 obs_source_t *rw_plat_create_mic_source(void) {
-    return obs_source_create("coreaudio_input_capture", "rewind-mic", NULL, NULL);
+    obs_data_t *ms = obs_data_create();
+    obs_data_set_string(ms, "device_id",
+                         g_mic_device_uid[0] ? g_mic_device_uid : "default");
+    obs_source_t *mic = obs_source_create("coreaudio_input_capture", "rewind-mic", ms, NULL);
+    obs_data_release(ms);
+    return mic;
 }
 
 void rw_plat_log_mic_unavailable(void) {
     blog(LOG_WARNING, "rewind: coreaudio_input_capture unavailable (mic permission?)");
+}
+
+/* ---- microphone (audio input) enumeration (macOS) -----------------------
+ *
+ * Mirrors coreaudio_enum_devices()/coreaudio_properties() in the vendored
+ * audio-device-enum.c/mac-audio.c: walk every id from
+ * kAudioHardwarePropertyDevices, keep only those with at least one INPUT
+ * stream (kAudioDevicePropertyStreams, scope Input — a non-zero size means
+ * "has input streams", same test coreaudio_enum_device() uses), then read
+ * each one's UID (kAudioDevicePropertyDeviceUID — the exact string
+ * coreaudio_input_capture's "device_id" setting expects back) and display
+ * name (kAudioDevicePropertyDeviceNameCFString). The system's current
+ * default input device (kAudioHardwarePropertyDefaultInputDevice) is marked
+ * with "default":true so the UI can pre-select it — separate from (but
+ * consistent with) the shim's own g_mic_device_uid=="" meaning the same
+ * thing to coreaudio_input_capture. */
+int rw_plat_list_audio_inputs_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) return fail("invalid buffer");
+
+    AudioObjectPropertyAddress devices_addr = {
+        kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain};
+    UInt32 size = 0;
+    if (AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &devices_addr, 0, NULL, &size) != noErr)
+        return fail("AudioObjectGetPropertyDataSize failed");
+
+    /* 128 comfortably covers any real machine's audio device count (built-in
+     * + a handful of USB/Bluetooth/virtual devices); like the display/app
+     * enumerations above, this is a soft cap, not a hard requirement. */
+    AudioDeviceID ids[128];
+    UInt32 count = size / sizeof(AudioDeviceID);
+    if (count > 128) count = 128;
+    size = count * sizeof(AudioDeviceID);
+    if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &devices_addr, 0, NULL, &size, ids) != noErr)
+        return fail("AudioObjectGetPropertyData failed");
+
+    /* Best-effort: a failure here just means no entry gets marked default,
+     * not a failed enumeration overall. */
+    AudioDeviceID default_id = kAudioObjectUnknown;
+    AudioObjectPropertyAddress default_addr = {
+        kAudioHardwarePropertyDefaultInputDevice, kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain};
+    UInt32 default_size = sizeof(default_id);
+    AudioObjectGetPropertyData(kAudioObjectSystemObject, &default_addr, 0, NULL, &default_size, &default_id);
+
+    size_t pos = 0;
+    json_out[0] = '\0';
+#define APPEND(...) do { \
+        int n = snprintf(json_out + pos, (size_t)json_cap - pos, __VA_ARGS__); \
+        if (n < 0 || (size_t)n >= (size_t)json_cap - pos) return fail("audio input list truncated"); \
+        pos += (size_t)n; \
+    } while (0)
+
+    APPEND("[");
+    int first = 1;
+    for (UInt32 i = 0; i < count; i++) {
+        AudioObjectPropertyAddress streams_addr = {
+            kAudioDevicePropertyStreams, kAudioDevicePropertyScopeInput,
+            kAudioObjectPropertyElementMain};
+        UInt32 streams_size = 0;
+        AudioObjectGetPropertyDataSize(ids[i], &streams_addr, 0, NULL, &streams_size);
+        if (!streams_size) continue; /* no input streams -> not a mic */
+
+        CFStringRef cf_uid = NULL;
+        UInt32 uid_size = sizeof(cf_uid);
+        AudioObjectPropertyAddress uid_addr = {
+            kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain};
+        if (AudioObjectGetPropertyData(ids[i], &uid_addr, 0, NULL, &uid_size, &cf_uid) != noErr || !cf_uid)
+            continue;
+
+        char uid[256] = "";
+        bool got_uid = CFStringGetCString(cf_uid, uid, sizeof(uid), kCFStringEncodingUTF8);
+        CFRelease(cf_uid);
+        if (!got_uid || !uid[0]) continue;
+
+        CFStringRef cf_name = NULL;
+        UInt32 name_size = sizeof(cf_name);
+        AudioObjectPropertyAddress name_addr = {
+            kAudioDevicePropertyDeviceNameCFString, kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain};
+        OSStatus name_stat = AudioObjectGetPropertyData(ids[i], &name_addr, 0, NULL, &name_size, &cf_name);
+
+        char name[256] = "";
+        if (name_stat == noErr && cf_name) {
+            CFStringGetCString(cf_name, name, sizeof(name), kCFStringEncodingUTF8);
+            CFRelease(cf_name);
+        }
+        if (!name[0]) snprintf(name, sizeof(name), "%s", uid);
+
+        char esc_uid[512] = "";
+        json_escape_append(uid, esc_uid, sizeof(esc_uid));
+        char esc_name[512] = "";
+        json_escape_append(name, esc_name, sizeof(esc_name));
+
+        APPEND("%s{\"uid\":\"%s\",\"name\":\"%s\",\"default\":%s}",
+               first ? "" : ",", esc_uid, esc_name,
+               (ids[i] == default_id) ? "true" : "false");
+        first = 0;
+    }
+    APPEND("]");
+#undef APPEND
+    set_error("");
+    return 0;
 }
 
 /* obs-ffmpeg's replay buffer spawns the obs-ffmpeg-mux helper from the

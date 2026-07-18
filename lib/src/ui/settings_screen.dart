@@ -8,6 +8,7 @@ import '../clip/clips_dir.dart';
 import '../events/game_event.dart';
 import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
+import '../obs/audio_input_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
@@ -44,6 +45,14 @@ class SettingsScreen extends StatefulWidget {
   /// is hidden entirely when this is empty. Defaults to empty so existing
   /// callers/tests that don't care about app capture don't need to wire it.
   final List<AppInfo> capturableApps;
+
+  /// Audio INPUT devices (microphones) the user can pick as the mic source.
+  /// The "Microphone" sub-row under "Record my microphone" is hidden
+  /// entirely when this is empty (honest degradation on platforms where
+  /// enumeration isn't implemented yet — see `CaptureEngine.listAudioInputs`).
+  /// Defaults to empty so existing callers/tests that don't care about mic
+  /// device picking don't need to wire it.
+  final List<AudioInputInfo> audioInputs;
 
   /// Called with `true` when the hotkey recorder starts listening and
   /// `false` whenever it stops (a captured combo, Escape, clicking away, or
@@ -101,6 +110,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onChanged,
     required this.displays,
     this.capturableApps = const [],
+    this.audioInputs = const [],
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
@@ -383,6 +393,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// The uid the microphone dropdown should show as selected: the saved
+  /// choice only if it's one of the currently-listed [widget.audioInputs] —
+  /// mirrors [_selectedAppBundleId]: null ("System default") is always a
+  /// valid menu item, so a saved uid for a device that's since been
+  /// unplugged just shows as "System default" without touching the
+  /// persisted setting.
+  String? _selectedMicDeviceUid() {
+    final saved = widget.settings.micDeviceUid;
+    return saved != null && widget.audioInputs.any((d) => d.uid == saved)
+        ? saved
+        : null;
+  }
+
+  void _handleMicDeviceChanged(String? uid) {
+    widget.settings.micDeviceUid = uid;
+    widget.onChanged(widget.settings);
+  }
+
   /// The "Record game & system sound" toggle: OFF maps to [AudioMode.off];
   /// turning it back ON restores [AudioMode.all] (not whatever narrower
   /// mode was last active) — the toggle's own hint promises "game and app
@@ -653,6 +681,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               switchKey: const ValueKey('captureMicrophoneSwitch'),
               onChanged: _handleMicrophoneChanged,
             ),
+            if (widget.settings.captureMicrophone &&
+                widget.audioInputs.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.only(left: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                      left: BorderSide(
+                          color: context.rewindTokens.hairline, width: 2)),
+                ),
+                child: _FieldRow(
+                  label: 'Microphone',
+                  control: DropdownButtonFormField<String?>(
+                    key: const ValueKey('micDeviceDropdown'),
+                    initialValue: _selectedMicDeviceUid(),
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        child: Text('System default'),
+                      ),
+                      for (final input in widget.audioInputs)
+                        DropdownMenuItem<String?>(
+                          value: input.uid,
+                          child: Text(input.name),
+                        ),
+                    ],
+                    onChanged: _handleMicDeviceChanged,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

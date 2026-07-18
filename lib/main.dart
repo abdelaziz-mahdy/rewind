@@ -24,6 +24,7 @@ import 'src/log/file_log.dart';
 import 'src/log/log.dart';
 import 'src/log/perf_monitor.dart';
 import 'src/obs/app_info.dart';
+import 'src/obs/audio_input_info.dart';
 import 'src/obs/capture_engine.dart';
 import 'src/obs/display_info.dart';
 import 'src/obs/rewind_obs_engine.dart';
@@ -134,6 +135,7 @@ Future<void> main() async {
   // fall capture back to the main display — recording the WRONG screen.
   final connectedDisplays = engine.listDisplays();
   final connectedApps = engine.listCapturableApps();
+  final connectedAudioInputs = engine.listAudioInputs();
   final savedDisplay =
       validDisplayUuid(settings.captureDisplayUuid, connectedDisplays);
   if (settings.captureDisplayUuid != null && savedDisplay == null) {
@@ -161,6 +163,7 @@ Future<void> main() async {
   // Audio + quality preferences before init, mirroring the display/app
   // pattern — the shim applies them while building the pipeline.
   engine.setMicEnabled(settings.captureMicrophone);
+  engine.setMicDevice(settings.micDeviceUid);
   engine.setAudioMode(audioModeToShim(settings.audioMode));
   engine.setCaptureQuality(settings.captureFps, settings.captureMaxHeight ?? 0);
   if (!engine.init(
@@ -179,6 +182,8 @@ Future<void> main() async {
   }
   final displays = engine != null ? connectedDisplays : const <DisplayInfo>[];
   final capturableApps = engine != null ? connectedApps : const <AppInfo>[];
+  final audioInputs =
+      engine != null ? connectedAudioInputs : const <AudioInputInfo>[];
 
   // Auto-cleanup: the user's Storage settings drive the retention policy.
   // Enforced after every save (coordinator), once at startup (backlog from
@@ -332,6 +337,7 @@ Future<void> main() async {
     bufferActive: bufferActive,
     displays: displays,
     capturableApps: capturableApps,
+    audioInputs: audioInputs,
     // `engine` (not the startup snapshot): fresh enumeration every time the
     // source menu opens, so a game launched after Rewind still appears.
     listApps: () => engine?.listCapturableApps() ?? const <AppInfo>[],
@@ -356,6 +362,7 @@ Future<void> main() async {
       // told about explicitly to revert out of a previously-set app target.
       engine?.setCaptureApp(s.captureAppBundleId);
       engine?.setMicEnabled(s.captureMicrophone);
+      engine?.setMicDevice(s.micDeviceUid);
       engine?.setAudioMode(audioModeToShim(s.audioMode));
       // Quality stored for next launch (a live pipeline can't change fps/res).
       engine?.setCaptureQuality(s.captureFps, s.captureMaxHeight ?? 0);
@@ -413,6 +420,7 @@ class RewindApp extends StatefulWidget {
   final ValueNotifier<bool> bufferActive;
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
+  final List<AudioInputInfo> audioInputs;
   final List<AppInfo> Function()? listApps;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final Future<void> Function(bool recording) onHotkeyRecording;
@@ -437,6 +445,7 @@ class RewindApp extends StatefulWidget {
     required this.bufferActive,
     required this.displays,
     required this.capturableApps,
+    this.audioInputs = const [],
     this.listApps,
     required this.onSettingsChanged,
     required this.onHotkeyRecording,
@@ -489,6 +498,7 @@ class _RewindAppState extends State<RewindApp> {
               hotkeyLabel: widget.settings.hotkey,
               displays: widget.displays,
               capturableApps: widget.capturableApps,
+              audioInputs: widget.audioInputs,
               listApps: widget.listApps,
               onSettingsChanged: widget.onSettingsChanged,
               onOpenClipsFolder: widget.onOpenClipsFolder,

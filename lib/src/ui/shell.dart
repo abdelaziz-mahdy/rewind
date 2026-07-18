@@ -11,6 +11,7 @@ import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../games/league/ddragon.dart';
 import '../obs/app_info.dart';
+import '../obs/audio_input_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
 import 'all_clips_screen.dart';
@@ -59,6 +60,11 @@ class Shell extends StatefulWidget {
   final List<DisplayInfo> displays;
   final List<AppInfo> capturableApps;
 
+  /// Audio INPUT devices (microphones), forwarded to the embedded Settings
+  /// destination's "Microphone" sub-row — hidden entirely when empty (see
+  /// `SettingsScreen.audioInputs`).
+  final List<AudioInputInfo> audioInputs;
+
   /// Live app enumeration, forwarded to the rail's recorder cluster so the
   /// capture-source menu re-lists on every open (see `RecorderCluster.
   /// listApps`).
@@ -103,6 +109,7 @@ class Shell extends StatefulWidget {
     required this.hotkeyLabel,
     this.displays = const [],
     this.capturableApps = const [],
+    this.audioInputs = const [],
     this.listApps,
     required this.onSettingsChanged,
     required this.onOpenClipsFolder,
@@ -240,6 +247,7 @@ class _ShellState extends State<Shell> {
           onChanged: widget.onSettingsChanged,
           displays: widget.displays,
           capturableApps: widget.capturableApps,
+          audioInputs: widget.audioInputs,
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,

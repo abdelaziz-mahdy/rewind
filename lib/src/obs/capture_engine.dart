@@ -1,4 +1,5 @@
 import 'app_info.dart';
+import 'audio_input_info.dart';
 import 'display_info.dart';
 
 /// Seam between the coordinator and the capture backend.
@@ -82,6 +83,21 @@ abstract class CaptureEngine {
   /// triggers the macOS microphone permission prompt. Returns false on
   /// failure.
   bool setMicEnabled(bool enabled);
+
+  /// Enumerate audio INPUT devices (microphones). Safe to call before
+  /// [init]. Returns an empty list if enumeration failed, or on a platform
+  /// where it isn't implemented yet (Windows/Linux currently — see
+  /// `rewind_list_audio_inputs_json` in native/shim/rewind_obs.h); the
+  /// Settings picker hides itself entirely when this is empty rather than
+  /// showing a fake device list.
+  List<AudioInputInfo> listAudioInputs();
+
+  /// Select the microphone input device, identified by an
+  /// [AudioInputInfo.uid] from [listAudioInputs], or `null` for the system
+  /// default. Safe to call before [init] (the preference is remembered and
+  /// applied whenever the mic source is next built); if the mic is already
+  /// live, it is rebuilt on the new device immediately.
+  void setMicDevice(String? uid);
 
   /// Set capture framerate ([fps], e.g. 30 or 60) and output-height cap
   /// ([maxHeight], 0 = source resolution). Applied at [init] — call before

@@ -1,5 +1,6 @@
 import '../log/log.dart';
 import 'app_info.dart';
+import 'audio_input_info.dart';
 import 'capture_engine.dart';
 import 'display_info.dart';
 import 'rewind_obs_ffi.dart';
@@ -72,6 +73,24 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setMicEnabled(bool enabled) => _obs.setMicEnabled(enabled) == 0;
+
+  @override
+  List<AudioInputInfo> listAudioInputs() {
+    final json = _obs.listAudioInputsJson();
+    if (json == null) {
+      talker.warning('listAudioInputs failed: ${_obs.lastError()}');
+      return const [];
+    }
+    try {
+      return AudioInputInfo.listFromJson(json);
+    } catch (err, stack) {
+      talker.handle(err, stack);
+      return const [];
+    }
+  }
+
+  @override
+  void setMicDevice(String? uid) => _obs.setMicDevice(uid);
 
   @override
   bool setCaptureQuality(int fps, int maxHeight) =>

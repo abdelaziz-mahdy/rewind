@@ -203,6 +203,10 @@ obs_source_t *g_sysaudio = NULL;
 obs_source_t *g_mic = NULL;
 int g_mic_enabled = 0; /* preference; applied at init if set early */
 
+/* Preferred microphone device uid (see rewind_set_mic_device), "" = system
+ * default ("default" device_id, per platform). */
+char g_mic_device_uid[256] = "";
+
 /* System/app audio mode (see rewind_set_audio_mode): 0 = off, 1 = all
  * desktop audio (every app), 2 = only the captured app's audio. Default 1. */
 int g_audio_mode = AUDIO_MODE_ALL;
@@ -718,6 +722,30 @@ int rewind_set_mic_enabled(int enabled) {
     return 0;
 }
 
+int rewind_list_audio_inputs_json(char *json_out, int json_cap) {
+    return rw_plat_list_audio_inputs_json(json_out, json_cap);
+}
+
+void rewind_set_mic_device(const char *uid_or_null) {
+    snprintf(g_mic_device_uid, sizeof(g_mic_device_uid), "%s",
+             (uid_or_null && uid_or_null[0]) ? uid_or_null : "");
+
+    /* Before init, or while the mic is off, this is just a stored
+     * preference — applied whenever rw_plat_create_mic_source is next
+     * called (rewind_obs_init's best-effort mic setup, or
+     * rewind_set_mic_enabled's create path). With the mic already live,
+     * rebuild it on the new device now, mirroring rewind_set_mic_enabled's
+     * own create path. */
+    if (!g_mic) return;
+
+    obs_set_output_source(2, NULL);
+    obs_source_release(g_mic);
+    g_mic = rw_plat_create_mic_source();
+    if (g_mic) obs_set_output_source(2, g_mic);
+    else rw_plat_log_mic_unavailable();
+    set_error("");
+}
+
 int rewind_list_displays(char *json_out, int json_cap) {
     return rw_plat_list_displays_json(json_out, json_cap);
 }
@@ -955,6 +983,25 @@ int rewind_set_mic_enabled(int enabled) {
     (void)enabled;
     set_error("");
     return 0;
+}
+
+/* Dependency-free literal, mirroring k_stub_displays_json/k_stub_apps_json
+ * above — an honest empty list (no libobs backend to enumerate against),
+ * not a fake device. */
+static const char *k_stub_audio_inputs_json = "[]";
+
+int rewind_list_audio_inputs_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+    size_t needed = strlen(k_stub_audio_inputs_json) + 1;
+    if (needed > (size_t)json_cap) { set_error("audio input list truncated"); return 1; }
+    memcpy(json_out, k_stub_audio_inputs_json, needed);
+    set_error("");
+    return 0;
+}
+
+void rewind_set_mic_device(const char *uid_or_null) {
+    (void)uid_or_null;
+    set_error("");
 }
 
 int rewind_set_capture_quality(int fps, int max_height) {
