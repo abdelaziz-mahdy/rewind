@@ -22,6 +22,7 @@ import 'src/games/league/ddragon.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/file_log.dart';
 import 'src/log/log.dart';
+import 'src/log/perf_monitor.dart';
 import 'src/obs/app_info.dart';
 import 'src/obs/capture_engine.dart';
 import 'src/obs/display_info.dart';
@@ -214,6 +215,19 @@ Future<void> main() async {
   // No startup backfill either, for the same reason — the app must idle at
   // ~0% extra CPU. Missing thumbnails fill in on demand when their clip
   // first scrolls into a view.
+
+  // Always-on perf telemetry: one C call + one small JSONL append every
+  // 10s (see PerfMonitor's own doc) — negligible overhead, but the
+  // lagged/skipped-frame counters it samples are the signal that tells us
+  // whether capture itself is straining the machine (vs. e.g. the game
+  // simply being CPU-bound), which a user report alone can't distinguish.
+  // Never disposed: it's meant to run for the app's whole lifetime, same as
+  // the tray/hotkey services below.
+  PerfMonitor(
+    engine: engine,
+    activeGameGetter: () => coordinator.activeGame.value,
+    logsDir: Directory(p.join(supportDir.path, 'logs')),
+  ).start();
 
   final hotkeys = HotkeyService();
   Future<void> bindBothHotkeys() async {

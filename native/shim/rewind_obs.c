@@ -48,6 +48,82 @@ const char *rewind_last_error(void) {
     return g_last_error;
 }
 
+/* ---- process CPU/RSS sampling (backs rewind_perf_stats_json) -------------
+ *
+ * Pure OS process-introspection, no libobs dependency, so it's usable from
+ * BOTH the real and stub builds below (only the libobs frame counters
+ * differ between them — this process's own resource usage is not a
+ * function of whether a capture pipeline exists). Each platform's native
+ * mechanism is used directly here via a plain host-OS #ifdef, rather than
+ * through the rw_plat_* backend seam (rewind_obs_internal.h): that seam is
+ * scoped to things that need obs.h and only exist in REWIND_USE_LIBOBS mode,
+ * but this needs to run in stub builds too.
+ */
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <libproc.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#else
+#include <sys/resource.h>
+#include <unistd.h>
+#endif
+
+/* Fills user/system CPU seconds accumulated by this process since it
+ * started, and its current (not peak) resident set size in bytes.
+ * Best-effort: any platform-API failure just leaves the corresponding
+ * out-param at 0 rather than propagating an error — rewind_perf_stats_json
+ * never fails hard, per its own doc comment. */
+static void perf_process_stats(double *cpu_user_s, double *cpu_sys_s, long long *rss_bytes) {
+    *cpu_user_s = 0;
+    *cpu_sys_s = 0;
+    *rss_bytes = 0;
+
+#ifdef _WIN32
+    FILETIME creation, exit_time, kernel, user;
+    if (GetProcessTimes(GetCurrentProcess(), &creation, &exit_time, &kernel, &user)) {
+        ULARGE_INTEGER k, u;
+        k.LowPart = kernel.dwLowDateTime; k.HighPart = kernel.dwHighDateTime;
+        u.LowPart = user.dwLowDateTime; u.HighPart = user.dwHighDateTime;
+        /* FILETIME ticks are 100ns. */
+        *cpu_sys_s = (double)k.QuadPart / 10000000.0;
+        *cpu_user_s = (double)u.QuadPart / 10000000.0;
+    }
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        *rss_bytes = (long long)pmc.WorkingSetSize;
+    }
+#else
+    struct rusage ru;
+    if (getrusage(RUSAGE_SELF, &ru) == 0) {
+        /* ru_utime/ru_stime (timeval, cumulative user+sys CPU time) are
+         * portable across macOS/Linux; ru_maxrss is deliberately NOT used
+         * for RSS below — it's a peak (not current) value, and its unit
+         * differs by platform (bytes on Darwin, KB on Linux). */
+        *cpu_user_s = (double)ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1e6;
+        *cpu_sys_s = (double)ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6;
+    }
+#ifdef __APPLE__
+    struct rusage_info_v2 rui;
+    if (proc_pid_rusage(getpid(), RUSAGE_INFO_V2, (rusage_info_t *)&rui) == 0) {
+        *rss_bytes = (long long)rui.ri_resident_size;
+    }
+#else
+    FILE *statm = fopen("/proc/self/statm", "r");
+    if (statm) {
+        long long size_pages = 0, resident_pages = 0;
+        if (fscanf(statm, "%lld %lld", &size_pages, &resident_pages) == 2) {
+            *rss_bytes = resident_pages * (long long)sysconf(_SC_PAGESIZE);
+        }
+        fclose(statm);
+    }
+#endif
+#endif
+}
+
 #ifdef REWIND_USE_LIBOBS
 
 /* The internal seam header is only meaningful in real (libobs) mode — its
@@ -697,6 +773,36 @@ int rewind_request_screen_permission(void) {
     return rw_plat_request_screen_permission();
 }
 
+int rewind_perf_stats_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+
+    double cpu_user_s, cpu_sys_s;
+    long long rss_bytes;
+    perf_process_stats(&cpu_user_s, &cpu_sys_s, &rss_bytes);
+
+    /* Frame-health counters only mean anything once the pipeline exists;
+     * zero otherwise (matches the doc comment in rewind_obs.h). */
+    uint32_t obs_total = 0, obs_lagged = 0, vo_total = 0, vo_skipped = 0;
+    if (g_initialized) {
+        obs_total = obs_get_total_frames();
+        obs_lagged = obs_get_lagged_frames();
+        video_t *vid = obs_get_video();
+        if (vid) {
+            vo_total = video_output_get_total_frames(vid);
+            vo_skipped = video_output_get_skipped_frames(vid);
+        }
+    }
+
+    int n = snprintf(json_out, (size_t)json_cap,
+        "{\"cpu_user_s\":%.3f,\"cpu_sys_s\":%.3f,\"rss_bytes\":%lld,"
+        "\"obs_total_frames\":%u,\"obs_lagged_frames\":%u,"
+        "\"vo_total_frames\":%u,\"vo_skipped_frames\":%u}",
+        cpu_user_s, cpu_sys_s, rss_bytes, obs_total, obs_lagged, vo_total, vo_skipped);
+    if (n < 0 || n >= json_cap) { set_error("perf stats truncated"); return 1; }
+    set_error("");
+    return 0;
+}
+
 #else /* !REWIND_USE_LIBOBS: self-contained stub */
 
 int rewind_obs_init(const char *out_dir, int seconds) {
@@ -872,6 +978,26 @@ int rewind_preflight_screen_permission(void) {
 
 int rewind_request_screen_permission(void) {
     return 1;
+}
+
+/* CPU/RSS still come from the real OS (perf_process_stats is plain OS
+ * process-introspection, no libobs involved) — only the frame-health
+ * counters are libobs-specific and so are zeroed here (no pipeline to ask). */
+int rewind_perf_stats_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+
+    double cpu_user_s, cpu_sys_s;
+    long long rss_bytes;
+    perf_process_stats(&cpu_user_s, &cpu_sys_s, &rss_bytes);
+
+    int n = snprintf(json_out, (size_t)json_cap,
+        "{\"cpu_user_s\":%.3f,\"cpu_sys_s\":%.3f,\"rss_bytes\":%lld,"
+        "\"obs_total_frames\":0,\"obs_lagged_frames\":0,"
+        "\"vo_total_frames\":0,\"vo_skipped_frames\":0}",
+        cpu_user_s, cpu_sys_s, rss_bytes);
+    if (n < 0 || n >= json_cap) { set_error("perf stats truncated"); return 1; }
+    set_error("");
+    return 0;
 }
 
 #endif /* REWIND_USE_LIBOBS */

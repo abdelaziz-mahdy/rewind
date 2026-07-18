@@ -192,4 +192,15 @@ class FakeCaptureEngine implements CaptureEngine {
     calls.add('requestScreenPermission');
     return screenPermissionGranted;
   }
+
+  /// Settable JSON returned by [perfStatsJson] — tests drive [PerfMonitor]
+  /// directly with this rather than exercising the real FFI/native shim.
+  /// Null (the default) mirrors a shim-level failure.
+  String? perfStatsJsonValue;
+
+  @override
+  String? perfStatsJson() {
+    calls.add('perfStatsJson');
+    return perfStatsJsonValue;
+  }
 }

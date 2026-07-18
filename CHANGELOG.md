@@ -7,6 +7,14 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Always-on performance telemetry**: Rewind now samples its own CPU%/RSS
+  and — the actually load-bearing signal for "capture is causing input lag"
+  reports — libobs's frame-health counters (lagged/skipped frames) every
+  10 s. Machine-readable lines land in `<support>/logs/perf-<session>.jsonl`
+  (pruned after 14 days, alongside the existing session logs) for offline
+  diagnosis; a compact human summary also goes to the normal log, only at
+  visible (info) level when something looks wrong (a new lagged/skipped
+  frame, or CPU over 50%) so a healthy session doesn't spam it.
 - **Onboarding that proves it works**: the Screen Recording step is now
   live — it knows whether permission is granted, fires the macOS system
   prompt directly ("Grant Screen Recording"), flips to a checkmark the

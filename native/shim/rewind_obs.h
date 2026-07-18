@@ -164,6 +164,27 @@ int rewind_preflight_screen_permission(void);
  * Linux/stub: always 1. */
 int rewind_request_screen_permission(void);
 
+/* Compact JSON snapshot of this process's own CPU/memory usage plus
+ * libobs's frame-health counters, written into `json_out` (a caller-owned
+ * buffer of `json_cap` bytes), e.g.
+ *   {"cpu_user_s":12.3,"cpu_sys_s":1.2,"rss_bytes":314572800,
+ *    "obs_total_frames":5992,"obs_lagged_frames":12,
+ *    "vo_total_frames":5992,"vo_skipped_frames":0}
+ * cpu_user_s/cpu_sys_s are cumulative seconds of CPU time this process has
+ * used (since process start — callers diff two samples for a per-interval
+ * rate); rss_bytes is the CURRENT resident set size. The four frame
+ * counters (obs_get_total_frames, obs_get_lagged_frames — renderer-side —
+ * and video_output_get_total_frames, video_output_get_skipped_frames on
+ * obs_get_video()'s video_t — encoder-side) are 0 whenever no capture
+ * pipeline exists yet (stub mode, or before rewind_obs_init succeeds):
+ * lagged/skipped frames are the signal that capture is straining the
+ * machine, so this is meant to be sampled unconditionally and often, and
+ * never fails hard — any unavailable piece is reported as 0 rather than
+ * failing the call. Returns 0 on success, non-zero only if `json_out`/
+ * `json_cap` are invalid or the buffer is too small (see rewind_last_error).
+ * Safe to call at any time, before or after rewind_obs_init. */
+int rewind_perf_stats_json(char *json_out, int json_cap);
+
 #ifdef __cplusplus
 }
 #endif

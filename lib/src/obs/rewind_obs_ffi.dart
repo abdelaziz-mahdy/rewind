@@ -66,6 +66,9 @@ external int _preflightScreenPermission();
 @Native<Int32 Function()>(symbol: 'rewind_request_screen_permission')
 external int _requestScreenPermission();
 
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(symbol: 'rewind_perf_stats_json')
+external int _perfStatsJson(Pointer<Utf8> jsonOut, int jsonCap);
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
@@ -77,6 +80,11 @@ const int _kDisplayListBufferSize = 4096;
 /// easily have a few dozen apps with on-screen windows, and each entry now
 /// carries an absolute .icns icon path on top of the bundle id + name.
 const int _kAppListBufferSize = 65536;
+
+/// Size of the buffer allocated for `rewind_perf_stats_json`'s JSON
+/// out-param — the object has a fixed, small set of numeric fields, so this
+/// comfortably covers it with headroom.
+const int _kPerfStatsBufferSize = 512;
 
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
@@ -206,4 +214,19 @@ class RewindObs {
   /// granted, or already asked and denied). Returns the resulting granted
   /// state.
   bool requestScreenPermission() => _requestScreenPermission() != 0;
+
+  /// Raw JSON object from `rewind_perf_stats_json` (CPU/RSS + libobs frame
+  /// counters), or null on failure. See [PerfMonitor] (lib/src/log/) for the
+  /// periodic sampler that calls this.
+  String? perfStatsJson() {
+    final buf = malloc<Uint8>(_kPerfStatsBufferSize);
+    try {
+      final p = buf.cast<Utf8>();
+      final r = _perfStatsJson(p, _kPerfStatsBufferSize);
+      if (r != 0) return null;
+      return p.toDartString();
+    } finally {
+      malloc.free(buf);
+    }
+  }
 }
