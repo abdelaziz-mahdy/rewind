@@ -108,7 +108,7 @@ class ClipCoordinator {
     this.matchStats,
     this.indexFileGrace = const Duration(seconds: 5),
     this.fileSettleInterval = const Duration(milliseconds: 250),
-    this.burstQuiet = const Duration(seconds: 8),
+    this.burstQuiet,
   });
 
   /// Activation time per currently-active gameId — the session (match) key
@@ -127,15 +127,29 @@ class ClipCoordinator {
   /// incident) and cuts the clip before the fight ends, while a plain
   /// cooldown DROPS the follow-up kills (the maintainer's complaint: a kill
   /// at second 25 must extend the clip, not vanish). So: events accumulate
-  /// per game, and the save fires once the action goes quiet for
-  /// [burstQuiet] — one clip covering the whole fight, labeled with the
-  /// burst's best event ([clipPriority]) and killCount for all of it. If
-  /// waiting any longer would age the burst's FIRST event out of the replay
-  /// buffer, the save fires immediately instead — extension must never turn
-  /// into loss. Manual saves are exempt: an explicit ask always saves now.
-  final Duration burstQuiet;
+  /// per game, and the save fires once the action goes quiet for the
+  /// game's post-event delay (see [_burstQuietFor],
+  /// [AppSettings.postEventSecondsFor]/[GameConfig.postEventSeconds]) — one
+  /// clip covering the whole fight, labeled with the burst's best event
+  /// ([clipPriority]) and killCount for all of it. If waiting any longer
+  /// would age the burst's FIRST event out of the replay buffer, the save
+  /// fires immediately instead — extension must never turn into loss.
+  /// Manual saves are exempt: an explicit ask always saves now.
+  ///
+  /// TEST OVERRIDE ONLY: when non-null, this wins over the per-game setting
+  /// everywhere a quiet window is used (so existing tests that inject a
+  /// short fixed value keep working unchanged). Production (`main.dart`)
+  /// passes nothing, leaving this null so [_burstQuietFor] resolves the
+  /// per-game/default setting instead.
+  final Duration? burstQuiet;
   final Map<String, List<GameEvent>> _pendingBurst = {};
   final Map<String, Timer> _burstTimers = {};
+
+  /// The burst-quiet duration to use for [gameId]: the test override
+  /// ([burstQuiet]) when set, else the per-game/default setting. See
+  /// [burstQuiet]'s doc.
+  Duration _burstQuietFor(String gameId) =>
+      burstQuiet ?? Duration(seconds: settings.postEventSecondsFor(gameId));
 
   /// Safety margin between "the burst's first event is this close to
   /// falling out of the buffer" and flushing.
@@ -193,8 +207,9 @@ class ClipCoordinator {
       final pending = _pendingBurst.putIfAbsent(e.gameId, () => []);
       pending.add(e);
       final bufferLen = Duration(seconds: settings.bufferSecondsFor(e.gameId));
+      final quiet = _burstQuietFor(e.gameId);
       final oldestAge = DateTime.now().difference(pending.first.time);
-      if (oldestAge >= bufferLen - burstQuiet - _burstAgeMargin) {
+      if (oldestAge >= bufferLen - quiet - _burstAgeMargin) {
         // Waiting out another quiet period would push the burst's first
         // event past the replay buffer's reach — save now.
         talker.info('Burst flush (buffer limit): ${pending.length} event(s)');
@@ -204,7 +219,7 @@ class ClipCoordinator {
             'Event queued (${e.kind.name}); clip extends while the action '
             'continues');
         _burstTimers[e.gameId]?.cancel();
-        _burstTimers[e.gameId] = Timer(burstQuiet, () => _flushBurst(e.gameId));
+        _burstTimers[e.gameId] = Timer(quiet, () => _flushBurst(e.gameId));
       }
     });
 

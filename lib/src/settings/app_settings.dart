@@ -1,5 +1,12 @@
 import 'game_config.dart';
 
+/// Fallback post-event quiet window (see [GameConfig.postEventSeconds] and
+/// `ClipCoordinator.burstQuiet`'s doc) for a game with no per-game override.
+/// A plain top-level constant, not an [AppSettings] field: unlike
+/// [AppSettings.defaultBufferSeconds] this has no global user-facing
+/// setting — the knob only ever lives on a game's MY GAMES page.
+const defaultPostEventSeconds = 5;
+
 /// What system/app sound is mixed into clips (separate from the microphone,
 /// which is its own [AppSettings.captureMicrophone] toggle).
 enum AudioMode {
@@ -141,6 +148,14 @@ class AppSettings {
   int bufferSecondsFor(String? gameId) =>
       (gameId != null ? _perGame[gameId]?.bufferSeconds : null) ??
       defaultBufferSeconds;
+
+  /// Read-only lookup: the per-game post-event quiet window (see
+  /// [GameConfig.postEventSeconds]) if a config already exists for
+  /// [gameId], else [defaultPostEventSeconds]. Mirrors [bufferSecondsFor] —
+  /// never creates/persists a row.
+  int postEventSecondsFor(String? gameId) =>
+      (gameId != null ? _perGame[gameId]?.postEventSeconds : null) ??
+      defaultPostEventSeconds;
 
   void setConfig(GameConfig config) => _perGame[config.gameId] = config;
 

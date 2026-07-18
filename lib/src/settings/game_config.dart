@@ -8,6 +8,12 @@ class GameConfig {
   /// Replay-buffer length in seconds for this game (e.g. 30 or 60).
   int bufferSeconds;
 
+  /// How long to keep recording after the LAST auto-clip-triggering event
+  /// before saving (quiet-time debounce — see `ClipCoordinator.burstQuiet`'s
+  /// doc). A follow-up event inside this window extends the same clip
+  /// rather than starting a new one. Default 5 s.
+  int postEventSeconds;
+
   /// Whether to auto-clip on detected events (vs. hotkey-only).
   bool autoClip;
 
@@ -45,6 +51,7 @@ class GameConfig {
   GameConfig({
     required this.gameId,
     this.bufferSeconds = 30,
+    this.postEventSeconds = 5,
     this.autoClip = true,
     Set<GameEventKind>? enabledEvents,
     this.processMatch,
@@ -64,6 +71,7 @@ class GameConfig {
   Map<String, dynamic> toJson() => {
         'gameId': gameId,
         'bufferSeconds': bufferSeconds,
+        'postEventSeconds': postEventSeconds,
         'autoClip': autoClip,
         'enabledEvents': enabledEvents.map((e) => e.name).toList(),
         'processMatch': processMatch,
@@ -74,6 +82,9 @@ class GameConfig {
   factory GameConfig.fromJson(Map<String, dynamic> j) => GameConfig(
         gameId: j['gameId'] as String,
         bufferSeconds: j['bufferSeconds'] as int? ?? 30,
+        // Absent key (settings file predating this feature) → the 5 s
+        // default, same fallback the constructor already uses.
+        postEventSeconds: j['postEventSeconds'] as int? ?? 5,
         autoClip: j['autoClip'] as bool? ?? true,
         enabledEvents: ((j['enabledEvents'] as List?) ?? const [])
             .map((n) => GameEventKind.values.firstWhere((e) => e.name == n,
