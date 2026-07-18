@@ -60,8 +60,9 @@ void main() {
         .reset();
   });
 
-  testWidgets('recording Alt+F10 updates settings and fires onChanged',
-      (t) async {
+  testWidgets(
+      'recording a NEW combo updates settings, fires onChanged, AND the '
+      'field immediately shows the new combo', (t) async {
     final calls = <AppSettings>[];
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -73,16 +74,23 @@ void main() {
     await _startRecording(t);
     expect(find.text('Press keys…'), findsOneWidget);
 
-    await t.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await t.sendKeyDownEvent(LogicalKeyboardKey.f10);
+    // Ctrl+7 — deliberately DIFFERENT from the Alt+F10 default. The old
+    // version of this test captured Alt+F10 itself, so a stale display
+    // (still showing the previous value) was indistinguishable from a
+    // fresh one — which masked a real bug: the field kept showing the old
+    // combo after a successful capture because the parent never rebuilt.
+    await t.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await t.sendKeyDownEvent(LogicalKeyboardKey.digit7);
     await t.pump();
 
     expect(calls, isNotEmpty);
-    expect(calls.last.hotkey, 'Alt+F10');
-    expect(find.text('Alt+F10'), findsOneWidget);
+    expect(calls.last.hotkey, 'Ctrl+7');
+    expect(find.text('Ctrl+7'), findsOneWidget);
+    expect(find.text('Alt+F10'), findsNothing,
+        reason: 'the field must show the NEW combo, not the stale one');
 
-    await t.sendKeyUpEvent(LogicalKeyboardKey.f10);
-    await t.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await t.sendKeyUpEvent(LogicalKeyboardKey.digit7);
+    await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
   });
 
   testWidgets(
