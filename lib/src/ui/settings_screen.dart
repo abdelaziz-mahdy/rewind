@@ -1122,6 +1122,7 @@ class _GameSettingsPage extends StatefulWidget {
 
 class _GameSettingsPageState extends State<_GameSettingsPage> {
   late int _bufferSeconds;
+  late int _postEventSeconds;
   late bool _autoClip;
   late Set<GameEventKind> _enabledEvents;
   bool _advancedOpen = false;
@@ -1147,6 +1148,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     super.initState();
     final snapshot = _snapshot;
     _bufferSeconds = snapshot.bufferSeconds;
+    _postEventSeconds = snapshot.postEventSeconds;
     _autoClip = snapshot.autoClip;
     _enabledEvents = Set.of(snapshot.enabledEvents);
   }
@@ -1169,6 +1171,11 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   void _setBuffer(int seconds) {
     setState(() => _bufferSeconds = seconds);
     _commit((cfg) => cfg.bufferSeconds = seconds);
+  }
+
+  void _setPostEventSeconds(int seconds) {
+    setState(() => _postEventSeconds = seconds);
+    _commit((cfg) => cfg.postEventSeconds = seconds);
   }
 
   void _toggleEvent(GameEventKind kind, bool value) {
@@ -1217,23 +1224,33 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _captureModeCards(context),
-              if (groups.isNotEmpty && _autoClip) ...[
+              if (_autoClip) ...[
                 const SizedBox(height: 12),
-                Column(
-                  key: const ValueKey('gameSettingsEventMatrix'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < groups.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 12),
-                      EventGroup(
-                        label: groups[i].label,
-                        kinds: groups[i].kinds,
-                        selected: _enabledEvents,
-                        onChanged: _toggleEvent,
-                      ),
+                if (groups.isNotEmpty) ...[
+                  Column(
+                    key: const ValueKey('gameSettingsEventMatrix'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < groups.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 12),
+                        EventGroup(
+                          label: groups[i].label,
+                          kinds: groups[i].kinds,
+                          selected: _enabledEvents,
+                          onChanged: _toggleEvent,
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  _postEventDelayRow(context),
+                ] else
+                  Text(
+                    'No auto-clip events are available for this game yet — '
+                    'clips save with your hotkey.',
+                    key: const ValueKey('noAutoClipEventsNote'),
+                    style: Theme.of(context).textTheme.bodyMuted,
+                  ),
               ],
             ],
           ),
@@ -1273,6 +1290,51 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
             label: 'Detection',
             control: Text(_detectionLabel(entry),
                 style: Theme.of(context).textTheme.bodyMuted),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Under the event chips: how long to keep the burst debounce "quiet
+  /// window" open after the last auto-clip event before saving (see
+  /// `ClipCoordinator.burstQuiet`'s doc — a follow-up event inside this
+  /// window extends the same clip). Only rendered when there's an event
+  /// matrix to have a delay for; see this page's `build`.
+  Widget _postEventDelayRow(BuildContext context) {
+    const presets = [3, 5, 8, 10];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldRow(
+          label: 'Keep recording after the last event',
+          control: DropdownButtonFormField<int>(
+            key: const ValueKey('postEventDelayDropdown'),
+            initialValue: _postEventSeconds,
+            isExpanded: true,
+            items: [
+              for (final s in presets)
+                DropdownMenuItem(value: s, child: Text('$s s')),
+              // Only added when the current value isn't already one of the
+              // presets above — a DropdownButtonFormField's items must have
+              // unique values, and its `initialValue` must match one of
+              // them (same constraint as the buffer-length dropdown).
+              if (!presets.contains(_postEventSeconds))
+                DropdownMenuItem(
+                  value: _postEventSeconds,
+                  child: Text('$_postEventSeconds s'),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) _setPostEventSeconds(value);
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'A follow-up kill during this window extends the same clip.',
+            style: Theme.of(context).textTheme.bodyMuted,
           ),
         ),
       ],

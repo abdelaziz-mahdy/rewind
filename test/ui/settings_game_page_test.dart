@@ -296,6 +296,138 @@ void main() {
     });
   });
 
+  group('Post-event delay', () {
+    testWidgets('defaults to 5 s when no override has been made yet',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      final dropdown = t.widget<DropdownButtonFormField<int>>(
+          find.byKey(const ValueKey('postEventDelayDropdown')));
+      expect(dropdown.initialValue, 5);
+      expect(
+          find.textContaining(
+              'A follow-up kill during this window extends the same clip.'),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'picking 8 s writes the per-game override and fires '
+        'onChanged', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      await t.tap(find.byKey(const ValueKey('postEventDelayDropdown')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('8 s').last);
+      await t.pumpAndSettle();
+
+      expect(settings.configFor('league_of_legends').postEventSeconds, 8);
+      expect(calls, isNotEmpty);
+      expect(calls.last.configFor('league_of_legends').postEventSeconds, 8);
+    });
+
+    testWidgets('hidden for a process-detected game (no event matrix to delay)',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      expect(
+          find.byKey(const ValueKey('postEventDelayDropdown')), findsNothing);
+    });
+
+    testWidgets('hidden under Manual only, reappears under Highlights',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      expect(
+          find.byKey(const ValueKey('postEventDelayDropdown')), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('captureMode:manual')));
+      await t.pump();
+      expect(
+          find.byKey(const ValueKey('postEventDelayDropdown')), findsNothing);
+
+      await t.tap(find.byKey(const ValueKey('captureMode:highlights')));
+      await t.pump();
+      expect(
+          find.byKey(const ValueKey('postEventDelayDropdown')), findsOneWidget);
+    });
+  });
+
+  group('No auto-clip events note (process-detected games)', () {
+    testWidgets(
+        'shown under Highlights when eventGroupsFor is empty, in place of '
+        'the delay row', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      // Highlights is already selected by GameConfig's default.
+      expect(
+          find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
+      expect(
+          find.textContaining('clips save with your hotkey'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('postEventDelayDropdown')), findsNothing);
+    });
+
+    testWidgets('hidden under Manual only', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      await t.tap(find.byKey(const ValueKey('captureMode:manual')));
+      await t.pump();
+
+      expect(find.byKey(const ValueKey('noAutoClipEventsNote')), findsNothing);
+    });
+
+    testWidgets('never shown for a live-API game (League always has groups)',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      expect(find.byKey(const ValueKey('noAutoClipEventsNote')), findsNothing);
+    });
+  });
+
   group('Advanced options — Detection', () {
     testWidgets('reports Live Client API for League', (t) async {
       await t.pumpWidget(_app(SettingsScreen(

@@ -294,6 +294,153 @@ void main() {
     });
   });
 
+  group(
+      'configurable post-event delay (production path, no burstQuiet '
+      'override)', () {
+    // These build a fully standalone coordinator (own registry/source/
+    // engine/library/settings) rather than reusing the outer `coordinator`,
+    // which always injects a fixed 60 ms `burstQuiet` test override (see
+    // setUp above) — that override wins everywhere and would mask the
+    // per-game/default settings path these tests exercise. Real wall-clock
+    // waits, same approach as `settleBurst` above, just sized for whole
+    // seconds since [GameConfig.postEventSeconds] is an int.
+    ({
+      ClipCoordinator coordinator,
+      GameRegistry registry,
+      FakeGameSource source,
+      FakeCaptureEngine engine,
+      ClipLibrary library,
+      AppSettings settings,
+    }) buildHarness() {
+      final harnessTmp = Directory.systemTemp.createTempSync('rewind_delay');
+      addTearDown(() {
+        try {
+          harnessTmp.deleteSync(recursive: true);
+        } on FileSystemException {
+          // best-effort cleanup, same as the outer tearDown
+        }
+      });
+      final harnessEngine = FakeCaptureEngine();
+      final harnessSource = FakeGameSource('delay_game', 'Delay Game');
+      final harnessRegistry = GameRegistry(sources: [harnessSource]);
+      final harnessLibrary = ClipLibrary(clipsDir: harnessTmp);
+      final harnessSettings = AppSettings();
+      final harnessCoordinator = ClipCoordinator(
+        registry: harnessRegistry,
+        library: harnessLibrary,
+        storage: StorageManager(harnessLibrary),
+        settings: harnessSettings,
+        outDir: harnessTmp.path,
+        engine: harnessEngine,
+        fileSettleInterval: const Duration(milliseconds: 5),
+        // burstQuiet deliberately omitted: production path, resolves via
+        // settings.postEventSecondsFor(gameId).
+      )..start(supervise: false);
+      return (
+        coordinator: harnessCoordinator,
+        registry: harnessRegistry,
+        source: harnessSource,
+        engine: harnessEngine,
+        library: harnessLibrary,
+        settings: harnessSettings,
+      );
+    }
+
+    test('default (5 s) quiet window: no save at 4.2 s, saved by 5.8 s',
+        () async {
+      final h = buildHarness();
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.emit(GameEventKind.kill);
+
+      await Future<void>.delayed(const Duration(milliseconds: 4200));
+      expect(h.engine.calls.where((c) => c == 'save'), isEmpty,
+          reason: 'the 5 s default quiet window has not elapsed yet');
+
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      expect(h.engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(h.library.all.single.event, GameEventKind.kill);
+    });
+
+    test('a per-game override (3 s) is honored instead of the 5 s default',
+        () async {
+      final h = buildHarness();
+      h.settings
+          .setConfig(GameConfig(gameId: 'delay_game', postEventSeconds: 3));
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.emit(GameEventKind.kill);
+
+      await Future<void>.delayed(const Duration(milliseconds: 2200));
+      expect(h.engine.calls.where((c) => c == 'save'), isEmpty,
+          reason: 'the 3 s override has not elapsed yet');
+
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      expect(h.engine.calls.where((c) => c == 'save'), hasLength(1));
+    });
+
+    test('a second event inside the (per-game) window restarts the timer',
+        () async {
+      final h = buildHarness();
+      h.settings
+          .setConfig(GameConfig(gameId: 'delay_game', postEventSeconds: 2));
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.emit(GameEventKind.kill);
+      // Re-emit before the 2 s window would elapse — extends the burst.
+      await Future<void>.delayed(const Duration(milliseconds: 1400));
+      h.source.emit(GameEventKind.kill);
+      await Future<void>.delayed(const Duration(milliseconds: 1400));
+      expect(h.engine.calls.where((c) => c == 'save'), isEmpty,
+          reason: 'still extending — the timer restarted on the 2nd event');
+
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+      expect(h.engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(h.library.all.single.killCount, 2,
+          reason: 'both kills of the extended burst land in the ONE clip');
+    });
+
+    test(
+        'the age-guard uses the dynamic (per-game) quiet value, not a '
+        'hardcoded one', () async {
+      // bufferSeconds=8, postEventSeconds=2, fixed margin=5s (see
+      // ClipCoordinator._burstAgeMargin) => guard threshold = 1 s. A stale
+      // hardcoded 8 s quiet (the OLD default) would make the threshold
+      // negative and flush on the VERY FIRST event — proving this test
+      // actually observes the per-game value, not a leftover constant.
+      final h = buildHarness();
+      h.settings.setConfig(GameConfig(
+        gameId: 'delay_game',
+        bufferSeconds: 8,
+        postEventSeconds: 2,
+      ));
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.emit(GameEventKind.kill);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(h.engine.calls.where((c) => c == 'save'), isEmpty,
+          reason: 'the first event alone must not trip the age guard');
+
+      // The burst's first event is now ~1.3 s old — past the 1 s threshold.
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+      h.source.emit(GameEventKind.doubleKill);
+
+      // The age guard flushes immediately (well before the 2 s quiet timer,
+      // scheduled at ~1.3 s, would otherwise fire at ~3.3 s).
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(h.engine.calls.where((c) => c == 'save'), hasLength(1));
+      expect(h.library.all.single.event, GameEventKind.doubleKill);
+    });
+  });
+
   test('successful save persists the library index', () async {
     await coordinator.onHotkey();
     expect(File('${tmp.path}/clips.json').existsSync(), isTrue);

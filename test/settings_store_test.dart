@@ -160,6 +160,60 @@ void main() {
     expect(loaded.configFor('g').iconPath, isNull);
   });
 
+  group('GameConfig.postEventSeconds', () {
+    test('defaults to 5', () {
+      expect(GameConfig(gameId: 'g').postEventSeconds, 5);
+    });
+
+    test('round-trips through toJson/fromJson', () {
+      final s = AppSettings()
+        ..setConfig(GameConfig(gameId: 'g', postEventSeconds: 8));
+      final loaded = AppSettings.fromJson(s.toJson());
+      expect(loaded.configFor('g').postEventSeconds, 8);
+    });
+
+    test('round-trips through the settings store', () async {
+      final store = SettingsStore(tmp);
+      final s = AppSettings()
+        ..setConfig(GameConfig(gameId: 'g', postEventSeconds: 3));
+      await store.save(s);
+      final loaded = await store.load();
+      expect(loaded.configFor('g').postEventSeconds, 3);
+    });
+
+    test(
+        'an absent key (settings file predating this feature) falls back '
+        'to 5', () {
+      final j = AppSettings().toJson();
+      (j['perGame'] as Map)['g'] = GameConfig(gameId: 'g').toJson()
+        ..remove('postEventSeconds');
+      final loaded = AppSettings.fromJson(j);
+      expect(loaded.configFor('g').postEventSeconds, 5);
+    });
+  });
+
+  group('AppSettings.postEventSecondsFor', () {
+    test('returns the 5 s default for a game with no config row', () {
+      expect(AppSettings().postEventSecondsFor('unconfigured_game'), 5);
+    });
+
+    test('returns null-gameId as the 5 s default too', () {
+      expect(AppSettings().postEventSecondsFor(null), 5);
+    });
+
+    test('returns the per-game override when a config row exists', () {
+      final s = AppSettings()
+        ..setConfig(GameConfig(gameId: 'g', postEventSeconds: 10));
+      expect(s.postEventSecondsFor('g'), 10);
+    });
+
+    test('never creates/persists a row (unlike configFor)', () {
+      final s = AppSettings();
+      s.postEventSecondsFor('g');
+      expect(s.allConfigs, isEmpty);
+    });
+  });
+
   group('storage/cleanup settings', () {
     test('maxStorageGb defaults to 20 and round-trips', () {
       expect(AppSettings().maxStorageGb, 20);
@@ -207,8 +261,8 @@ void main() {
 
       // An existing file that stored a deliberate null (= Source) keeps it —
       // the new constructor default must not override a saved choice.
-      final sourceUser = AppSettings.fromJson(
-          AppSettings(captureMaxHeight: null).toJson());
+      final sourceUser =
+          AppSettings.fromJson(AppSettings(captureMaxHeight: null).toJson());
       expect(sourceUser.captureMaxHeight, isNull);
 
       final s = AppSettings(
