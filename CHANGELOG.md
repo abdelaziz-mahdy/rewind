@@ -7,6 +7,11 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **"Clean up now" in Settings → Storage**: runs the retention limits
+  (max storage / max age) over the library immediately instead of waiting
+  for the automatic sweep, and reports what it did ("Removed N clips ·
+  freed X" / "Nothing to remove"). Protected clips stay untouched, same as
+  the automatic sweep.
 - **League of Legends match tracker**: match cards and the match detail
   screen now show a full stat line (K/D/A, creep score, ward score — polled
   live from the Live Client Data API's `playerlist[].scores`, alongside the

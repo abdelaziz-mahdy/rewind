@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'logs_screen.dart';
 
+import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
@@ -79,6 +80,11 @@ class Shell extends StatefulWidget {
   /// Forwarded to the embedded Settings destination's hotkey recorder.
   final Future<void> Function(bool recording)? onHotkeyRecording;
 
+  /// Forwarded to the embedded Settings destination's Storage tab — runs
+  /// retention enforcement now and returns the removed clips (see
+  /// `SettingsScreen.onCleanUpStorage`).
+  final Future<List<Clip>> Function()? onCleanUpStorage;
+
   /// Points the live capture engine at a specific app, identified by
   /// [AppInfo.bundleId] — used by the detected-game banner's Record button
   /// to start capturing a game the moment it's confirmed, mirroring
@@ -101,6 +107,7 @@ class Shell extends StatefulWidget {
     required this.onOpenClipsFolder,
     this.settingsRevision,
     this.onHotkeyRecording,
+    this.onCleanUpStorage,
     this.onSetCaptureApp,
     this.thumbnails,
     this.ddragon,
@@ -216,6 +223,7 @@ class _ShellState extends State<Shell> {
           capturableApps: widget.capturableApps,
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
+          onCleanUpStorage: widget.onCleanUpStorage,
         ),
     };
   }

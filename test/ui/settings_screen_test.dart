@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/clip/clip.dart';
+import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
@@ -506,6 +508,72 @@ void main() {
       await t.pump();
       expect(settings.maxStorageGb, 5);
       expect(calls, isNotEmpty);
+    });
+
+    testWidgets(
+        'Clean up now runs the wired cleanup once and reports removed '
+        'clips + freed space', (t) async {
+      var runs = 0;
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(maxStorageGb: 20),
+        onChanged: (_) async {},
+        displays: const [],
+        onCleanUpStorage: () async {
+          runs++;
+          return [
+            Clip(
+              path: '/tmp/a.mp4',
+              gameId: 'g',
+              event: GameEventKind.manual,
+              createdAt: DateTime(2026),
+              sizeBytes: 3 * 1024 * 1024,
+            ),
+            Clip(
+              path: '/tmp/b.mp4',
+              gameId: 'g',
+              event: GameEventKind.manual,
+              createdAt: DateTime(2026),
+              sizeBytes: 1024 * 1024,
+            ),
+          ];
+        },
+      )));
+
+      await openTab(t, 'Storage');
+      await t.tap(find.byKey(const ValueKey('cleanUpStorageButton')));
+      await t.pump();
+      await t.pump();
+
+      expect(runs, 1);
+      expect(find.textContaining('Removed 2 clips'), findsOneWidget);
+      expect(find.textContaining('4.0 MB'), findsOneWidget);
+    });
+
+    testWidgets('Clean up now with nothing over limit says so', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        onCleanUpStorage: () async => const [],
+      )));
+
+      await openTab(t, 'Storage');
+      await t.tap(find.byKey(const ValueKey('cleanUpStorageButton')));
+      await t.pump();
+      await t.pump();
+
+      expect(find.textContaining('Nothing to remove'), findsOneWidget);
+    });
+
+    testWidgets('Clean up row is absent when no cleanup is wired', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openTab(t, 'Storage');
+      expect(find.byKey(const ValueKey('cleanUpStorageButton')), findsNothing);
     });
 
     testWidgets('max age (days) commits ints; blank commits null (never)',

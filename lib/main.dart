@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'src/clip/clip.dart';
 import 'src/clip/clip_library.dart';
 import 'src/clip/clips_dir.dart';
 import 'src/clip/match_stats.dart';
@@ -330,6 +331,17 @@ Future<void> main() async {
       settingsRevision.value++;
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
+    onCleanUpStorage: () async {
+      // Same enforcement as the automatic sweep, but user-triggered from
+      // Settings → Storage; returns the removals so the tab can report
+      // "Removed N clips · freed X" instead of a silent background log line.
+      final deleted = await storage.enforce();
+      if (deleted.isNotEmpty) {
+        talker.info('Manual storage cleanup: removed ${deleted.length} '
+            'clip(s)');
+      }
+      return deleted;
+    },
     onHotkeyRecording: (recording) async {
       if (recording) {
         // Suspend BOTH live global hotkeys while the recorder is listening:
@@ -367,6 +379,7 @@ class RewindApp extends StatefulWidget {
   final VoidCallback onOpenClipsFolder;
   final ValueListenable<int>? settingsRevision;
   final void Function(String bundleId)? onSetCaptureApp;
+  final Future<List<Clip>> Function()? onCleanUpStorage;
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
 
@@ -384,6 +397,7 @@ class RewindApp extends StatefulWidget {
     required this.onOpenClipsFolder,
     this.settingsRevision,
     this.onSetCaptureApp,
+    this.onCleanUpStorage,
     this.thumbnails,
     this.ddragon,
     super.key,
@@ -427,6 +441,7 @@ class _RewindAppState extends State<RewindApp> {
               onOpenClipsFolder: widget.onOpenClipsFolder,
               settingsRevision: widget.settingsRevision,
               onHotkeyRecording: widget.onHotkeyRecording,
+              onCleanUpStorage: widget.onCleanUpStorage,
               onSetCaptureApp: widget.onSetCaptureApp,
               thumbnails: widget.thumbnails,
               ddragon: widget.ddragon,

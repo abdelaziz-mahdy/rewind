@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
 import '../hotkey/key_capture.dart';
@@ -59,6 +60,13 @@ class SettingsScreen extends StatefulWidget {
   /// about storage just lose the readout, not the section.
   final ClipLibrary? library;
 
+  /// Runs the retention policy over the library NOW (the same enforcement
+  /// the app runs after saves and on its periodic sweep) and returns the
+  /// clips it removed, so the Storage tab can report what a "Clean up now"
+  /// actually freed. Optional — the row is absent when not wired (tests,
+  /// callers without a StorageManager).
+  final Future<List<Clip>> Function()? onCleanUpStorage;
+
   const SettingsScreen({
     required this.settings,
     required this.onChanged,
@@ -66,6 +74,7 @@ class SettingsScreen extends StatefulWidget {
     this.capturableApps = const [],
     this.onHotkeyRecording,
     this.library,
+    this.onCleanUpStorage,
     super.key,
   });
 
@@ -112,6 +121,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Blank commits null (that limit off); only valid positive integers
   /// commit otherwise — mid-typing garbage neither persists nor fights the
   /// caret by rewriting the field.
+  /// Non-null only while a "Clean up now" run is in flight; disables the
+  /// button so a double-click can't run two overlapping enforcement passes.
+  bool _cleaningUp = false;
+
+  /// The last run's outcome, shown as the row's footnote until the tab is
+  /// rebuilt. Null before the first run.
+  String? _cleanupResult;
+
+  Future<void> _cleanUpStorage() async {
+    final run = widget.onCleanUpStorage;
+    if (run == null || _cleaningUp) return;
+    setState(() {
+      _cleaningUp = true;
+      _cleanupResult = null;
+    });
+    final removed = await run();
+    if (!mounted) return;
+    final freed = removed.fold(0, (sum, c) => sum + c.sizeBytes);
+    setState(() {
+      _cleaningUp = false;
+      _cleanupResult = removed.isEmpty
+          ? 'Nothing to remove — everything is within the limits above.'
+          : 'Removed ${removed.length} '
+              'clip${removed.length == 1 ? '' : 's'} · '
+              'freed ${formatSize(freed)}.';
+    });
+  }
+
   void _handleLimitChanged(String value, void Function(int?) write) {
     final t = value.trim();
     if (t.isEmpty) {
@@ -553,6 +590,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             footnote: 'Oldest clips are removed first when a limit is hit. '
                 'Protected clips are never auto-deleted.',
           ),
+          if (widget.onCleanUpStorage != null)
+            SettingRow(
+              label: 'Clean up now',
+              hint: Text(
+                'Apply the limits above immediately instead of waiting '
+                'for the automatic sweep.',
+                style: Theme.of(context).textTheme.bodyMuted,
+              ),
+              control: OutlinedButton(
+                key: const ValueKey('cleanUpStorageButton'),
+                onPressed: _cleaningUp ? null : _cleanUpStorage,
+                child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
+              ),
+              footnote: _cleanupResult,
+            ),
           SettingRow(
             label: 'Recordings folder',
             hint: Text(
