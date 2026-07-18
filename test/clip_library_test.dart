@@ -132,4 +132,28 @@ void main() {
     expect(loaded.all, hasLength(1)); // adopted from disk scan
     expect(File(p.join(tmp.path, 'clips.json.bad')).existsSync(), isTrue);
   });
+
+  test(
+      'concurrent save() calls are serialized — none throws, the index ends '
+      'valid (regression: two saves raced clips.json.tmp; the loser\'s '
+      'rename threw PathNotFoundException, 2026-07-18 16:49)', () async {
+    final f = await _mp4(tmp, 'a.mp4');
+    final lib = ClipLibrary(clipsDir: tmp)
+      ..add(Clip(
+          path: f.path,
+          gameId: 'desktop',
+          event: GameEventKind.manual,
+          createdAt: DateTime(2026, 7, 1),
+          sizeBytes: 8));
+
+    // Un-serialized, several of these race the SAME tmp path and the
+    // rename of every loser throws. Serialized, all complete cleanly.
+    await Future.wait([for (var i = 0; i < 8; i++) lib.save()]);
+
+    final loaded = await ClipLibrary.load(tmp);
+    expect(loaded.all, hasLength(1));
+    expect(
+        File(p.join(tmp.path, 'clips.json.tmp')).existsSync(), isFalse,
+        reason: 'no orphaned tmp file after the writes settle');
+  });
 }

@@ -7,6 +7,7 @@ import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
 import '../events/game_event.dart';
 import '../hotkey/key_capture.dart';
+import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/audio_input_info.dart';
 import '../obs/display_info.dart';
@@ -293,6 +294,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// combos [HotkeyDescriptor] already accepts, so no validation needed
   /// here — unlike the old free-text field.
   void _handleHotkeyChanged(String value) {
+    // Audit line: a hotkey silently reverted once (Ctrl+7 → Ctrl+6,
+    // 2026-07-18, most likely a stale instance's whole-file settings
+    // write) — logging every change makes the next revert traceable.
+    talker.info('Save hotkey changed: "${widget.settings.hotkey}" → "$value"');
     // setState, not a bare mutation: the recorder field renders the value
     // its PARENT passed it, so without a parent rebuild the field kept
     // showing the old combo after a successful capture (the maintainer
@@ -305,6 +310,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Same as [_handleHotkeyChanged], for the independent record-toggle
   /// hotkey field.
   void _handleRecordHotkeyChanged(String value) {
+    talker.info(
+        'Record hotkey changed: "${widget.settings.recordHotkey}" → "$value"');
     setState(() => widget.settings.recordHotkey = value);
     widget.onChanged(widget.settings);
   }

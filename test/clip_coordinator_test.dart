@@ -65,6 +65,10 @@ void main() {
       // file-completeness settle without real-world waits.
       burstQuiet: const Duration(milliseconds: 60),
       fileSettleInterval: const Duration(milliseconds: 5),
+      // Zero: the legacy tests below fire genuinely sequential manual saves
+      // (two presses = two clips). Coalescing has its own group, with a
+      // coordinator that keeps a real window.
+      manualCoalesceWindow: Duration.zero,
     )..start(supervise: false); // subscribes to streams, no periodic timer
   });
 
@@ -1302,6 +1306,49 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(coordinator.autoSwitchedAppName.value, isNull);
+    });
+  });
+
+  group('manual hotkey coalescing', () {
+    ClipCoordinator coalescing({Duration window = const Duration(seconds: 3)}) {
+      return ClipCoordinator(
+        registry: registry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        fileSettleInterval: const Duration(milliseconds: 5),
+        manualCoalesceWindow: window,
+      );
+    }
+
+    test('rapid presses produce ONE clip — the rest are absorbed', () async {
+      final c = coalescing();
+      // Three presses in the same instant, like hammering the key after a
+      // big play — one clip, and every returned future completes.
+      await Future.wait([c.onHotkey(), c.onHotkey(), c.onHotkey()]);
+      expect(library.all, hasLength(1));
+    });
+
+    test('a press after the window elapses saves a second clip', () async {
+      final c = coalescing(window: const Duration(milliseconds: 40));
+      await c.onHotkey();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await c.onHotkey();
+      expect(library.all, hasLength(2));
+    });
+
+    test('a FAILED save does not swallow the retry press', () async {
+      final c = coalescing();
+      engine.failSave = true;
+      await c.onHotkey();
+      expect(library.all, isEmpty);
+
+      // Immediate retry — inside the window, but the failure cleared it.
+      engine.failSave = false;
+      await c.onHotkey();
+      expect(library.all, hasLength(1));
     });
   });
 }

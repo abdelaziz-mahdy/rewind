@@ -109,7 +109,13 @@ class ClipCoordinator {
     this.indexFileGrace = const Duration(seconds: 5),
     this.fileSettleInterval = const Duration(milliseconds: 250),
     this.burstQuiet,
+    this.manualCoalesceWindow = const Duration(seconds: 3),
   });
+
+  /// Hotkey presses within this window of the previous press are absorbed
+  /// into that press's save — see [onHotkey]. Injectable so tests that
+  /// need genuinely sequential manual saves can pass [Duration.zero].
+  final Duration manualCoalesceWindow;
 
   /// Activation time per currently-active gameId — the session (match) key
   /// stamped onto every clip saved while that game stays active (see
@@ -356,9 +362,38 @@ class ClipCoordinator {
 
   /// Manual hotkey entry point: store the last N seconds (per active game's
   /// buffer length, or the default) immediately.
+  ///
+  /// Rapid presses COALESCE into one clip: the in-flight save plus a
+  /// [manualCoalesceWindow] absorb window after each press. A user
+  /// hammering the key after a big play wants ONE clip, and the buffer
+  /// already contains everything the extra presses could ask for;
+  /// un-coalesced, the concurrent saves also race the shim's single-flight
+  /// replay save ("timed out waiting for replay save", 2026-07-18 16:49)
+  /// and the index writes raced each other (see ClipLibrary.save). A
+  /// FAILED save clears the window so an immediate retry press works.
+  Future<void>? _manualSaveInFlight;
+  DateTime? _lastManualPressAt;
+
   Future<void> onHotkey() {
+    final now = DateTime.now();
+    final inFlight = _manualSaveInFlight;
+    final last = _lastManualPressAt;
+    if (inFlight != null ||
+        (last != null && now.difference(last) < manualCoalesceWindow)) {
+      talker.debug('Hotkey press coalesced into the save already under way');
+      return inFlight ?? Future.value();
+    }
+    _lastManualPressAt = now;
     final gameId = activeGame.value ?? 'desktop';
-    return _save(GameEvent(gameId: gameId, kind: GameEventKind.manual));
+    final save = _save(GameEvent(gameId: gameId, kind: GameEventKind.manual))
+        .whenComplete(() {
+      _manualSaveInFlight = null;
+      // A FAILED save must not swallow the user's next press — pressing
+      // again right after an error is a retry, not spam.
+      if (lastSaveError.value != null) _lastManualPressAt = null;
+    });
+    _manualSaveInFlight = save;
+    return save;
   }
 
   Future<void> _save(GameEvent e) async {
