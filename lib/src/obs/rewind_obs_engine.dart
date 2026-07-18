@@ -85,4 +85,7 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool requestScreenPermission() => _obs.requestScreenPermission();
+
+  @override
+  String? perfStatsJson() => _obs.perfStatsJson();
 }

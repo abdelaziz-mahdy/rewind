@@ -111,4 +111,11 @@ abstract class CaptureEngine {
   /// Settings instead in that case). Returns the resulting granted state,
   /// same as [preflightScreenPermission].
   bool requestScreenPermission();
+
+  /// Compact JSON snapshot of this process's own CPU/memory usage plus
+  /// libobs's frame-health counters (see `rewind_perf_stats_json` in
+  /// native/shim/rewind_obs.h), or null on failure. Sampled periodically by
+  /// `PerfMonitor` (lib/src/log/perf_monitor.dart) — cheap enough to poll
+  /// often, but not meant to be called on a hot path.
+  String? perfStatsJson();
 }
