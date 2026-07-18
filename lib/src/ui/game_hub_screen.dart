@@ -9,6 +9,7 @@ import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../events/game_event.dart';
 import '../games/league/ddragon.dart';
+import '../games/match_presentation.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
 import 'clip_sessions.dart';
@@ -300,7 +301,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
             ?.statsFor(widget.gameId, session.startedAt),
         library: widget.library,
         thumbnails: widget.thumbnails,
-        ddragon: widget.ddragon,
+        presentation:
+            matchPresentationFor(widget.gameId, ddragon: widget.ddragon),
       ),
     ));
   }

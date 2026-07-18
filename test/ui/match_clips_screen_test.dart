@@ -6,10 +6,33 @@ import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/games/match_presentation.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart';
+
+/// A presentation test double: returns exactly what each test configures, so
+/// these tests can assert the SCREEN's frame/plumbing contract (what it does
+/// with whatever a presentation returns) without depending on any real
+/// per-game presentation — that behavior belongs to that presentation's own
+/// test file (e.g. `test/games/league/league_match_presentation_test.dart`).
+class _FakeMatchPresentation extends MatchPresentation {
+  const _FakeMatchPresentation({this.summary, this.extras, this.footnoteText});
+
+  final Widget? summary;
+  final Widget? extras;
+  final String? footnoteText;
+
+  @override
+  Widget? buildSummary(BuildContext context, MatchStats stats) => summary;
+
+  @override
+  Widget? buildExtras(BuildContext context, MatchStats stats) => extras;
+
+  @override
+  String? footnote(MatchStats? stats) => footnoteText;
+}
 
 void main() {
   late Directory tmp;
@@ -39,101 +62,27 @@ void main() {
 
   Widget app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
-  testWidgets('the summary band shows the K/D/A/CS/WS line', (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      gameMode: 'ARAM',
-      kills: 5,
-      deaths: 2,
-      assists: 9,
-      creepScore: 88,
-      wardScore: 12.3,
-    );
-
+  testWidgets('renders the app bar title and the clip grid', (t) async {
     await t.pumpWidget(app(MatchClipsScreen(
       session: session,
       matchLabel: 'Ahri match',
-      stats: stats,
+      stats: null,
       library: library,
     )));
     await t.pump();
 
-    expect(find.text('5 K · 2 D · 9 A · 88 CS · 12.3 WS'), findsOneWidget);
-  });
-
-  testWidgets('the old standalone stats line is gone', (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      kills: 2,
-      deaths: 24,
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(find.textContaining('kills ·'), findsNothing);
-    expect(find.textContaining('clips'), findsNothing);
-  });
-
-  testWidgets('the summary band shows the champion headline and mode',
-      (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      gameMode: 'ARAM',
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(find.text('Ahri · ARAM'), findsOneWidget);
-  });
-
-  testWidgets('the skin name renders muted beneath the headline', (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-      skinName: 'Spirit Blossom Ahri',
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(find.text('Spirit Blossom Ahri'), findsOneWidget);
+    expect(find.text('Ahri match'), findsOneWidget);
+    expect(find.byKey(const ValueKey('matchClipsList')), findsOneWidget);
+    expect(find.byType(ClipTile), findsNWidgets(session.clips.length));
   });
 
   testWidgets(
-      'the item build renders one tile per item, no DDragon needed, in the '
-      'summary band', (t) async {
+      'with no presentation, renders nothing extra above the grid — just '
+      'the bare frame', (t) async {
     final stats = MatchStats(
       gameId: 'league_of_legends',
       startedAt: session.startedAt,
       champion: 'Ahri',
-      items: const [
-        MatchItemSlot(itemId: 3157, slot: 0),
-        MatchItemSlot(itemId: 3020, slot: 1),
-      ],
     );
 
     await t.pumpWidget(app(MatchClipsScreen(
@@ -144,149 +93,80 @@ void main() {
     )));
     await t.pump();
 
-    // No DDragon wired up: both item tiles render as blank placeholders
-    // (never a broken image), but still exist as two distinct containers.
-    expect(find.byType(Image), findsNothing);
+    // No summary/footnote/extras entry was added above the grid.
+    expect(find.byKey(const ValueKey('matchSummary')), findsNothing);
+    expect(find.byKey(const ValueKey('matchFootnote')), findsNothing);
+    expect(find.byKey(const ValueKey('matchExtras')), findsNothing);
   });
 
-  testWidgets('no stats at all renders neither the band nor a stat line',
+  testWidgets(
+      'renders whatever a presentation returns: summary, footnote, extras',
       (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+    );
+    const presentation = _FakeMatchPresentation(
+      summary: Text('fake summary'),
+      extras: Text('fake extras'),
+      footnoteText: 'fake footnote',
+    );
+
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'Session',
+      stats: stats,
+      library: library,
+      presentation: presentation,
+    )));
+    await t.pump();
+
+    expect(find.text('fake summary'), findsOneWidget);
+    expect(find.text('fake footnote'), findsOneWidget);
+    expect(find.text('fake extras'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a presentation returning null for a piece renders nothing for that '
+      'piece', (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+    );
+    const presentation = _FakeMatchPresentation(footnoteText: 'only this');
+
+    await t.pumpWidget(app(MatchClipsScreen(
+      session: session,
+      matchLabel: 'Session',
+      stats: stats,
+      library: library,
+      presentation: presentation,
+    )));
+    await t.pump();
+
+    expect(find.text('only this'), findsOneWidget);
+    // Summary/extras null: neither of their entries was added.
+    expect(find.byKey(const ValueKey('matchSummary')), findsNothing);
+    expect(find.byKey(const ValueKey('matchExtras')), findsNothing);
+  });
+
+  testWidgets(
+      'the footnote call is handed the (possibly null) stats as-is — the '
+      'screen does not gate on stats presence itself, the presentation does',
+      (t) async {
+    const presentation =
+        _FakeMatchPresentation(footnoteText: 'renders even with no stats');
+
     await t.pumpWidget(app(MatchClipsScreen(
       session: session,
       matchLabel: 'Session',
       stats: null,
       library: library,
+      presentation: presentation,
     )));
     await t.pump();
 
-    expect(find.textContaining(' K · '), findsNothing);
-    expect(find.byKey(const ValueKey('rosterDisclosure')), findsNothing);
-  });
-
-  testWidgets('the footnote renders as a caption near the top of the page',
-      (t) async {
-    final stats = MatchStats(
-      gameId: 'league_of_legends',
-      startedAt: session.startedAt,
-      champion: 'Ahri',
-    );
-
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'Ahri match',
-      stats: stats,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(
-      find.text(
-          'Kills counted from the live game, even for fights not clipped.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets(
-      'the footnote is ABSENT for a session with no live-tracked stats — '
-      '"kills counted from the live game" is a lie for a process game',
-      (t) async {
-    await t.pumpWidget(app(MatchClipsScreen(
-      session: session,
-      matchLabel: 'PenguinHotel session',
-      stats: null,
-      library: library,
-    )));
-    await t.pump();
-
-    expect(
-      find.text(
-          'Kills counted from the live game, even for fights not clipped.'),
-      findsNothing,
-    );
-  });
-
-  group('roster disclosure', () {
-    MatchStats statsWithRoster() => MatchStats(
-          gameId: 'league_of_legends',
-          startedAt: session.startedAt,
-          champion: 'Ahri',
-          allies: const [MatchPlayer(championName: 'Lux', riotId: 'Mate#EUW')],
-          enemies: const [MatchPlayer(championName: 'Zed', riotId: 'Foe#EUW')],
-        );
-
-    testWidgets('shows a collapsed row with the roster count, chips hidden',
-        (t) async {
-      await t.pumpWidget(app(MatchClipsScreen(
-        session: session,
-        matchLabel: 'Ahri match',
-        stats: statsWithRoster(),
-        library: library,
-      )));
-      await t.pump();
-
-      expect(find.text('Champions in this game (2)'), findsOneWidget);
-      expect(find.text('Lux · Mate#EUW'), findsNothing);
-      expect(find.text('Zed · Foe#EUW'), findsNothing);
-    });
-
-    testWidgets('tapping the disclosure reveals teammates/enemies chips',
-        (t) async {
-      await t.pumpWidget(app(MatchClipsScreen(
-        session: session,
-        matchLabel: 'Ahri match',
-        stats: statsWithRoster(),
-        library: library,
-      )));
-      await t.pump();
-
-      await t.tap(find.byKey(const ValueKey('rosterDisclosure')));
-      await t.pump(const Duration(milliseconds: 250));
-
-      expect(find.text('Lux · Mate#EUW'), findsOneWidget);
-      expect(find.text('Zed · Foe#EUW'), findsOneWidget);
-    });
-
-    testWidgets(
-        'a teammate with no known name renders just the champion (no crash, '
-        'no invented name)', (t) async {
-      final stats = MatchStats(
-        gameId: 'league_of_legends',
-        startedAt: session.startedAt,
-        champion: 'Ahri',
-        allies: const [MatchPlayer(championName: 'Lux')],
-      );
-
-      await t.pumpWidget(app(MatchClipsScreen(
-        session: session,
-        matchLabel: 'Ahri match',
-        stats: stats,
-        library: library,
-      )));
-      await t.pump();
-      await t.tap(find.byKey(const ValueKey('rosterDisclosure')));
-      await t.pump(const Duration(milliseconds: 250));
-
-      expect(find.text('Lux'), findsOneWidget);
-      expect(find.textContaining('Lux ·'), findsNothing);
-    });
-
-    testWidgets('no roster means no disclosure row at all', (t) async {
-      final stats = MatchStats(
-        gameId: 'league_of_legends',
-        startedAt: session.startedAt,
-        champion: 'Ahri',
-      );
-
-      await t.pumpWidget(app(MatchClipsScreen(
-        session: session,
-        matchLabel: 'Ahri match',
-        stats: stats,
-        library: library,
-      )));
-      await t.pump();
-
-      expect(find.byKey(const ValueKey('rosterDisclosure')), findsNothing);
-    });
+    expect(find.text('renders even with no stats'), findsOneWidget);
   });
 
   group('marker plumbing (Task 8)', () {

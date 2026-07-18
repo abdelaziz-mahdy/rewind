@@ -90,6 +90,14 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **Match detail screen is now a generic session frame**: the champion/K-D-A
+  summary band, roster disclosure, and kills footnote moved behind a new
+  per-game `MatchPresentation` seam (`lib/src/games/match_presentation.dart`),
+  with League's first implementation under `lib/src/games/league/`.
+  `MatchClipsScreen` itself no longer imports anything League-specific;
+  process-detected games with no presentation impl render the bare frame
+  (app bar + clip grid). Internal architecture only — no visual or
+  behavioral change for League.
 - **Match detail screen compacted**: one summary band (champion · mode ·
   K/D/A/CS/WS · items) instead of a tall card, the full-roster chips
   collapsed behind "Champions in this game (N)", the duplicate stats line
