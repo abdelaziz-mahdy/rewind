@@ -48,6 +48,22 @@ void main() {
         }
       }
     });
+
+    test(
+        'the League client entry does not count as playing (it detects the '
+        'client, not a live match)', () {
+      final league = popularGamesCatalog
+          .singleWhere((g) => g.gameId == 'app:league_of_legends');
+      expect(league.countsAsPlaying, isFalse);
+    });
+
+    test('every other catalog entry counts as playing (default true)', () {
+      for (final g in popularGamesCatalog) {
+        if (g.gameId == 'app:league_of_legends') continue;
+        expect(g.countsAsPlaying, isTrue,
+            reason: '${g.gameId} should count as playing');
+      }
+    });
   });
 
   group('displayNameFor', () {

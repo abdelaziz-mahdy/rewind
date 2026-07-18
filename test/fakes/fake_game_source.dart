@@ -7,10 +7,13 @@ class FakeGameSource implements GameEventSource {
   final String gameId;
   @override
   final String displayName;
+  @override
+  final bool countsAsPlaying;
   bool running = false;
   final _events = StreamController<GameEvent>.broadcast();
 
-  FakeGameSource(this.gameId, [String? name]) : displayName = name ?? gameId;
+  FakeGameSource(this.gameId, [String? name, this.countsAsPlaying = true])
+      : displayName = name ?? gameId;
 
   void emit(GameEventKind kind) =>
       _events.add(GameEvent(gameId: gameId, kind: kind));

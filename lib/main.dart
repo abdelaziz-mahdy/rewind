@@ -304,9 +304,16 @@ Future<void> main() async {
   // [applyBufferPolicy] is the SINGLE control point every buffer start/stop
   // decision flows through — the auto-pause policy, the tray's manual
   // Pause/Resume, and startup all funnel through it so they can't fight or
-  // desync. It's re-run on: coordinator.activeGameIds changing (a game
+  // desync. It's re-run on: coordinator.playingGameIds changing (a game
   // transition), the setting changing (onSettingsChanged below), the tray
   // toggle, and once at startup.
+  //
+  // Reads playingGameIds, NOT activeGameIds: a game whose detection only
+  // means "the launcher/client is open" (e.g. League's catalog entry) must
+  // not resume the buffer — see ClipCoordinator.playingGameIds' doc.
+  // activeGameIds stays the input for everything else (rail dots, Supported
+  // Games, auto-switch, session stamping), which all still want to see the
+  // client.
   //
   // [manualOverride] is the tray's Pause/Resume override; see
   // buffer_policy.dart's doc for the exact precedence rule: a manual Pause
@@ -315,7 +322,7 @@ Future<void> main() async {
   // game transition, handing control back to the policy.
   BufferManualOverride manualOverride;
   void applyBufferPolicy() {
-    final anyGameActive = coordinator.activeGameIds.value.isNotEmpty;
+    final anyGameActive = coordinator.playingGameIds.value.isNotEmpty;
     final desired = desiredBufferActive(
       captureOnlyInGame: settings.captureOnlyInGame,
       anyGameActive: anyGameActive,
@@ -359,7 +366,10 @@ Future<void> main() async {
   // policy from scratch: clears a temporary Resume override so
   // captureOnlyInGame can reclaim control, but leaves a manual Pause
   // sticky — see buffer_policy.dart's clearedOverrideAfterTransition doc.
-  coordinator.activeGameIds.addListener(() {
+  // Keyed off playingGameIds (the SAME notifier applyBufferPolicy reads
+  // above) rather than activeGameIds, so a client-only activation — which
+  // never touches the buffer — doesn't clear a manual override either.
+  coordinator.playingGameIds.addListener(() {
     manualOverride = clearedOverrideAfterTransition(manualOverride);
     applyBufferPolicy();
   });

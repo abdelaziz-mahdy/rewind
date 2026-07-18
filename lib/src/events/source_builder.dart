@@ -35,6 +35,7 @@ List<GameEventSource> buildSources(AppSettings settings) {
       displayName: g.displayName,
       processMatch: g.processMatch,
       lister: lister,
+      countsAsPlaying: g.countsAsPlaying,
     ));
   }
 

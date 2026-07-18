@@ -15,10 +15,18 @@ class CatalogGame {
   /// basenames (see `ProcessWatcherSource.processMatch`).
   final String processMatch;
 
+  /// Whether this entry activating means the user is actually PLAYING, for
+  /// the `captureOnlyInGame` buffer policy (see
+  /// `GameEventSource.countsAsPlaying`). True for every catalog entry except
+  /// the League client (see that entry's comment below) — for the rest, the
+  /// detected process IS the game.
+  final bool countsAsPlaying;
+
   const CatalogGame({
     required this.gameId,
     required this.displayName,
     required this.processMatch,
+    this.countsAsPlaying = true,
   });
 }
 
@@ -44,6 +52,14 @@ const List<CatalogGame> popularGamesCatalog = [
     gameId: 'app:league_of_legends',
     displayName: 'League of Legends',
     processMatch: 'LeagueClientUx',
+    // The CLIENT process, not the game: it's running through lobby/champ
+    // select/post-game, not just while a match is live, so it must not
+    // count as "playing" for the captureOnlyInGame buffer policy — that's
+    // exactly what LeagueEventWatcher's OWN activation already means (the
+    // Live Client Data API on :2999 only exists mid-match). This entry
+    // stays TRUE for `activeGameIds`/the rail's "Running" dot — the client
+    // being open is still worth showing — just not for the buffer policy.
+    countsAsPlaying: false,
   ),
   CatalogGame(
     gameId: 'app:cs2',
