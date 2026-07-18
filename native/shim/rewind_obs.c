@@ -689,6 +689,14 @@ int rewind_set_capture_window(uint32_t window_id) {
     return 0;
 }
 
+int rewind_preflight_screen_permission(void) {
+    return rw_plat_preflight_screen_permission();
+}
+
+int rewind_request_screen_permission(void) {
+    return rw_plat_request_screen_permission();
+}
+
 #else /* !REWIND_USE_LIBOBS: self-contained stub */
 
 int rewind_obs_init(const char *out_dir, int seconds) {
@@ -853,6 +861,17 @@ int rewind_set_audio_mode(int mode) {
     (void)mode;
     set_error("");
     return 0;
+}
+
+/* No platform gate in stub mode (no libobs backend to ask) — always report
+ * granted so dev builds without a fetched SDK still exercise the onboarding
+ * "granted" path rather than getting stuck. */
+int rewind_preflight_screen_permission(void) {
+    return 1;
+}
+
+int rewind_request_screen_permission(void) {
+    return 1;
 }
 
 #endif /* REWIND_USE_LIBOBS */

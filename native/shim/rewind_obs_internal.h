@@ -156,6 +156,15 @@ int rw_plat_find_graphics_module_path(const char *sdk_dir, const char *shim_dir,
  * result — rewind_obs_init should return that value immediately. */
 int rw_plat_check_permission(void);
 
+/* Backs rewind_preflight_screen_permission()/rewind_request_screen_
+ * permission() (see rewind_obs.h for the exact contract each follows).
+ * Distinct from rw_plat_check_permission() above: that one is init-time
+ * only (fails the call on denial); these two are pollable/on-demand and
+ * never fail — they just report/request the current grant state, for
+ * onboarding UI to drive live. */
+int rw_plat_preflight_screen_permission(void);
+int rw_plat_request_screen_permission(void);
+
 /* Anything a platform needs wired up before obs_reset_video() — currently
  * only Windows' obs_add_data_path() call for libobs' own core data/effects
  * (see rewind_obs.c's doc comment on why macOS needs no equivalent). No-op

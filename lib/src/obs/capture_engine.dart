@@ -99,4 +99,16 @@ abstract class CaptureEngine {
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;
+
+  /// True if screen-capture permission is currently granted. Safe to poll
+  /// repeatedly (e.g. once a second from onboarding UI) to detect a grant
+  /// that happened in System Settings while the app is running — never
+  /// prompts. Always true on platforms with no equivalent OS gate.
+  bool preflightScreenPermission();
+
+  /// Triggers the OS permission prompt where one exists (a no-op if already
+  /// granted, or already asked and denied — the user must be sent to System
+  /// Settings instead in that case). Returns the resulting granted state,
+  /// same as [preflightScreenPermission].
+  bool requestScreenPermission();
 }

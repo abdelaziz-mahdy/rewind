@@ -1,8 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/clip/clip.dart';
+import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/onboarding_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
+
+import '../fakes/fake_capture_engine.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
 
@@ -12,12 +20,22 @@ void main() {
     Future<void> Function(AppSettings)? onChanged,
     VoidCallback? onDone,
     Future<void> Function()? onOpenScreenRecording,
+    FakeCaptureEngine? engine,
+    ClipLibrary? library,
+    String? captureError,
+    VoidCallback? onRelaunch,
+    List<AppInfo> Function()? listApps,
   }) =>
       OnboardingScreen(
         settings: settings ?? AppSettings(),
         onChanged: onChanged ?? (_) async {},
         onDone: onDone ?? () {},
         onOpenScreenRecording: onOpenScreenRecording,
+        engine: engine,
+        library: library,
+        captureError: captureError,
+        onRelaunch: onRelaunch,
+        listApps: listApps,
       );
 
   Future<void> nextTo(WidgetTester t, int steps) async {
@@ -32,14 +50,98 @@ void main() {
     expect(find.text('Never miss a play'), findsOneWidget);
   });
 
-  testWidgets('the permission step opens Screen Recording settings', (t) async {
-    var opened = 0;
-    await t
-        .pumpWidget(_app(screen(onOpenScreenRecording: () async => opened++)));
+  testWidgets(
+      'permission step: granted at launch shows the compact tick '
+      'with no buttons', (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = true;
+    await t.pumpWidget(_app(screen(engine: engine)));
     await nextTo(t, 1);
-    await t.tap(find.byKey(const ValueKey('onboardingStepAction')));
+    expect(
+        find.text("Screen Recording is granted — you're set."), findsOneWidget);
+    expect(find.byKey(const ValueKey('grantScreenPermissionButton')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('relaunchButton')), findsNothing);
+  });
+
+  testWidgets('permission step: not granted shows Grant + Open Settings',
+      (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = false;
+    await t.pumpWidget(_app(screen(engine: engine)));
+    await nextTo(t, 1);
+    expect(find.byKey(const ValueKey('grantScreenPermissionButton')),
+        findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('openScreenSettingsButton')), findsOneWidget);
+  });
+
+  testWidgets('permission step: granted mid-session shows the relaunch state',
+      (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = true;
+    await t.pumpWidget(_app(
+        screen(engine: engine, captureError: 'replay buffer failed to start')));
+    await nextTo(t, 1);
+    expect(find.text('Granted. Relaunch Rewind to start capturing.'),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('relaunchButton')), findsOneWidget);
+  });
+
+  testWidgets('permission step opens System Settings via the secondary button',
+      (t) async {
+    var opened = 0;
+    final engine = FakeCaptureEngine()..screenPermissionGranted = false;
+    await t.pumpWidget(_app(screen(
+      engine: engine,
+      onOpenScreenRecording: () async => opened++,
+    )));
+    await nextTo(t, 1);
+    await t.tap(find.byKey(const ValueKey('openScreenSettingsButton')));
     await t.pump();
     expect(opened, 1);
+  });
+
+  testWidgets('permission step: Grant button calls requestScreenPermission',
+      (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = false;
+    await t.pumpWidget(_app(screen(engine: engine)));
+    await nextTo(t, 1);
+    await t.tap(find.byKey(const ValueKey('grantScreenPermissionButton')));
+    await t.pump();
+    expect(engine.calls, contains('requestScreenPermission'));
+  });
+
+  testWidgets(
+      'permission step: polling flips the UI live when the fake grants '
+      'mid-visit', (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = false;
+    await t.pumpWidget(_app(screen(engine: engine)));
+    await nextTo(t, 1);
+    expect(find.byKey(const ValueKey('grantScreenPermissionButton')),
+        findsOneWidget);
+
+    engine.screenPermissionGranted = true;
+    await t.pump(const Duration(seconds: 1));
+    await t.pump();
+
+    expect(
+        find.text("Screen Recording is granted — you're set."), findsOneWidget);
+    expect(find.byKey(const ValueKey('grantScreenPermissionButton')),
+        findsNothing);
+  });
+
+  testWidgets(
+      'permission step: relaunch button fires the injected callback, '
+      'never a real relaunch', (t) async {
+    var relaunches = 0;
+    final engine = FakeCaptureEngine()..screenPermissionGranted = true;
+    await t.pumpWidget(_app(screen(
+      engine: engine,
+      captureError: 'replay buffer failed to start',
+      onRelaunch: () => relaunches++,
+    )));
+    await nextTo(t, 1);
+    await t.tap(find.byKey(const ValueKey('relaunchButton')));
+    await t.pump();
+    expect(relaunches, 1);
   });
 
   testWidgets('the buffer step writes the chosen length and persists',
@@ -75,10 +177,73 @@ void main() {
     expect(settings.autoSwitchCapture, isFalse);
   });
 
-  testWidgets('the last step finishes via Get started', (t) async {
+  testWidgets(
+      'the games step shows a line when a running app matches a catalog '
+      'game', (t) async {
+    await t.pumpWidget(_app(screen(
+      listApps: () => const [
+        AppInfo(bundleId: 'com.test.cs2', name: 'CS2', pid: 42),
+      ],
+    )));
+    await nextTo(t, 4); // -> controls & games
+    expect(
+        find.textContaining(
+            'We can see Counter-Strike 2 running — its highlights will '
+            'clip automatically.'),
+        findsOneWidget);
+  });
+
+  testWidgets('the games step shows no extra line when nothing matches',
+      (t) async {
+    await t.pumpWidget(_app(screen(listApps: () => const [])));
+    await nextTo(t, 4); // -> controls & games
+    expect(find.textContaining('We can see'), findsNothing);
+  });
+
+  testWidgets(
+      'the try-it step flips to success when a clip lands in the library '
+      'while visible', (t) async {
+    final library = ClipLibrary(clipsDir: Directory.systemTemp);
+    await t.pumpWidget(_app(screen(library: library)));
+    await nextTo(
+        t, 5); // welcome/permission/buffer/preferences/controls -> try it
+    expect(find.text('Try it now'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tryItSuccess')), findsNothing);
+
+    library.add(Clip(
+      path: '/tmp/clip.mp4',
+      gameId: 'desktop',
+      event: GameEventKind.manual,
+      createdAt: DateTime.now(),
+      sizeBytes: 2 * 1024 * 1024,
+    ));
+    await t.pump();
+
+    expect(find.byKey(const ValueKey('tryItSuccess')), findsOneWidget);
+    expect(find.text('Clip saved!'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a degraded capture (captureError set) falls back to the plain '
+      'controls step as the last page — no try-it step', (t) async {
+    var done = 0;
+    await t.pumpWidget(_app(screen(
+      onDone: () => done++,
+      captureError: 'replay buffer failed to start',
+    )));
+    await nextTo(
+        t, 4); // welcome/permission/buffer/preferences -> controls&games
+    expect(find.widgetWithText(FilledButton, 'Get started'), findsOneWidget);
+    expect(find.text('Try it now'), findsNothing);
+    await t.tap(find.byKey(const ValueKey('onboardingNext')));
+    expect(done, 1);
+  });
+
+  testWidgets('the last step (try it now) finishes via Get started', (t) async {
     var done = 0;
     await t.pumpWidget(_app(screen(onDone: () => done++)));
-    await nextTo(t, 4); // to the final step
+    await nextTo(t, 5); // to the final (try-it) step
+    expect(find.text('Try it now'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Get started'), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('onboardingNext')));
     expect(done, 1);

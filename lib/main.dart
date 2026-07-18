@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'src/clip/clip.dart';
@@ -53,6 +54,29 @@ Future<void> _openClipsFolder(String path) async {
   } catch (_) {
     // Best-effort: no OS handler available is not fatal.
   }
+}
+
+/// Relaunches the running macOS app: spawns a fresh instance (`open -n
+/// <bundle>.app`), then exits this one. Onboarding's permission step offers
+/// this once Screen Recording is granted mid-session — per CLAUDE.md's TCC
+/// gotchas, a grant only takes effect for a NEW process, so continuing to
+/// run this one would keep capturing black. No-op on non-macOS (no
+/// equivalent permission-on-relaunch gate).
+Future<void> _relaunch() async {
+  if (!Platform.isMacOS) return;
+  try {
+    // Platform.resolvedExecutable for a bundled app is
+    // "<bundle>.app/Contents/MacOS/<exe>" — three directories up from the
+    // executable is the bundle root `open` expects.
+    final exeDir = p.dirname(Platform.resolvedExecutable); // .../MacOS
+    final bundlePath = p.dirname(p.dirname(exeDir)); // .../<name>.app
+    await Process.start('open', ['-n', bundlePath],
+        mode: ProcessStartMode.detached);
+  } catch (err) {
+    talker.warning('Relaunch failed: $err');
+    return; // don't exit without a replacement instance under way
+  }
+  exit(0);
 }
 
 Future<void> main() async {
@@ -297,6 +321,8 @@ Future<void> main() async {
     // `engine` (not the startup snapshot): fresh enumeration every time the
     // source menu opens, so a game launched after Rewind still appears.
     listApps: () => engine?.listCapturableApps() ?? const <AppInfo>[],
+    engine: engine,
+    onRelaunch: () => unawaited(_relaunch()),
     thumbnails: thumbnailCache,
     ddragon: ddragon,
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
@@ -383,6 +409,12 @@ class RewindApp extends StatefulWidget {
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
 
+  /// The live capture engine (for onboarding's live permission polling) and
+  /// the relaunch callback (for its "granted mid-session" state) — see
+  /// `OnboardingScreen`'s doc.
+  final CaptureEngine? engine;
+  final VoidCallback? onRelaunch;
+
   const RewindApp({
     required this.coordinator,
     required this.library,
@@ -400,6 +432,8 @@ class RewindApp extends StatefulWidget {
     this.onCleanUpStorage,
     this.thumbnails,
     this.ddragon,
+    this.engine,
+    this.onRelaunch,
     super.key,
   });
 
@@ -427,6 +461,11 @@ class _RewindAppState extends State<RewindApp> {
               settings: widget.settings,
               onChanged: widget.onSettingsChanged,
               onDone: _completeOnboarding,
+              engine: widget.engine,
+              library: widget.library,
+              captureError: widget.captureError,
+              onRelaunch: widget.onRelaunch,
+              listApps: widget.listApps,
             )
           : Shell(
               coordinator: widget.coordinator,
