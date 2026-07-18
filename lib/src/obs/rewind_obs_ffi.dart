@@ -54,6 +54,13 @@ external int _setCaptureWindow(int windowId);
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_enabled')
 external int _setMicEnabled(int enabled);
 
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(
+    symbol: 'rewind_list_audio_inputs_json')
+external int _listAudioInputs(Pointer<Utf8> jsonOut, int jsonCap);
+
+@Native<Void Function(Pointer<Utf8>)>(symbol: 'rewind_set_mic_device')
+external void _setMicDevice(Pointer<Utf8> uid);
+
 @Native<Int32 Function(Int32, Int32)>(symbol: 'rewind_set_capture_quality')
 external int _setCaptureQuality(int fps, int maxHeight);
 
@@ -85,6 +92,11 @@ const int _kAppListBufferSize = 65536;
 /// out-param — the object has a fixed, small set of numeric fields, so this
 /// comfortably covers it with headroom.
 const int _kPerfStatsBufferSize = 512;
+
+/// Size of the buffer allocated for `rewind_list_audio_inputs_json`'s JSON
+/// out-param. Mirrors [_kDisplayListBufferSize]: a real machine has at most
+/// a handful of microphones (built-in + a few USB/Bluetooth/virtual ones).
+const int _kAudioInputListBufferSize = 4096;
 
 /// Thin Dart wrapper over the shim. In pure `dart test` (no native assets
 /// built) these calls are never invoked, so tests stay hermetic.
@@ -197,6 +209,31 @@ class RewindObs {
   /// Enables/disables microphone capture (mixed into clips alongside the
   /// always-on system audio).
   int setMicEnabled(bool enabled) => _setMicEnabled(enabled ? 1 : 0);
+
+  /// Raw JSON array from `rewind_list_audio_inputs_json`, or null on
+  /// failure.
+  String? listAudioInputsJson() {
+    final buf = malloc<Uint8>(_kAudioInputListBufferSize);
+    try {
+      final p = buf.cast<Utf8>();
+      final r = _listAudioInputs(p, _kAudioInputListBufferSize);
+      if (r != 0) return null;
+      return p.toDartString();
+    } finally {
+      malloc.free(buf);
+    }
+  }
+
+  /// Selects the microphone input device, or reverts to the system default
+  /// when [uid] is null.
+  void setMicDevice(String? uid) {
+    final p = (uid ?? '').toNativeUtf8();
+    try {
+      _setMicDevice(p);
+    } finally {
+      malloc.free(p);
+    }
+  }
 
   /// Sets capture framerate and output-height cap (0 = source). Applied at
   /// init; call before it.

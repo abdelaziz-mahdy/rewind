@@ -646,9 +646,15 @@ void rw_plat_rebuild_system_audio(void) {
     }
 }
 
+/* "device_id" is pulse_input_capture's own settings key, same shape as
+ * pulse_output_capture's use of it in rw_plat_rebuild_system_audio above:
+ * "default" selects the system default source; anything else is looked up
+ * by PulseAudio source name. g_mic_device_uid empty means "use the
+ * default". */
 obs_source_t *rw_plat_create_mic_source(void) {
     obs_data_t *ms = obs_data_create();
-    obs_data_set_string(ms, "device_id", "default");
+    obs_data_set_string(ms, "device_id",
+                         g_mic_device_uid[0] ? g_mic_device_uid : "default");
     obs_source_t *mic = obs_source_create("pulse_input_capture", "rewind-mic", ms, NULL);
     obs_data_release(ms);
     return mic;
@@ -656,6 +662,23 @@ obs_source_t *rw_plat_create_mic_source(void) {
 
 void rw_plat_log_mic_unavailable(void) {
     blog(LOG_WARNING, "rewind: pulse_input_capture unavailable");
+}
+
+/* TODO(linux): enumerate PulseAudio source devices (pa_context_get_source_
+ * info_list, filtering to actual input sources rather than monitor-of-
+ * output sources) the way pulse_input_capture's own obs_properties callback
+ * does, mapping each source's name to "uid" and its description to "name".
+ * Not hardware-validated in this task (no real PulseAudio server in the
+ * loop) — an honest empty list until then; the Dart picker hides itself
+ * when this returns "[]" rather than showing a fake device. */
+int rw_plat_list_audio_inputs_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) return fail("invalid buffer");
+    static const char *empty = "[]";
+    size_t needed = strlen(empty) + 1;
+    if (needed > (size_t)json_cap) return fail("audio input list truncated");
+    memcpy(json_out, empty, needed);
+    set_error("");
+    return 0;
 }
 
 /* Same rationale as the macOS/Windows backends: obs-ffmpeg's replay-buffer

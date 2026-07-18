@@ -87,6 +87,16 @@ class AppSettings {
   /// microphone permission prompt.
   bool captureMicrophone;
 
+  /// The microphone input device to use, identified by an
+  /// `AudioInputInfo.uid` as reported by `CaptureEngine.listAudioInputs`.
+  /// Null means "system default input" (the capture engine's own default).
+  /// A saved uid for a device that's since been unplugged is NOT cleared —
+  /// same philosophy as [captureAppBundleId]: the Settings dropdown just
+  /// falls back to showing "System default" without touching the persisted
+  /// choice, since the device may simply be disconnected, not permanently
+  /// gone.
+  String? micDeviceUid;
+
   /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
   /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
   /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
@@ -127,6 +137,7 @@ class AppSettings {
     this.captureMaxHeight = 1080,
     this.audioMode = AudioMode.all,
     this.captureMicrophone = false,
+    this.micDeviceUid,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.onboardingComplete = false,
@@ -173,6 +184,7 @@ class AppSettings {
         'captureMaxHeight': captureMaxHeight,
         'audioMode': audioMode.name,
         'captureMicrophone': captureMicrophone,
+        'micDeviceUid': micDeviceUid,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'onboardingComplete': onboardingComplete,
@@ -192,6 +204,7 @@ class AppSettings {
         captureMaxHeight: j['captureMaxHeight'] as int?,
         audioMode: _audioModeFromJson(j),
         captureMicrophone: j['captureMicrophone'] as bool? ?? false,
+        micDeviceUid: j['micDeviceUid'] as String?,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
         // falls back to the 20 GB default.

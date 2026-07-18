@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:rewind/src/obs/app_info.dart';
+import 'package:rewind/src/obs/audio_input_info.dart';
 import 'package:rewind/src/obs/capture_engine.dart';
 import 'package:rewind/src/obs/display_info.dart';
 
@@ -159,6 +160,34 @@ class FakeCaptureEngine implements CaptureEngine {
 
   /// Last value passed to [setMicEnabled].
   bool? micEnabled;
+
+  /// Two fake audio inputs, mirroring what a real machine's microphones
+  /// would report from `rewind_list_audio_inputs_json`. Mutable so tests can
+  /// exercise the empty-list ("picker hides") case.
+  List<AudioInputInfo> audioInputs = const [
+    AudioInputInfo(uid: 'mic-1', name: 'Built-in Microphone', isDefault: true),
+    AudioInputInfo(uid: 'mic-2', name: 'USB Microphone'),
+  ];
+
+  @override
+  List<AudioInputInfo> listAudioInputs() {
+    calls.add('listAudioInputs');
+    return audioInputs;
+  }
+
+  /// Every uid passed to [setMicDevice], in call order (null entries record
+  /// a revert-to-default call).
+  final List<String?> setMicDeviceCalls = [];
+
+  /// Last value passed to [setMicDevice].
+  String? micDeviceUid;
+
+  @override
+  void setMicDevice(String? uid) {
+    calls.add('setMicDevice:${uid ?? 'null'}');
+    setMicDeviceCalls.add(uid);
+    micDeviceUid = uid;
+  }
 
   @override
   bool setCaptureQuality(int fps, int maxHeight) {

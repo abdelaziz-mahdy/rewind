@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/obs/app_info.dart';
+import 'package:rewind/src/obs/audio_input_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
@@ -699,6 +700,110 @@ void main() {
       expect(calls, isNotEmpty);
       expect(calls.last.captureMicrophone, isTrue);
     });
+
+    const micInputs = [
+      AudioInputInfo(
+          uid: 'mic-1', name: 'Built-in Microphone', isDefault: true),
+      AudioInputInfo(uid: 'mic-2', name: 'USB Microphone'),
+    ];
+
+    testWidgets(
+        'no audio inputs hides the Microphone sub-row even with the mic on',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+        audioInputs: const [],
+      )));
+
+      expect(find.text('Microphone'), findsNothing);
+    });
+
+    testWidgets(
+        'mic off hides the Microphone sub-row even with audio inputs listed',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: false),
+        onChanged: (_) async {},
+        displays: const [],
+        audioInputs: micInputs,
+      )));
+
+      expect(find.text('Microphone'), findsNothing);
+    });
+
+    testWidgets(
+        'mic on with audio inputs shows the Microphone sub-row, '
+        'defaulting to "System default"', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+        audioInputs: micInputs,
+      )));
+
+      expect(find.text('Microphone'), findsOneWidget);
+      expect(find.text('System default'), findsOneWidget);
+    });
+
+    testWidgets('picking a device writes micDeviceUid and fires onChanged',
+        (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        audioInputs: micInputs,
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micDeviceDropdown')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('USB Microphone').last);
+      await t.pumpAndSettle();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.micDeviceUid, 'mic-2');
+    });
+
+    testWidgets('picking "System default" reverts micDeviceUid to null',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings =
+          AppSettings(captureMicrophone: true, micDeviceUid: 'mic-1');
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        audioInputs: micInputs,
+      )));
+
+      expect(find.text('Built-in Microphone'), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('micDeviceDropdown')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('System default').last);
+      await t.pumpAndSettle();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.micDeviceUid, isNull);
+    });
+
+    testWidgets(
+        'a saved uid not in audioInputs shows as "System default" without '
+        'touching the persisted setting', (t) async {
+      final settings =
+          AppSettings(captureMicrophone: true, micDeviceUid: 'mic-unplugged');
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        audioInputs: micInputs,
+      )));
+
+      expect(find.text('System default'), findsOneWidget);
+      expect(settings.micDeviceUid, 'mic-unplugged');
+    });
   });
 
   group('Storage section', () {
@@ -738,8 +843,7 @@ void main() {
       await t.enterText(field, 'abc');
       await blur(t);
       expect(settings.maxStorageGb, 5);
-      expect(
-          t.widget<TextField>(field).controller!.text, '5');
+      expect(t.widget<TextField>(field).controller!.text, '5');
       expect(calls, isNotEmpty);
     });
 

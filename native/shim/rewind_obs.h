@@ -134,6 +134,31 @@ int rewind_set_capture_window(uint32_t window_id);
  * Returns 0 on success. */
 int rewind_set_mic_enabled(int enabled);
 
+/* Enumerate audio INPUT devices (microphones) as a compact JSON array
+ * written into `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
+ *   [{"uid":"...","name":"...","default":true|false}]
+ * ("uid" is a CoreAudio device UID (kAudioDevicePropertyDeviceUID) on
+ * macOS — round-trip it through rewind_set_mic_device unchanged; "default"
+ * marks the system's current default input device.) Windows/Linux/stub
+ * always report an empty array — device enumeration isn't implemented
+ * there yet (not hardware-validated in this task); callers must treat an
+ * empty list as "hide the picker", never synthesize fake devices. Returns
+ * 0 on success, non-zero if enumeration failed or the buffer was too small
+ * (see rewind_last_error). Safe to call before rewind_obs_init. */
+int rewind_list_audio_inputs_json(char *json_out, int json_cap);
+
+/* Selects the microphone input device by uid (from
+ * rewind_list_audio_inputs_json), or NULL/"" for the system default. Safe
+ * to call before rewind_obs_init (the preference is remembered and applied
+ * whenever the mic source is next built — rewind_obs_init's best-effort mic
+ * setup, or rewind_set_mic_enabled's create path); if the mic source is
+ * already live, it is rebuilt on the new device immediately, the same way
+ * rewind_set_mic_enabled builds it in the first place. No return value:
+ * there's no failure mode a caller need act on — a bad/unplugged uid just
+ * fails the rebuild, logged the same way an unavailable mic source always
+ * is (see rw_plat_log_mic_unavailable). */
+void rewind_set_mic_device(const char *uid_or_null);
+
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
  * `max_height` caps the output height (aspect preserved) when the display
  * is taller, or 0 for source resolution. Applied at rewind_obs_init — call

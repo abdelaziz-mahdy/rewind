@@ -77,6 +77,11 @@ extern obs_source_t *g_sysaudio;
 extern obs_source_t *g_mic;
 extern int g_mic_enabled;
 
+/* Preferred microphone device uid (see rewind_set_mic_device), "" = system
+ * default. Consulted by rw_plat_create_mic_source, same way g_app_bundle_id
+ * is consulted by the capture-source builders. */
+extern char g_mic_device_uid[256];
+
 #define AUDIO_MODE_OFF 0
 #define AUDIO_MODE_ALL 1
 #define AUDIO_MODE_APP 2
@@ -182,13 +187,13 @@ int rw_plat_init_capture_source(void);
  * (rewind_obs_init `goto cleanup`s on non-zero). */
 int rw_plat_create_encoders(void);
 
-/* Creates (but does not attach to a channel) a microphone source. Pure
- * creation, no logging/error-setting side effects — the two pre-split call
- * sites (rewind_obs_init vs. rewind_set_mic_enabled) already handled a
- * failed create differently (one logs a warning and continues, the other
- * fails the call), so that decision stays with the caller; see
- * rw_plat_log_mic_unavailable() for the former's platform-specific log
- * line. */
+/* Creates (but does not attach to a channel) a microphone source, targeting
+ * g_mic_device_uid (empty string = platform's "default" device_id). Pure
+ * creation, no logging/error-setting side effects — the pre-split call
+ * sites (rewind_obs_init, rewind_set_mic_enabled, rewind_set_mic_device)
+ * already handle a failed create differently (some log a warning and
+ * continue, others fail the call), so that decision stays with the caller;
+ * see rw_plat_log_mic_unavailable() for the platform-specific log line. */
 obs_source_t *rw_plat_create_mic_source(void);
 
 /* Logs the platform-specific "mic source unavailable" warning (exact
@@ -209,6 +214,14 @@ void rw_plat_query_main_display_size(uint32_t *width, uint32_t *height);
 void rw_plat_main_display_uuid(char *out, size_t out_size);
 int rw_plat_list_displays_json(char *json_out, int json_cap);
 int rw_plat_list_capturable_apps_json(char *json_out, int json_cap);
+
+/* Enumerates audio INPUT devices (microphones) — see
+ * rewind_list_audio_inputs_json's doc comment in rewind_obs.h for the exact
+ * JSON shape and per-platform status (macOS: real CoreAudio enumeration;
+ * Windows/Linux: "[]", not yet implemented — see each backend's own TODO
+ * comment). Returns 0 on success, non-zero (with set_error) on failure or a
+ * too-small buffer. */
+int rw_plat_list_audio_inputs_json(char *json_out, int json_cap);
 
 /* -- audio -- */
 

@@ -7,6 +7,14 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Microphone input device picker**: "Record my microphone" now targets a
+  specific input device instead of always using the system default. Pick
+  one from Settings → Capture → Audio's new "Microphone" sub-row (mirroring
+  the existing "From" row under system sound) — "System default" plus every
+  enumerated input; a saved device that's since been unplugged just shows
+  as "System default" without losing the choice. macOS only for now
+  (CoreAudio device enumeration); Windows/Linux enumerate as empty and hide
+  the picker until their backends grow the same device listing.
 - **Always-on performance telemetry**: Rewind now samples its own CPU%/RSS
   and — the actually load-bearing signal for "capture is causing input lag"
   reports — libobs's frame-health counters (lagged/skipped frames) every
