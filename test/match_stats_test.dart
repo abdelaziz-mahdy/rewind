@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/match_stats.dart';
+import 'package:rewind/src/events/game_event.dart';
 
 void main() {
   late Directory tmp;
@@ -227,6 +228,103 @@ void main() {
     expect(s.allies, [const MatchPlayer(championName: 'Lux')]);
     expect(s.enemies, [const MatchPlayer(championName: 'Zed')]);
     expect(s.allies.single.riotId, isNull);
+  });
+
+  group('MatchEventStamp / MatchStats.events', () {
+    test('recordEvent appends a stamp for every kind, not just kill/death', () {
+      final store = MatchStatsStore(dir: tmp);
+      final t1 = start.add(const Duration(seconds: 1));
+      final t2 = start.add(const Duration(seconds: 2));
+      store.recordEvent('league_of_legends', start, GameEventKind.kill, t1);
+      store.recordEvent(
+          'league_of_legends', start, GameEventKind.dragonKill, t2);
+
+      final s = store.statsFor('league_of_legends', start)!;
+      expect(s.events, [
+        MatchEventStamp(kind: GameEventKind.kill, at: t1),
+        MatchEventStamp(kind: GameEventKind.dragonKill, at: t2),
+      ]);
+    });
+
+    test(
+        'recordEvent is the single path: recordKill/recordDeath still bump '
+        'counts exactly once each (no double-counting)', () {
+      final store = MatchStatsStore(dir: tmp);
+      store.recordKill('league_of_legends', start);
+      store.recordKill('league_of_legends', start);
+      store.recordDeath('league_of_legends', start);
+
+      final s = store.statsFor('league_of_legends', start)!;
+      expect(s.kills, 2);
+      expect(s.deaths, 1);
+      // Every recordKill/recordDeath call also lands exactly one event
+      // stamp — three calls, three stamps, none dropped or duplicated.
+      expect(s.events, hasLength(3));
+      expect(s.events.where((e) => e.kind == GameEventKind.kill), hasLength(2));
+      expect(
+          s.events.where((e) => e.kind == GameEventKind.death), hasLength(1));
+    });
+
+    test('a non-combat kind (e.g. victory) is stamped but never counted', () {
+      final store = MatchStatsStore(dir: tmp);
+      store.recordEvent(
+          'league_of_legends', start, GameEventKind.victory, start);
+
+      final s = store.statsFor('league_of_legends', start)!;
+      expect(s.kills, 0);
+      expect(s.deaths, 0);
+      expect(
+          s.events, [MatchEventStamp(kind: GameEventKind.victory, at: start)]);
+    });
+
+    test('events round-trip through matches.json', () async {
+      final store = MatchStatsStore(dir: tmp);
+      final at = start.add(const Duration(seconds: 30));
+      store.recordEvent(
+          'league_of_legends', start, GameEventKind.pentaKill, at);
+      await store.save();
+
+      final loaded = await MatchStatsStore.load(tmp);
+      final s = loaded.statsFor('league_of_legends', start)!;
+      expect(
+          s.events, [MatchEventStamp(kind: GameEventKind.pentaKill, at: at)]);
+    });
+
+    test(
+        'an absent `events` key (pre-feature matches.json) loads as empty, '
+        'not a crash', () async {
+      File('${tmp.path}/matches.json').writeAsStringSync(jsonEncode({
+        'matches': [
+          {
+            'gameId': 'league_of_legends',
+            'startedAt': start.toIso8601String(),
+            'kills': 1,
+            'deaths': 0,
+          }
+        ]
+      }));
+
+      final loaded = await MatchStatsStore.load(tmp);
+      final s = loaded.statsFor('league_of_legends', start)!;
+      expect(s.events, isEmpty);
+    });
+
+    test('the event log is capped, dropping the oldest beyond the cap', () {
+      final store = MatchStatsStore(dir: tmp);
+      for (var i = 0; i < MatchStatsStore.maxEvents + 10; i++) {
+        store.recordEvent('league_of_legends', start, GameEventKind.other,
+            start.add(Duration(seconds: i)));
+      }
+
+      final s = store.statsFor('league_of_legends', start)!;
+      expect(s.events, hasLength(MatchStatsStore.maxEvents));
+      // The oldest 10 were dropped: the first surviving stamp is #10.
+      expect(s.events.first.at, start.add(const Duration(seconds: 10)));
+      expect(
+        s.events.last.at,
+        start.add(const Duration(seconds: 509)),
+      );
+    });
   });
 
   group('MatchPlayer.fromDynamic', () {

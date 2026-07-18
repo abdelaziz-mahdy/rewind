@@ -308,6 +308,7 @@ class MatchClipsScreen extends StatelessWidget {
                 library: library,
                 thumbnails: thumbnails,
                 showGameName: false,
+                events: s?.events ?? const [],
               ),
             ),
           ),
