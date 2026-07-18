@@ -567,6 +567,17 @@ int rw_plat_check_permission(void) {
     return 0;
 }
 
+/* Pollable/on-demand variants for onboarding UI (see rewind_obs.h) — unlike
+ * rw_plat_check_permission() above, these never fail the call; they just
+ * report or request the grant state so the UI can poll it live. */
+int rw_plat_preflight_screen_permission(void) {
+    return CGPreflightScreenCaptureAccess() ? 1 : 0;
+}
+
+int rw_plat_request_screen_permission(void) {
+    return CGRequestScreenCaptureAccess() ? 1 : 0;
+}
+
 /* Windows needs an explicit obs_add_data_path() call here (see the Windows
  * backend); macOS's find_libobs_data_file() always resolves against the
  * libobs.framework's own bundled Resources/, so nothing is needed. */

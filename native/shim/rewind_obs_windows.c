@@ -689,6 +689,16 @@ int rw_plat_check_permission(void) {
     return 0;
 }
 
+/* No OS-level screen-capture permission gate on Windows (see above) — always
+ * report/return granted. */
+int rw_plat_preflight_screen_permission(void) {
+    return 1;
+}
+
+int rw_plat_request_screen_permission(void) {
+    return 1;
+}
+
 /* libobs' own core data (default.effect and friends — needed by
  * obs_reset_video() to set up scaling/color-conversion shaders) is looked
  * up via obs_find_data_file(), which tries find_libobs_data_file() FIRST —

@@ -79,4 +79,10 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setAudioMode(int mode) => _obs.setAudioMode(mode) == 0;
+
+  @override
+  bool preflightScreenPermission() => _obs.preflightScreenPermission();
+
+  @override
+  bool requestScreenPermission() => _obs.requestScreenPermission();
 }

@@ -149,6 +149,21 @@ int rewind_set_capture_quality(int fps, int max_height);
  * init (stored) or after (rebuilds the source live). Returns 0. */
 int rewind_set_audio_mode(int mode);
 
+/* Reports whether screen-capture permission is CURRENTLY granted, without
+ * prompting — safe to poll repeatedly (e.g. once a second from onboarding
+ * UI) to detect a grant that happened in System Settings while the app is
+ * running. macOS: CGPreflightScreenCaptureAccess(). Windows/Linux/stub:
+ * always 1 (no equivalent OS gate). Returns 1 if granted, 0 if not. */
+int rewind_preflight_screen_permission(void);
+
+/* Triggers the OS permission prompt where one exists (macOS:
+ * CGRequestScreenCaptureAccess() — shows the system dialog the first time;
+ * a no-op if already granted or already asked and denied, in which case the
+ * user must be sent to System Settings instead). Returns the resulting
+ * granted state, same as rewind_preflight_screen_permission(). Windows/
+ * Linux/stub: always 1. */
+int rewind_request_screen_permission(void);
+
 #ifdef __cplusplus
 }
 #endif

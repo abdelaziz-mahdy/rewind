@@ -175,4 +175,21 @@ class FakeCaptureEngine implements CaptureEngine {
 
   /// Last value passed to [setAudioMode].
   int? audioMode;
+
+  /// Settable current screen-capture permission state, mirroring the real
+  /// engine's live/pollable grant state — tests flip this directly to
+  /// simulate a grant happening in System Settings while the app runs.
+  bool screenPermissionGranted = true;
+
+  @override
+  bool preflightScreenPermission() {
+    calls.add('preflightScreenPermission');
+    return screenPermissionGranted;
+  }
+
+  @override
+  bool requestScreenPermission() {
+    calls.add('requestScreenPermission');
+    return screenPermissionGranted;
+  }
 }

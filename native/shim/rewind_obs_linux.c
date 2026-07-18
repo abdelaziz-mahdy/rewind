@@ -170,6 +170,16 @@ int rw_plat_check_permission(void) {
     return 0;
 }
 
+/* No preflightable/requestable screen-capture permission on Linux (see
+ * above) — always report/return granted. */
+int rw_plat_preflight_screen_permission(void) {
+    return 1;
+}
+
+int rw_plat_request_screen_permission(void) {
+    return 1;
+}
+
 /* libobs' own core data (default.effect and friends) resolution
  * (find_libobs_data_file() in libobs/obs-nix.c) is hardcoded to paths
  * derived from the CMake-configure-time OBS_DATA_PATH / a relative

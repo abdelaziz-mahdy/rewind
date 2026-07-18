@@ -60,6 +60,12 @@ external int _setCaptureQuality(int fps, int maxHeight);
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_audio_mode')
 external int _setAudioMode(int mode);
 
+@Native<Int32 Function()>(symbol: 'rewind_preflight_screen_permission')
+external int _preflightScreenPermission();
+
+@Native<Int32 Function()>(symbol: 'rewind_request_screen_permission')
+external int _requestScreenPermission();
+
 /// Size of the buffer allocated for `rewind_list_displays`'s JSON
 /// out-param. Comfortably covers the display counts Rewind targets (a
 /// handful of monitors); the shim reports truncation via a non-zero return
@@ -191,4 +197,13 @@ class RewindObs {
 
   /// Sets the system/app audio mode (0 = off, 1 = all, 2 = app).
   int setAudioMode(int mode) => _setAudioMode(mode);
+
+  /// True if screen-capture permission is currently granted. Safe to poll
+  /// repeatedly (e.g. from onboarding UI) — never prompts.
+  bool preflightScreenPermission() => _preflightScreenPermission() != 0;
+
+  /// Triggers the OS permission prompt where one exists (a no-op if already
+  /// granted, or already asked and denied). Returns the resulting granted
+  /// state.
+  bool requestScreenPermission() => _requestScreenPermission() != 0;
 }
