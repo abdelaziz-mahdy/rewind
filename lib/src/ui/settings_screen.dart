@@ -9,16 +9,19 @@ import '../hotkey/key_capture.dart';
 import '../obs/app_info.dart';
 import '../obs/display_info.dart';
 import '../settings/app_settings.dart';
+import '../settings/video_preset.dart';
 import 'onboarding_screen.dart';
 import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
-import 'widgets/setting_row.dart';
 
-/// Hotkey, default buffer length, capture display/app, and the follow-the-
-/// game toggle — grouped into tabbed sections (Capture / Hotkey / Quality /
-/// Storage / About), one built at a time. Per-game overrides now live inline
-/// in each game's hub (`game_hub_screen.dart`) instead of a tab here.
+/// Full-page Settings (the research-locked "variant G" design, see
+/// docs/superpowers/specs — settings covers the whole window; its own left
+/// sidebar (§`_SettingsSidebar`) is the ONLY navigation while it's open, the
+/// app rail is hidden by the caller (`shell.dart`)). One GENERAL section
+/// (Capture / Hotkeys / Storage / About) for now; per-game pages land under
+/// a MY GAMES section in a later pass.
+///
 /// `onChanged` is called with the (mutated in place) [AppSettings] whenever
 /// a field commits a valid value — the caller persists it and rebinds the
 /// hotkey / re-targets the capture engine.
@@ -27,7 +30,7 @@ class SettingsScreen extends StatefulWidget {
   final Future<void> Function(AppSettings) onChanged;
 
   /// Connected displays the user can pick as the capture source. The
-  /// "Capture display" section is hidden entirely when this is empty.
+  /// "Capture display" row is hidden entirely when this is empty.
   final List<DisplayInfo> displays;
 
   /// Applications with at least one on-screen window, as an alternative
@@ -62,10 +65,16 @@ class SettingsScreen extends StatefulWidget {
 
   /// Runs the retention policy over the library NOW (the same enforcement
   /// the app runs after saves and on its periodic sweep) and returns the
-  /// clips it removed, so the Storage tab can report what a "Clean up now"
+  /// clips it removed, so the Storage page can report what a "Clean up now"
   /// actually freed. Optional — the row is absent when not wired (tests,
   /// callers without a StorageManager).
   final Future<List<Clip>> Function()? onCleanUpStorage;
+
+  /// The round ✕ button's action: returns to whatever destination was
+  /// showing before Settings was opened. Optional so existing callers/tests
+  /// that don't care about closing don't need to wire it — the button still
+  /// renders (it's a fixed part of the full-page chrome) but no-ops.
+  final VoidCallback? onClose;
 
   const SettingsScreen({
     required this.settings,
@@ -75,12 +84,18 @@ class SettingsScreen extends StatefulWidget {
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
+    this.onClose,
     super.key,
   });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
+
+/// The sidebar's GENERAL section ids — also the `settingsTab:<id>` key
+/// suffix, kept as "Hotkey" (singular) even though its label is "Hotkeys" to
+/// minimize churn against the pre-redesign key.
+enum _SettingsPage { capture, hotkey, storage, about }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late int _bufferSeconds;
@@ -89,11 +104,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _maxStorageController;
   late final TextEditingController _maxAgeController;
 
-  // Real tabs, one section built at a time — replaces the old sticky
-  // jump-nav over one long scroll. Only [_selectedTab]'s section widget is
-  // constructed; switching tabs is a plain setState, not a scroll animation.
-  static const _tabs = ['Capture', 'Hotkey', 'Quality', 'Storage', 'About'];
-  String _selectedTab = _tabs.first;
+  _SettingsPage _selectedPage = _SettingsPage.capture;
+
+  /// Whether the Custom video-preset card has been tapped this session —
+  /// reveals the Resolution/Framerate rows without writing to [AppSettings]
+  /// (see [_selectVideoPreset]). Independent of [_currentVideoPreset]: once
+  /// the user actually edits Resolution/Framerate away from every named
+  /// tier, [_currentVideoPreset] itself derives to [VideoPreset.custom] and
+  /// keeps the rows open on its own.
+  bool _customVideoExpanded = false;
+
+  /// The Capture page's single "› Advanced options" disclosure.
+  bool _advancedOpen = false;
 
   @override
   void initState() {
@@ -125,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// button so a double-click can't run two overlapping enforcement passes.
   bool _cleaningUp = false;
 
-  /// The last run's outcome, shown as the row's footnote until the tab is
+  /// The last run's outcome, shown as the row's footnote until the page is
   /// rebuilt. Null before the first run.
   String? _cleanupResult;
 
@@ -214,6 +236,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// The tier the current raw settings correspond to — drives which preset
+  /// card shows selected, its cost line, and whether Resolution/Framerate
+  /// are visible.
+  VideoPreset get _currentVideoPreset => VideoPreset.of(
+      widget.settings.captureFps, widget.settings.captureMaxHeight);
+
+  /// A named preset applies its values immediately; Custom only reveals the
+  /// per-axis rows without writing anything — picking Custom then walking
+  /// away must not silently change the user's quality.
+  void _selectVideoPreset(VideoPreset preset) {
+    if (preset == VideoPreset.custom) {
+      setState(() => _customVideoExpanded = true);
+      return;
+    }
+    setState(() => _customVideoExpanded = false);
+    preset.applyTo(widget.settings);
+    widget.onChanged(widget.settings);
+  }
+
+  bool _isVideoPresetSelected(VideoPreset preset) =>
+      preset == VideoPreset.custom
+          ? (_currentVideoPreset == VideoPreset.custom || _customVideoExpanded)
+          : (_currentVideoPreset == preset && !_customVideoExpanded);
+
+  bool get _showCustomVideoRows => _isVideoPresetSelected(VideoPreset.custom);
+
+  /// The honest disk-cost line each preset card prints — for a named tier,
+  /// from its own bundled fps/maxHeight; for Custom, from the CURRENT
+  /// settings (there's no bundled recipe to show instead).
+  String _videoPresetCostLine(VideoPreset preset) {
+    final buffer = widget.settings.defaultBufferSeconds;
+    if (preset == VideoPreset.custom) {
+      final mb = estimatedBufferMegabytes(buffer,
+          fps: widget.settings.captureFps,
+          maxHeight: widget.settings.captureMaxHeight);
+      return 'your recipe · ≈ $mb MB';
+    }
+    final mb = estimatedBufferMegabytes(buffer,
+        fps: preset.fps!, maxHeight: preset.maxHeight);
+    final resLabel =
+        preset.maxHeight == null ? 'Source' : '${preset.maxHeight}p';
+    return '$resLabel · ${preset.fps} fps · $buffer s buffer ≈ $mb MB';
+  }
+
   /// See §3.6's "Follow the game" toggle: writes
   /// [AppSettings.autoSwitchCapture] straight through, same as every other
   /// field on this screen.
@@ -225,6 +291,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _handleMicrophoneChanged(bool value) {
     widget.settings.captureMicrophone = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
+  /// The "Record game & system sound" toggle: OFF maps to [AudioMode.off];
+  /// turning it back ON restores [AudioMode.all] (not whatever narrower
+  /// mode was last active) — the toggle's own hint promises "game and app
+  /// sound", i.e. everything, and the "From" sub-row is how a user narrows
+  /// it back down to game-only.
+  void _handleAudioToggleChanged(bool on) {
+    widget.settings.audioMode = on ? AudioMode.all : AudioMode.off;
     setState(() {});
     widget.onChanged(widget.settings);
   }
@@ -290,177 +367,319 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Left-aligned, not centred: everything below it (tabs, labels, rows)
-      // reads off the left edge, so a centred title puts a second, competing
-      // axis on the screen and there's no single edge to scan from.
-      appBar: AppBar(title: const Text('Settings'), centerTitle: false),
-      body: Column(
+      body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(border: Border(bottom: hairlineBorder())),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  for (final t in _tabs)
-                    _SettingsTabButton(
-                      key: ValueKey('settingsTab:$t'),
-                      label: t,
-                      selected: t == _selectedTab,
-                      onTap: () => setState(() => _selectedTab = t),
-                    ),
-                ],
-              ),
-            ),
+          _SettingsSidebar(
+            selected: _selectedPage,
+            onSelect: (p) => setState(() => _selectedPage = p),
           ),
-          // Only the selected tab's section is built — switching tabs is a
-          // plain setState, not a scroll animation, and the other four
-          // sections' widgets (and their controllers/state) simply don't
-          // exist until selected.
           Expanded(
-            child: switch (_selectedTab) {
-              'Capture' => _captureTab(context),
-              'Hotkey' => _hotkeyTab(context),
-              'Quality' => _qualityTab(context),
-              'Storage' => _storageTab(context),
-              'About' => _aboutTab(context),
-              _ => const SizedBox.shrink(),
-            },
+            child: Stack(
+              children: [
+                switch (_selectedPage) {
+                  _SettingsPage.capture => _capturePage(context),
+                  _SettingsPage.hotkey => _hotkeysPage(context),
+                  _SettingsPage.storage => _storagePage(context),
+                  _SettingsPage.about => _aboutPage(context),
+                },
+                Positioned(
+                  top: 18,
+                  right: 22,
+                  child: _CloseButton(onClose: widget.onClose),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Wraps a tab's content in its own scroll view (so a small window still
-  /// works even though each section is now short enough not to need one on a
-  /// normal window) and caps + left-aligns the column beside the rail,
-  /// instead of centering it in the leftover window width.
-  Widget _tabContent(Widget child) {
+  /// Wraps a page's content in its own scroll view, left-aligned and capped
+  /// at [settingsPageContentWidth] — the "variant G" column, narrower than
+  /// the shared [settingsMaxContentWidth] a game hub's panel still uses.
+  Widget _page(BuildContext context, String title, List<Widget> children) {
+    final theme = Theme.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: settingsMaxContentWidth),
-          child: child,
+      padding: const EdgeInsets.fromLTRB(40, 26, 40, 40),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.display),
+            const SizedBox(height: 20),
+            ...children,
+          ],
         ),
       ),
     );
   }
 
-  Widget _captureTab(BuildContext context) {
-    return _tabContent(SettingRows([
-      SettingRow(
-        label: 'Default buffer',
-        // Same choices as a game hub's per-game override (game_hub_screen.
-        // dart): the global default offered no 15 s while a per-game
-        // override did, so the shortest buffer the app advertises ("the
-        // last 15-60 s") couldn't be set as the default.
-        control: SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: '15', label: Text('15 s')),
-            ButtonSegment(value: '30', label: Text('30 s')),
-            ButtonSegment(value: '60', label: Text('60 s')),
-            ButtonSegment(value: 'custom', label: Text('Custom')),
-          ],
-          selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
-          onSelectionChanged: (selection) {
-            final value = selection.first;
-            if (value == 'custom') {
-              _selectCustom();
-            } else {
-              _selectBuffer(int.parse(value));
-            }
-          },
-        ),
-      ),
-      if (_customBuffer)
-        SettingRow(
-          label: 'Custom buffer',
-          control: SizedBox(
-            width: 200,
-            child: TextField(
-              controller: _customBufferController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Seconds (5-300)'),
-              onChanged: _handleCustomBufferChanged,
-            ),
-          ),
-        ),
-      if (widget.displays.isNotEmpty)
-        SettingRow(
-          label: 'Capture display',
-          control: SizedBox(
-            width: 300,
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedDisplayUuid(),
-              isExpanded: true,
-              items: [
-                for (var i = 0; i < widget.displays.length; i++)
-                  DropdownMenuItem(
-                    value: widget.displays[i].uuid,
-                    child: Text(_displayLabel(i, widget.displays[i])),
-                  ),
+  Widget _divider(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Divider(
+            height: 1, thickness: 1, color: context.rewindTokens.hairline),
+      );
+
+  Widget _capturePage(BuildContext context) {
+    return _page(context, 'Capture', [
+      _SettingsSection(
+        title: 'Instant replay',
+        description: 'How far back a saved clip reaches.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '15', label: Text('15 s')),
+                ButtonSegment(value: '30', label: Text('30 s')),
+                ButtonSegment(value: '60', label: Text('60 s')),
+                ButtonSegment(value: 'custom', label: Text('Custom')),
               ],
-              onChanged: _handleDisplayChanged,
+              selected: {_customBuffer ? 'custom' : '$_bufferSeconds'},
+              onSelectionChanged: (selection) {
+                final value = selection.first;
+                if (value == 'custom') {
+                  _selectCustom();
+                } else {
+                  _selectBuffer(int.parse(value));
+                }
+              },
             ),
-          ),
-        ),
-      if (widget.capturableApps.isNotEmpty)
-        SettingRow(
-          label: 'Capture application',
-          control: SizedBox(
-            width: 300,
-            child: DropdownButtonFormField<String?>(
-              initialValue: _selectedAppBundleId(),
-              isExpanded: true,
-              items: [
-                const DropdownMenuItem<String?>(
-                  child: Text('Entire display'),
+            if (_customBuffer) ...[
+              const SizedBox(height: 12),
+              _TextFieldRow(
+                label: 'Custom buffer',
+                field: SizedBox(
+                  width: 200,
+                  child: TextField(
+                    controller: _customBufferController,
+                    keyboardType: TextInputType.number,
+                    decoration:
+                        const InputDecoration(hintText: 'Seconds (5-300)'),
+                    onChanged: _handleCustomBufferChanged,
+                  ),
                 ),
-                for (final app in widget.capturableApps)
-                  DropdownMenuItem<String?>(
-                    value: app.bundleId,
-                    child: Text(app.name),
-                  ),
-              ],
-              onChanged: _handleAppChanged,
+              ),
+            ],
+          ],
+        ),
+      ),
+      _divider(context),
+      _SettingsSection(
+        title: 'Video',
+        description: 'One choice — resolution, framerate and disk cost '
+            'follow it.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _videoPresetGrid(context),
+            if (_showCustomVideoRows) ...[
+              const SizedBox(height: 12),
+              _FieldRow(
+                label: 'Resolution',
+                control: DropdownButtonFormField<int>(
+                  key: const ValueKey('videoResolutionDropdown'),
+                  initialValue: widget.settings.captureMaxHeight ?? 0,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('Source')),
+                    DropdownMenuItem(value: 1440, child: Text('1440p')),
+                    DropdownMenuItem(value: 1080, child: Text('1080p')),
+                    DropdownMenuItem(value: 720, child: Text('720p')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) _handleResolutionChanged(v == 0 ? null : v);
+                  },
+                ),
+              ),
+              _FieldRow(
+                label: 'Framerate',
+                control: SegmentedButton<int>(
+                  key: const ValueKey('fpsSegments'),
+                  segments: const [
+                    ButtonSegment(value: 30, label: Text('30 fps')),
+                    ButtonSegment(value: 60, label: Text('60 fps')),
+                  ],
+                  selected: {widget.settings.captureFps},
+                  onSelectionChanged: (s) => _handleFpsChanged(s.first),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      _divider(context),
+      _SettingsSection(
+        title: 'Audio',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ToggleRow(
+              label: 'Record game & system sound',
+              hint: 'Game and app sound in your clips',
+              value: widget.settings.audioMode != AudioMode.off,
+              switchKey: const ValueKey('recordSystemAudioSwitch'),
+              onChanged: _handleAudioToggleChanged,
             ),
-          ),
-        ),
-      SettingRow(
-        label: 'Follow the game',
-        hint: Text(
-          "Switch capture to a game's window when it launches",
-          style: Theme.of(context).textTheme.bodyMuted,
-        ),
-        control: Switch(
-          key: const ValueKey('autoSwitchCaptureSwitch'),
-          value: widget.settings.autoSwitchCapture,
-          onChanged: _handleAutoSwitchChanged,
+            if (widget.settings.audioMode != AudioMode.off)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.only(left: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                      left: BorderSide(
+                          color: context.rewindTokens.hairline, width: 2)),
+                ),
+                child: _FieldRow(
+                  label: 'From',
+                  control: DropdownButtonFormField<AudioMode>(
+                    key: const ValueKey('audioSourceDropdown'),
+                    initialValue: widget.settings.audioMode == AudioMode.app
+                        ? AudioMode.app
+                        : AudioMode.all,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(
+                          value: AudioMode.all, child: Text('All apps')),
+                      DropdownMenuItem(
+                          value: AudioMode.app, child: Text('Game only')),
+                    ],
+                    onChanged: (m) {
+                      if (m != null) _handleAudioModeChanged(m);
+                    },
+                  ),
+                ),
+              ),
+            _ToggleRow(
+              label: 'Record my microphone',
+              hint: 'Your commentary is included in clips',
+              value: widget.settings.captureMicrophone,
+              switchKey: const ValueKey('captureMicrophoneSwitch'),
+              onChanged: _handleMicrophoneChanged,
+            ),
+          ],
         ),
       ),
-      SettingRow(
-        label: 'Capture microphone',
-        hint: Text(
-          'Mix your mic into clips and recordings, alongside system audio',
-          style: Theme.of(context).textTheme.bodyMuted,
-        ),
-        control: Switch(
-          key: const ValueKey('captureMicrophoneSwitch'),
-          value: widget.settings.captureMicrophone,
-          onChanged: _handleMicrophoneChanged,
+      const SizedBox(height: 4),
+      _AdvancedDisclosure(
+        open: _advancedOpen,
+        onToggle: () => setState(() => _advancedOpen = !_advancedOpen),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.displays.isNotEmpty)
+              _FieldRow(
+                label: 'Capture display',
+                control: DropdownButtonFormField<String>(
+                  initialValue: _selectedDisplayUuid(),
+                  isExpanded: true,
+                  items: [
+                    for (var i = 0; i < widget.displays.length; i++)
+                      DropdownMenuItem(
+                        value: widget.displays[i].uuid,
+                        child: Text(_displayLabel(i, widget.displays[i])),
+                      ),
+                  ],
+                  onChanged: _handleDisplayChanged,
+                ),
+              ),
+            if (widget.capturableApps.isNotEmpty)
+              _FieldRow(
+                label: 'Capture application',
+                control: DropdownButtonFormField<String?>(
+                  initialValue: _selectedAppBundleId(),
+                  isExpanded: true,
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      child: Text('Entire display'),
+                    ),
+                    for (final app in widget.capturableApps)
+                      DropdownMenuItem<String?>(
+                        value: app.bundleId,
+                        child: Text(app.name),
+                      ),
+                  ],
+                  onChanged: _handleAppChanged,
+                ),
+              ),
+            _ToggleRow(
+              label: 'Follow the game',
+              hint: "Switch capture to a game's window when it launches",
+              value: widget.settings.autoSwitchCapture,
+              switchKey: const ValueKey('autoSwitchCaptureSwitch'),
+              onChanged: _handleAutoSwitchChanged,
+            ),
+          ],
         ),
       ),
-    ]));
+    ]);
   }
 
-  Widget _hotkeyTab(BuildContext context) {
-    return _tabContent(SettingRows([
-      SettingRow(
+  Widget _videoPresetGrid(BuildContext context) {
+    Widget cardFor(VideoPreset preset) {
+      final (title, description) = switch (preset) {
+        VideoPreset.performance => (
+            'Performance',
+            'Lightest on your Mac and disk — great for quick moments.'
+          ),
+        VideoPreset.balanced => (
+            'Balanced',
+            'Smooth 60 fps at a sensible file size — right for most clips.'
+          ),
+        VideoPreset.high => (
+            'High',
+            'Sharper and smoother for big plays — uses noticeably more '
+                'disk.'
+          ),
+        VideoPreset.custom => (
+            'Custom',
+            'Pick resolution and framerate yourself — including native res.'
+          ),
+      };
+      return _PresetCard(
+        key: ValueKey('videoPreset:${preset.name}'),
+        title: title,
+        description: description,
+        costLine: _videoPresetCostLine(preset),
+        selected: _isVideoPresetSelected(preset),
+        recommended: preset == VideoPreset.balanced,
+        onTap: () => _selectVideoPreset(preset),
+      );
+    }
+
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: cardFor(VideoPreset.performance)),
+              const SizedBox(width: 10),
+              Expanded(child: cardFor(VideoPreset.balanced)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: cardFor(VideoPreset.high)),
+              const SizedBox(width: 10),
+              Expanded(child: cardFor(VideoPreset.custom)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _hotkeysPage(BuildContext context) {
+    return _page(context, 'Hotkeys', [
+      _FieldRow(
         label: 'Save clip',
         control: SizedBox(
           width: 300,
@@ -472,7 +691,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
-      SettingRow(
+      _FieldRow(
         label: 'Record',
         control: SizedBox(
           width: 300,
@@ -484,217 +703,144 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
-    ]));
+    ]);
   }
 
-  Widget _qualityTab(BuildContext context) {
-    return _tabContent(SettingRows([
-      SettingRow(
-        label: 'Framerate',
-        control: SegmentedButton<int>(
-          key: const ValueKey('fpsSegments'),
-          segments: const [
-            ButtonSegment(value: 30, label: Text('30 fps')),
-            ButtonSegment(value: 60, label: Text('60 fps')),
-          ],
-          selected: {widget.settings.captureFps},
-          onSelectionChanged: (s) => _handleFpsChanged(s.first),
+  Widget _storagePage(BuildContext context) {
+    return _page(context, 'Storage', [
+      if (widget.library case final lib?) ...[
+        ListenableBuilder(
+          listenable: lib,
+          builder: (context, _) => Text(
+            '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
+            style: Theme.of(context).textTheme.bodyMuted,
+          ),
         ),
-      ),
-      SettingRow(
-        label: 'Resolution',
-        control: SegmentedButton<int>(
-          key: const ValueKey('resolutionSegments'),
-          // 0 stands for "source" (null maxHeight); the segments map to the
-          // output-height cap.
-          segments: const [
-            ButtonSegment(value: 0, label: Text('Source')),
-            ButtonSegment(value: 1440, label: Text('1440p')),
-            ButtonSegment(value: 1080, label: Text('1080p')),
-            ButtonSegment(value: 720, label: Text('720p')),
-          ],
-          selected: {widget.settings.captureMaxHeight ?? 0},
-          onSelectionChanged: (s) =>
-              _handleResolutionChanged(s.first == 0 ? null : s.first),
-        ),
-        footnote: 'Higher framerate and resolution mean smoother, sharper '
-            'clips but more CPU and disk. Applies on next launch.',
-      ),
-      SettingRow(
-        label: 'Game / system audio',
-        control: SegmentedButton<AudioMode>(
-          key: const ValueKey('audioModeSegments'),
-          segments: const [
-            ButtonSegment(value: AudioMode.off, label: Text('None')),
-            ButtonSegment(value: AudioMode.app, label: Text('Game only')),
-            ButtonSegment(value: AudioMode.all, label: Text('All apps')),
-          ],
-          selected: {widget.settings.audioMode},
-          onSelectionChanged: (s) => _handleAudioModeChanged(s.first),
-        ),
-        footnote: switch (widget.settings.audioMode) {
-          AudioMode.off =>
-            'No system audio. Clips are silent unless the mic is on.',
-          AudioMode.app =>
-            "Only the captured game/app's sound (no Discord, music, etc.). "
-                'Requires a specific app as the capture source.',
-          AudioMode.all => "Every app's sound (desktop audio).",
-        },
-      ),
-    ]));
-  }
-
-  Widget _storageTab(BuildContext context) {
-    return _tabContent(Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.library case final lib?) ...[
-          ListenableBuilder(
-            listenable: lib,
-            builder: (context, _) => Text(
-              '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
-              style: Theme.of(context).textTheme.bodyMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        SettingRows([
-          SettingRow(
-            label: 'Max storage (GB)',
-            control: SizedBox(
-              width: 200,
-              child: TextField(
-                key: const ValueKey('maxStorageField'),
-                controller: _maxStorageController,
-                keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(hintText: 'Blank = unlimited'),
-                onChanged: (v) => _handleLimitChanged(
-                    v, (gb) => widget.settings.maxStorageGb = gb),
-              ),
-            ),
-          ),
-          SettingRow(
-            label: 'Delete clips older than (days)',
-            control: SizedBox(
-              width: 200,
-              child: TextField(
-                key: const ValueKey('maxAgeField'),
-                controller: _maxAgeController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(hintText: 'Blank = never'),
-                onChanged: (v) => _handleLimitChanged(
-                    v, (days) => widget.settings.maxClipAgeDays = days),
-              ),
-            ),
-            footnote: 'Oldest clips are removed first when a limit is hit. '
-                'Protected clips are never auto-deleted.',
-          ),
-          if (widget.onCleanUpStorage != null)
-            SettingRow(
-              label: 'Clean up now',
-              hint: Text(
-                'Apply the limits above immediately instead of waiting '
-                'for the automatic sweep.',
-                style: Theme.of(context).textTheme.bodyMuted,
-              ),
-              control: OutlinedButton(
-                key: const ValueKey('cleanUpStorageButton'),
-                onPressed: _cleaningUp ? null : _cleanUpStorage,
-                child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
-              ),
-              footnote: _cleanupResult,
-            ),
-          SettingRow(
-            label: 'Recordings folder',
-            hint: Text(
-              resolveClipsDirPath(widget.settings.clipsDirPath),
-              key: const ValueKey('clipsDirLabel'),
-              style: Theme.of(context).textTheme.bodyMuted,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-            control: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton(
-                  key: const ValueKey('chooseClipsDirButton'),
-                  onPressed: _pickClipsDir,
-                  child: const Text('Choose…'),
-                ),
-                if (widget.settings.clipsDirPath != null)
-                  TextButton(
-                    key: const ValueKey('resetClipsDirButton'),
-                    onPressed: _resetClipsDir,
-                    child: const Text('Reset'),
-                  ),
-              ],
-            ),
-            footnote:
-                'Applies on next launch. Existing clips stay where they are.',
-          ),
-        ]),
+        const SizedBox(height: 16),
       ],
-    ));
+      _TextFieldRow(
+        label: 'Max storage (GB)',
+        field: SizedBox(
+          width: 200,
+          child: TextField(
+            key: const ValueKey('maxStorageField'),
+            controller: _maxStorageController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: 'Blank = unlimited'),
+            onChanged: (v) => _handleLimitChanged(
+                v, (gb) => widget.settings.maxStorageGb = gb),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      _TextFieldRow(
+        label: 'Delete clips older than (days)',
+        field: SizedBox(
+          width: 200,
+          child: TextField(
+            key: const ValueKey('maxAgeField'),
+            controller: _maxAgeController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: 'Blank = never'),
+            onChanged: (v) => _handleLimitChanged(
+                v, (days) => widget.settings.maxClipAgeDays = days),
+          ),
+        ),
+        footnote: 'Oldest clips are removed first when a limit is hit. '
+            'Protected clips are never auto-deleted.',
+      ),
+      if (widget.onCleanUpStorage != null)
+        _TrailingRow(
+          label: 'Clean up now',
+          hint: 'Apply the limits above immediately instead of waiting '
+              'for the automatic sweep.',
+          trailing: OutlinedButton(
+            key: const ValueKey('cleanUpStorageButton'),
+            onPressed: _cleaningUp ? null : _cleanUpStorage,
+            child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
+          ),
+          footnote: _cleanupResult,
+        ),
+      _TrailingRow(
+        label: 'Recordings folder',
+        hint: resolveClipsDirPath(widget.settings.clipsDirPath),
+        hintKey: const ValueKey('clipsDirLabel'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              key: const ValueKey('chooseClipsDirButton'),
+              onPressed: _pickClipsDir,
+              child: const Text('Choose…'),
+            ),
+            if (widget.settings.clipsDirPath != null)
+              TextButton(
+                key: const ValueKey('resetClipsDirButton'),
+                onPressed: _resetClipsDir,
+                child: const Text('Reset'),
+              ),
+          ],
+        ),
+        footnote: 'Applies on next launch. Existing clips stay where they '
+            'are.',
+      ),
+    ]);
   }
 
   /// About is prose + buttons + the legal disclaimer, not label→control
-  /// pairs, so it deliberately does NOT use [_SettingRow] — a normal column,
-  /// same shape as before.
-  Widget _aboutTab(BuildContext context) {
-    return _tabContent(Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Rewind — open-source instant replay for macOS & Windows. GPLv3.',
-          style: Theme.of(context).textTheme.bodyMuted,
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              key: const ValueKey('showOnboardingButton'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OnboardingScreen(
-                    settings: widget.settings,
-                    onChanged: widget.onChanged,
-                    onDone: () => Navigator.of(context).pop(),
-                  ),
+  /// pairs, so it deliberately doesn't use the field-row grammar — a normal
+  /// column, same shape as before the redesign.
+  Widget _aboutPage(BuildContext context) {
+    return _page(context, 'About', [
+      Text(
+        'Rewind — open-source instant replay for macOS & Windows. GPLv3.',
+        style: Theme.of(context).textTheme.bodyMuted,
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: const ValueKey('showOnboardingButton'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OnboardingScreen(
+                  settings: widget.settings,
+                  onChanged: widget.onChanged,
+                  onDone: () => Navigator.of(context).pop(),
                 ),
               ),
-              icon: const Icon(Icons.school_outlined, size: 18),
-              label: const Text('Getting-started guide'),
             ),
-            OutlinedButton.icon(
-              key: const ValueKey('githubRepoButton'),
-              onPressed: () => openUrl(kRepoUrl),
-              icon: const Icon(Icons.code_outlined, size: 18),
-              label: const Text('GitHub repo'),
-            ),
-            OutlinedButton.icon(
-              key: const ValueKey('reportIssueButton'),
-              onPressed: () => openUrl('$kRepoUrl/issues'),
-              icon: const Icon(Icons.bug_report_outlined, size: 18),
-              label: const Text('Report an issue'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Required, verbatim, by Riot's Developer API Policy ("You must post
-        // the following legal boilerplate to your product in a location
-        // that is readily visible to players") because Rewind reads
-        // League's Live Client Data API and shows Data Dragon art. Do not
-        // reword or hide this. See docs/COMPLIANCE.md.
-        Text(
-          kRiotDisclaimer,
-          key: const ValueKey('riotDisclaimer'),
-          style: Theme.of(context).textTheme.bodyMuted,
-        ),
-      ],
-    ));
+            icon: const Icon(Icons.school_outlined, size: 18),
+            label: const Text('Getting-started guide'),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('githubRepoButton'),
+            onPressed: () => openUrl(kRepoUrl),
+            icon: const Icon(Icons.code_outlined, size: 18),
+            label: const Text('GitHub repo'),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('reportIssueButton'),
+            onPressed: () => openUrl('$kRepoUrl/issues'),
+            icon: const Icon(Icons.bug_report_outlined, size: 18),
+            label: const Text('Report an issue'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      // Required, verbatim, by Riot's Developer API Policy ("You must post
+      // the following legal boilerplate to your product in a location
+      // that is readily visible to players") because Rewind reads
+      // League's Live Client Data API and shows Data Dragon art. Do not
+      // reword or hide this. See docs/COMPLIANCE.md.
+      Text(
+        kRiotDisclaimer,
+        key: const ValueKey('riotDisclaimer'),
+        style: Theme.of(context).textTheme.bodyMuted,
+      ),
+    ]);
   }
 
   static String _displayLabel(int index, DisplayInfo d) =>
@@ -702,17 +848,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
       '${d.isMain ? ' (Main)' : ''}';
 }
 
-/// One tab button in the top strip. Selection is signalled by more than
-/// colour: a bottom indicator bar (present/absent — a real shape cue, not
-/// just a hue change) plus a bolder weight, mirroring the rail's own
-/// selected-row treatment (`nav_rail.dart`'s `_NavItem`/`_GameRow`) and the
-/// event-matrix chips' "add a check, don't just recolour" fix.
-class _SettingsTabButton extends StatelessWidget {
+/// The full-page's left sidebar — the ONLY navigation while Settings is
+/// open (the app rail is hidden by the caller). One "GENERAL" section for
+/// now; a "MY GAMES" section of per-game pages lands in a later pass. Row
+/// selection mirrors the app rail's own `_NavItem` treatment (raised bg + a
+/// left accent bar) so the two navs read as one visual language.
+class _SettingsSidebar extends StatelessWidget {
+  final _SettingsPage selected;
+  final ValueChanged<_SettingsPage> onSelect;
+
+  const _SettingsSidebar({required this.selected, required this.onSelect});
+
+  static const _items = [
+    (
+      _SettingsPage.capture,
+      'settingsTab:Capture',
+      'Capture',
+      Icons.videocam_outlined
+    ),
+    (
+      _SettingsPage.hotkey,
+      'settingsTab:Hotkey',
+      'Hotkeys',
+      Icons.keyboard_outlined
+    ),
+    (
+      _SettingsPage.storage,
+      'settingsTab:Storage',
+      'Storage',
+      Icons.folder_outlined
+    ),
+    (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outline),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Container(
+      width: 200,
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(right: hairlineBorder()),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Text(
+              'GENERAL',
+              style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+            ),
+          ),
+          for (final (page, keyStr, label, icon) in _items)
+            _SidebarItem(
+              key: ValueKey(keyStr),
+              icon: icon,
+              label: label,
+              selected: page == selected,
+              onTap: () => onSelect(page),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One sidebar row: icon + label, a 2px accent left bar and raised-surface
+/// fill when selected — the same non-colour selection cue as the app rail's
+/// `_NavItem` (`widgets/nav_rail.dart`), not just a text-colour change.
+class _SidebarItem extends StatelessWidget {
+  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _SettingsTabButton({
+  const _SidebarItem({
+    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -723,30 +936,441 @@ class _SettingsTabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
+    final color = selected ? tokens.accent : tokens.textMuted;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
-          margin: const EdgeInsets.only(right: 24),
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
+            color: selected ? tokens.surfaceRaised : null,
             border: Border(
-              bottom: BorderSide(
+              left: BorderSide(
                 color: selected ? tokens.accent : Colors.transparent,
-                width: 2,
+                width: tokens.radiusRailIndicator,
               ),
             ),
           ),
-          child: Text(
-            label,
-            style: theme.textTheme.label.copyWith(
-              color: selected ? tokens.accent : tokens.textMuted,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-            ),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: (selected ? theme.textTheme.title : theme.textTheme.body)
+                    .copyWith(color: selected ? tokens.accent : tokens.text),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The round ✕ that returns to whatever destination was showing before
+/// Settings was opened — always rendered (it's the only way out of a
+/// full-page screen with no rail), a no-op when [onClose] isn't wired.
+class _CloseButton extends StatelessWidget {
+  final VoidCallback? onClose;
+
+  const _CloseButton({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: IconButton(
+        key: const ValueKey('settingsCloseButton'),
+        tooltip: 'Close settings',
+        onPressed: () => onClose?.call(),
+        icon: const Icon(Icons.close, size: 16),
+        style: IconButton.styleFrom(
+          foregroundColor: tokens.textMuted,
+          shape: CircleBorder(side: BorderSide(color: tokens.hairline)),
+        ),
+      ),
+    );
+  }
+}
+
+/// A page section: an h3-size header + optional muted one-line description,
+/// then [child] — the whitespace-grouping grammar that replaces the old
+/// bordered [SettingRows] card look inside Settings (see CLAUDE.md's UI
+/// layer rules: no card borders around groups here).
+class _SettingsSection extends StatelessWidget {
+  final String title;
+  final String? description;
+  final Widget child;
+
+  const _SettingsSection({
+    required this.title,
+    this.description,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: theme.textTheme.title),
+        if (description case final d?) ...[
+          const SizedBox(height: 2),
+          Text(d, style: theme.textTheme.bodyMuted),
+        ],
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+}
+
+/// A field row: a short (~150px) left-aligned label, then [control]
+/// immediately after at a shared left edge — for dropdowns/segmented
+/// controls, as opposed to [_ToggleRow] (trailing switch) or
+/// [_TextFieldRow] (label above a text-entry field).
+class _FieldRow extends StatelessWidget {
+  final String label;
+  final Widget control;
+
+  const _FieldRow({required this.label, required this.control});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(width: 150, child: Text(label, style: theme.textTheme.body)),
+          const SizedBox(width: 18),
+          Expanded(child: control),
+        ],
+      ),
+    );
+  }
+}
+
+/// A toggle row: label (+ muted hint beneath it) on the left, a [Switch] at
+/// the trailing edge of the column.
+class _ToggleRow extends StatelessWidget {
+  final String label;
+  final String? hint;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Key? switchKey;
+
+  const _ToggleRow({
+    required this.label,
+    this.hint,
+    required this.value,
+    required this.onChanged,
+    this.switchKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: theme.textTheme.body
+                        .copyWith(fontWeight: FontWeight.w600)),
+                if (hint case final h?) ...[
+                  const SizedBox(height: 2),
+                  Text(h, style: theme.textTheme.bodyMuted),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 18),
+          Switch(key: switchKey, value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+}
+
+/// A text-entry field row: label ABOVE [field] — the one place the
+/// eyetracking research (see CLAUDE.md/the redesign spec) calls for
+/// top-aligned labels instead of [_FieldRow]'s left-aligned ones, since a
+/// field the user types into (not just picks from) is genuine data entry.
+class _TextFieldRow extends StatelessWidget {
+  final String label;
+  final Widget field;
+  final String? footnote;
+
+  const _TextFieldRow(
+      {required this.label, required this.field, this.footnote});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: theme.textTheme.body),
+          const SizedBox(height: 6),
+          field,
+          if (footnote case final f?) ...[
+            const SizedBox(height: 8),
+            Text(f, style: theme.textTheme.bodyMuted),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A generic label(+hint)-left / arbitrary-control-right row, for rows whose
+/// trailing control isn't a [Switch] (a button, a row of buttons) — "Clean
+/// up now" and "Recordings folder".
+class _TrailingRow extends StatelessWidget {
+  final String label;
+  final String? hint;
+  final Key? hintKey;
+  final Widget trailing;
+  final String? footnote;
+
+  const _TrailingRow({
+    required this.label,
+    this.hint,
+    this.hintKey,
+    required this.trailing,
+    this.footnote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: theme.textTheme.body
+                            .copyWith(fontWeight: FontWeight.w600)),
+                    if (hint case final h?) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        h,
+                        key: hintKey,
+                        style: theme.textTheme.bodyMuted,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              trailing,
+            ],
+          ),
+          if (footnote case final f?) ...[
+            const SizedBox(height: 8),
+            Text(f, style: theme.textTheme.bodyMuted),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One video-quality preset card: a radio dot, name (+ a small
+/// "RECOMMENDED" badge on Balanced), an outcome-worded description, and a
+/// mono disk-cost line — see `settings/video_preset.dart`'s design
+/// provenance doc for why outcome cards + Custom beat raw fps/resolution
+/// knobs as the default choice.
+class _PresetCard extends StatelessWidget {
+  final String title;
+  final String description;
+  final String costLine;
+  final bool selected;
+  final bool recommended;
+  final VoidCallback onTap;
+
+  const _PresetCard({
+    required this.title,
+    required this.description,
+    required this.costLine,
+    required this.selected,
+    required this.recommended,
+    required this.onTap,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Material(
+      color: selected
+          ? tokens.accent.withValues(alpha: 0.07)
+          : tokens.surfaceRaised,
+      borderRadius: BorderRadius.circular(tokens.radiusControl),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(tokens.radiusControl),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(tokens.radiusControl),
+            border: Border.all(
+                color: selected ? tokens.accent : Colors.transparent),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  selected ? Icons.radio_button_checked : Icons.circle_outlined,
+                  size: 14,
+                  color: selected ? tokens.accent : tokens.textMuted,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 2,
+                      children: [
+                        Text(title,
+                            style: theme.textTheme.body
+                                .copyWith(fontWeight: FontWeight.w700)),
+                        if (recommended) const _RecommendedBadge(),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      style: theme.textTheme.bodyMuted
+                          .copyWith(color: selected ? tokens.text : null),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      costLine,
+                      style: theme.textTheme.label.copyWith(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w500,
+                        color: selected ? tokens.accent : tokens.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecommendedBadge extends StatelessWidget {
+  const _RecommendedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: tokens.accent),
+        borderRadius: BorderRadius.circular(tokens.radiusChip),
+      ),
+      child: Text(
+        'RECOMMENDED',
+        style: theme.textTheme.micro
+            .copyWith(color: tokens.accent, fontSize: 8.5, letterSpacing: 1),
+      ),
+    );
+  }
+}
+
+/// One "› Advanced options" disclosure per page max: a rotating chevron
+/// button that reveals [child] with an animated size change.
+class _AdvancedDisclosure extends StatelessWidget {
+  final bool open;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  const _AdvancedDisclosure({
+    required this.open,
+    required this.onToggle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            key: const ValueKey('advancedOptionsToggle'),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedRotation(
+                    turns: open ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.chevron_right,
+                        size: 16, color: tokens.textMuted),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('Advanced options',
+                      style: theme.textTheme.body
+                          .copyWith(color: tokens.textMuted)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.topLeft,
+          child: open
+              ? Padding(padding: const EdgeInsets.only(top: 4), child: child)
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
     );
   }
 }

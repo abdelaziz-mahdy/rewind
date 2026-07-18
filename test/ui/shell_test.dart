@@ -13,6 +13,7 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/shell.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/nav_rail.dart';
 import '../fakes/fake_capture_engine.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
@@ -274,16 +275,65 @@ void main() {
     testWidgets('the Settings destination renders the embedded SettingsScreen',
         (t) async {
       await t.pumpWidget(_app(shell()));
-      expect(find.text('Default buffer'), findsNothing);
+      expect(find.text('Instant replay'), findsNothing);
 
       await t.tap(navItem('settings'));
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      // Capture is the default tab; Hotkey is reachable alongside it as a
-      // real tab (only the selected tab's section is built at a time).
-      expect(find.text('Default buffer'), findsOneWidget);
+      // Capture is the default page; Hotkeys is reachable alongside it in
+      // the sidebar (only the selected page's content is built at a time).
+      expect(find.text('Instant replay'), findsOneWidget);
       expect(find.byKey(const ValueKey('settingsTab:Hotkey')), findsOneWidget);
+    });
+
+    testWidgets(
+        'Settings is full-page: it replaces the rail entirely, and the '
+        'close button returns to whatever destination was showing before',
+        (t) async {
+      await t.pumpWidget(_app(shell()));
+      expect(find.byType(NavRail), findsOneWidget);
+
+      await t.tap(navItem('settings'));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(NavRail), findsNothing);
+
+      await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(NavRail), findsOneWidget);
+      // Back on All Clips (the default destination, and the one showing
+      // right before Settings was opened here).
+      expect(find.text('Instant replay'), findsNothing);
+    });
+
+    testWidgets(
+        'the close button returns to the game hub that was showing before '
+        'Settings was opened, not always All Clips', (t) async {
+      library.add(clip('a', 'league_of_legends', GameEventKind.pentaKill,
+          DateTime(2026, 7, 2)));
+      await t.pumpWidget(_app(shell()));
+
+      await t.tap(navGame('league_of_legends'));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.byKey(const ValueKey('gameHubScreen:league_of_legends')),
+          findsOneWidget);
+
+      await t.tap(navItem('settings'));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+      expect(find.byType(NavRail), findsNothing);
+
+      await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(find.byKey(const ValueKey('gameHubScreen:league_of_legends')),
+          findsOneWidget);
     });
 
     testWidgets('the Supported Games screen renders for + Add game', (t) async {

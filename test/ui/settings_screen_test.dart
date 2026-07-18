@@ -21,15 +21,45 @@ Future<void> _startRecording(WidgetTester t) async {
   await t.pump();
 }
 
-/// Switches to the given settings tab ("Capture", "Hotkey", "Quality",
-/// "Storage", "About"). With real tabs, only the selected tab's section is
-/// built — every test reaching into a non-default tab must call this first.
-Future<void> openTab(WidgetTester t, String name) async {
-  await t.tap(find.byKey(ValueKey('settingsTab:$name')));
+/// Switches to the given sidebar page ("Capture", "Hotkey", "Storage",
+/// "About" — the id, not necessarily the displayed label; "Hotkey"'s label
+/// is "Hotkeys"). Only the selected page's content is built — every test
+/// reaching into a non-default page must call this first.
+Future<void> openPage(WidgetTester t, String id) async {
+  await t.tap(find.byKey(ValueKey('settingsTab:$id')));
   await t.pump();
 }
 
+/// Opens the Capture page's single "› Advanced options" disclosure (Capture
+/// display / Capture application / Follow the game all live there now).
+Future<void> openAdvanced(WidgetTester t) async {
+  await t.tap(find.byKey(const ValueKey('advancedOptionsToggle')));
+  await t.pumpAndSettle();
+}
+
 void main() {
+  // The Capture page (Instant replay, the 2x2 preset grid, Audio, and the
+  // Advanced disclosure) is tall enough that the default 800x600 test
+  // viewport pushes "› Advanced options" — and everything a test opens
+  // inside it — below the visible area: `tap()` finds the widget in the
+  // tree but can't hit-test an offset outside the viewport's own bounds.
+  // Same fix as `shell_test.dart`'s `_pumpTall`: widen the viewport for
+  // every test in this file rather than threading `ensureVisible()` through
+  // each one.
+  setUp(() {
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .implicitView!;
+    view.physicalSize = const Size(1000, 1400);
+    view.devicePixelRatio = 1.0;
+  });
+  tearDown(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .implicitView!
+        .reset();
+  });
+
   testWidgets('recording Alt+F10 updates settings and fires onChanged',
       (t) async {
     final calls = <AppSettings>[];
@@ -39,7 +69,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await _startRecording(t);
     expect(find.text('Press keys…'), findsOneWidget);
 
@@ -65,7 +95,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.keyS);
     await t.pump();
@@ -86,7 +116,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.escape);
     await t.pump();
@@ -106,7 +136,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await _startRecording(t);
     await t.sendKeyDownEvent(LogicalKeyboardKey.f9);
     await t.pump();
@@ -130,7 +160,7 @@ void main() {
       onHotkeyRecording: (r) async => recording.add(r),
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     // Start listening, then cancel with Escape.
     await _startRecording(t);
     expect(recording, [true]);
@@ -164,7 +194,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     expect(find.text('Alt+F10'), findsOneWidget); // save hotkey
     expect(find.text('Alt+F9'), findsOneWidget); // record hotkey
   });
@@ -179,7 +209,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
     await t.pump();
     expect(find.text('Press keys…'), findsOneWidget);
@@ -207,7 +237,7 @@ void main() {
       onHotkeyRecording: (r) async => recording.add(r),
     )));
 
-    await openTab(t, 'Hotkey');
+    await openPage(t, 'Hotkey');
     await t.tap(find.byKey(const ValueKey('recordHotkeyField')));
     await t.pump();
     expect(recording, [true]);
@@ -241,7 +271,10 @@ void main() {
       displays: const [],
     )));
 
-    await t.tap(find.text('Custom'));
+    // "Custom" also labels the Video section's Custom preset card further
+    // down the same page — .first is the Instant replay segment, earlier
+    // in the tree.
+    await t.tap(find.text('Custom').first);
     await t.pump();
 
     final field = find.widgetWithText(TextField, 'Seconds (5-300)');
@@ -256,13 +289,14 @@ void main() {
     expect(calls.last.defaultBufferSeconds, 5);
   });
 
-  testWidgets('no displays hides the Capture display section', (t) async {
+  testWidgets('no displays hides the Capture display row', (t) async {
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
       onChanged: (_) async {},
       displays: const [],
     )));
 
+    await openAdvanced(t);
     expect(find.textContaining('Capture display'), findsNothing);
   });
 
@@ -271,7 +305,7 @@ void main() {
     DisplayInfo(uuid: 'uuid-2', width: 2560, height: 1440, isMain: false),
   ];
 
-  testWidgets('capture display section lists displays, main pre-selected',
+  testWidgets('capture display row lists displays, main pre-selected',
       (t) async {
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -279,6 +313,7 @@ void main() {
       displays: displays,
     )));
 
+    await openAdvanced(t);
     expect(find.textContaining('Capture display'), findsOneWidget);
     expect(find.text('Display 1 — 1920×1080 (Main)'), findsOneWidget);
   });
@@ -293,6 +328,7 @@ void main() {
       displays: displays,
     )));
 
+    await openAdvanced(t);
     await t.tap(find.text('Display 1 — 1920×1080 (Main)'));
     await t.pumpAndSettle();
     await t.tap(find.text('Display 2 — 2560×1440').last);
@@ -307,7 +343,7 @@ void main() {
     AppInfo(bundleId: 'com.example.two', name: 'App Two', pid: 2),
   ];
 
-  testWidgets('no capturable apps hides the Capture application section',
+  testWidgets('no capturable apps hides the Capture application row',
       (t) async {
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -316,11 +352,12 @@ void main() {
       capturableApps: const [],
     )));
 
+    await openAdvanced(t);
     expect(find.textContaining('Capture application'), findsNothing);
   });
 
   testWidgets(
-      'capture application section lists apps plus "Entire display", '
+      'capture application row lists apps plus "Entire display", '
       'defaulting to "Entire display"', (t) async {
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
@@ -329,6 +366,7 @@ void main() {
       capturableApps: apps,
     )));
 
+    await openAdvanced(t);
     expect(find.textContaining('Capture application'), findsOneWidget);
     expect(find.text('Entire display'), findsOneWidget);
   });
@@ -344,6 +382,7 @@ void main() {
       capturableApps: apps,
     )));
 
+    await openAdvanced(t);
     await t.tap(find.text('Entire display'));
     await t.pumpAndSettle();
     await t.tap(find.text('App Two').last);
@@ -363,6 +402,7 @@ void main() {
       capturableApps: apps,
     )));
 
+    await openAdvanced(t);
     expect(find.text('App One'), findsOneWidget);
 
     await t.tap(find.text('App One'));
@@ -385,13 +425,14 @@ void main() {
       capturableApps: apps,
     )));
 
+    await openAdvanced(t);
     expect(find.text('Entire display'), findsOneWidget);
     expect(settings.captureAppBundleId, 'com.example.stale');
   });
 
   testWidgets(
-      'the Per-game section is gone — per-game settings live in '
-      'each game\'s hub now', (t) async {
+      'the MY GAMES section is not built yet — per-game settings still '
+      'live in each game\'s hub', (t) async {
     await t.pumpWidget(_app(SettingsScreen(
       settings: AppSettings(),
       onChanged: (_) async {},
@@ -399,84 +440,256 @@ void main() {
     )));
 
     expect(find.textContaining('Per-game'), findsNothing);
+    expect(find.textContaining('MY GAMES'), findsNothing);
   });
 
-  testWidgets('the follow-the-game switch defaults on and reflects settings',
-      (t) async {
-    await t.pumpWidget(_app(SettingsScreen(
-      settings: AppSettings(autoSwitchCapture: false),
-      onChanged: (_) async {},
-      displays: const [],
-    )));
+  group('Advanced options disclosure', () {
+    testWidgets('starts closed and reveals Follow the game on tap', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(autoSwitchCapture: false),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
 
-    expect(find.text('Follow the game'), findsOneWidget);
-    final sw =
-        t.widget<Switch>(find.byKey(const ValueKey('autoSwitchCaptureSwitch')));
-    expect(sw.value, isFalse);
-  });
+      expect(find.text('Follow the game'), findsNothing);
+      await openAdvanced(t);
+      expect(find.text('Follow the game'), findsOneWidget);
+    });
 
-  testWidgets(
-      'toggling follow-the-game writes autoSwitchCapture and fires '
-      'onChanged', (t) async {
-    final calls = <AppSettings>[];
-    await t.pumpWidget(_app(SettingsScreen(
-      settings: AppSettings(),
-      onChanged: (s) async => calls.add(s),
-      displays: const [],
-    )));
+    testWidgets('tapping again collapses it', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
 
-    expect(
-        t
-            .widget<Switch>(
-                find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
-            .value,
-        isTrue);
+      await openAdvanced(t);
+      expect(find.text('Follow the game'), findsOneWidget);
 
-    await t.tap(find.byKey(const ValueKey('autoSwitchCaptureSwitch')));
-    await t.pump();
+      await t.tap(find.byKey(const ValueKey('advancedOptionsToggle')));
+      await t.pumpAndSettle();
+      expect(find.text('Follow the game'), findsNothing);
+    });
 
-    expect(calls, isNotEmpty);
-    expect(calls.last.autoSwitchCapture, isFalse);
-    expect(
-        t
-            .widget<Switch>(
-                find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
-            .value,
-        isFalse);
-  });
-
-  group('Recording quality section', () {
-    testWidgets('framerate, resolution, and system audio commit + persist',
-        (t) async {
-      final settings = AppSettings();
+    testWidgets(
+        'toggling follow-the-game writes autoSwitchCapture and fires '
+        'onChanged', (t) async {
       final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await openAdvanced(t);
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
+              .value,
+          isTrue);
+
+      await t.tap(find.byKey(const ValueKey('autoSwitchCaptureSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.autoSwitchCapture, isFalse);
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('autoSwitchCaptureSwitch')))
+              .value,
+          isFalse);
+    });
+  });
+
+  group('Video presets', () {
+    testWidgets('Balanced (default fps 60 / maxHeight 1080) shows selected',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      // The Performance card's own outcome line is unique to it — proves
+      // all four preset cards actually rendered.
+      expect(
+          find.textContaining(
+              'Lightest on your Mac and disk — great for quick moments.'),
+          findsOneWidget);
+      expect(find.text('RECOMMENDED'), findsOneWidget);
+    });
+
+    testWidgets(
+        'tapping a named preset card writes fps/maxHeight and '
+        'fires onChanged', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
       await t.pumpWidget(_app(SettingsScreen(
         settings: settings,
         onChanged: (s) async => calls.add(s),
         displays: const [],
       )));
 
-      await openTab(t, 'Quality');
+      await t.tap(find.byKey(const ValueKey('videoPreset:high')));
+      await t.pump();
+
+      expect(settings.captureFps, 60);
+      expect(settings.captureMaxHeight, 1440);
+      expect(calls, isNotEmpty);
+
+      await t.tap(find.byKey(const ValueKey('videoPreset:performance')));
+      await t.pump();
+
+      expect(settings.captureFps, 30);
+      expect(settings.captureMaxHeight, 1080);
+      expect(calls.last.captureFps, 30);
+    });
+
+    testWidgets(
+        'tapping Custom only reveals Resolution/Framerate — it does not '
+        'write settings or fire onChanged', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(); // Balanced: fps 60, maxHeight 1080
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      expect(find.text('Resolution'), findsNothing);
+      expect(find.text('Framerate'), findsNothing);
+
+      await t.tap(find.byKey(const ValueKey('videoPreset:custom')));
+      await t.pump();
+
+      expect(find.text('Resolution'), findsOneWidget);
+      expect(find.text('Framerate'), findsOneWidget);
+      expect(settings.captureFps, 60);
+      expect(settings.captureMaxHeight, 1080);
+      expect(calls, isEmpty);
+    });
+
+    testWidgets(
+        'settings that already match no named tier reveal Custom\'s rows '
+        'on their own', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureFps: 30, captureMaxHeight: 720),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.text('Resolution'), findsOneWidget);
+      expect(find.text('Framerate'), findsOneWidget);
+    });
+
+    testWidgets(
+        'editing Framerate under Custom writes settings and updates the '
+        'selected card', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await t.tap(find.byKey(const ValueKey('videoPreset:custom')));
+      await t.pump();
       await t.tap(find.text('30 fps'));
       await t.pump();
+
       expect(settings.captureFps, 30);
-
-      await t.tap(find.text('1080p'));
-      await t.pump();
-      expect(settings.captureMaxHeight, 1080);
-
-      await t.tap(find.text('Source'));
-      await t.pump();
-      expect(settings.captureMaxHeight, isNull);
-
-      await t.tap(find.text('Game only'));
-      await t.pump();
-      expect(settings.audioMode, AudioMode.app);
-
-      await t.tap(find.text('None'));
-      await t.pump();
-      expect(settings.audioMode, AudioMode.off);
       expect(calls, isNotEmpty);
+    });
+  });
+
+  group('Audio section', () {
+    testWidgets('defaults on (AudioMode.all) and shows the "From" sub-row',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('recordSystemAudioSwitch')))
+              .value,
+          isTrue);
+      expect(find.text('From'), findsOneWidget);
+      expect(find.text('All apps'), findsOneWidget);
+    });
+
+    testWidgets(
+        'turning the toggle off sets AudioMode.off and hides the "From" '
+        'row; turning it back on restores AudioMode.all', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await t.tap(find.byKey(const ValueKey('recordSystemAudioSwitch')));
+      await t.pump();
+
+      expect(settings.audioMode, AudioMode.off);
+      expect(find.text('From'), findsNothing);
+      expect(calls, isNotEmpty);
+
+      await t.tap(find.byKey(const ValueKey('recordSystemAudioSwitch')));
+      await t.pump();
+
+      expect(settings.audioMode, AudioMode.all);
+      expect(find.text('From'), findsOneWidget);
+    });
+
+    testWidgets('the "From" sub-row picks Game only (AudioMode.app)',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await t.tap(find.text('All apps'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Game only').last);
+      await t.pumpAndSettle();
+
+      expect(settings.audioMode, AudioMode.app);
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets(
+        'microphone toggle writes captureMicrophone and fires onChanged',
+        (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('captureMicrophoneSwitch')))
+              .value,
+          isFalse);
+
+      await t.tap(find.byKey(const ValueKey('captureMicrophoneSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.captureMicrophone, isTrue);
     });
   });
 
@@ -491,7 +704,7 @@ void main() {
         displays: const [],
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       final field = find.byKey(const ValueKey('maxStorageField'));
       await t.enterText(field, '50');
       await t.pump();
@@ -539,7 +752,7 @@ void main() {
         },
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       await t.tap(find.byKey(const ValueKey('cleanUpStorageButton')));
       await t.pump();
       await t.pump();
@@ -557,7 +770,7 @@ void main() {
         onCleanUpStorage: () async => const [],
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       await t.tap(find.byKey(const ValueKey('cleanUpStorageButton')));
       await t.pump();
       await t.pump();
@@ -572,7 +785,7 @@ void main() {
         displays: const [],
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       expect(find.byKey(const ValueKey('cleanUpStorageButton')), findsNothing);
     });
 
@@ -585,7 +798,7 @@ void main() {
         displays: const [],
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       final field = find.byKey(const ValueKey('maxAgeField'));
       await t.enterText(field, '14');
       await t.pump();
@@ -607,7 +820,7 @@ void main() {
         displays: const [],
       )));
 
-      await openTab(t, 'Storage');
+      await openPage(t, 'Storage');
       expect(find.text('/Volumes/gaming/Clips'), findsOneWidget);
 
       await t.tap(find.byKey(const ValueKey('resetClipsDirButton')));
@@ -667,7 +880,7 @@ void main() {
       displays: const [],
     )));
 
-    await openTab(t, 'About');
+    await openPage(t, 'About');
     final text =
         t.widget<Text>(find.byKey(const ValueKey('riotDisclaimer'))).data!;
     expect(text, kRiotDisclaimer);
@@ -680,19 +893,19 @@ void main() {
         'Inc.');
   });
 
-  group('Tabs', () {
-    testWidgets('the default tab is Capture', (t) async {
+  group('Sidebar', () {
+    testWidgets('the default page is Capture', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
         displays: const [],
       )));
 
-      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.text('Instant replay'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
     });
 
-    testWidgets('switching tabs shows that section and hides the previous one',
+    testWidgets('switching pages shows that page and hides the previous one',
         (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
@@ -700,32 +913,28 @@ void main() {
         displays: const [],
       )));
 
-      expect(find.text('Default buffer'), findsOneWidget);
+      expect(find.text('Instant replay'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
 
-      await openTab(t, 'Hotkey');
+      await openPage(t, 'Hotkey');
       expect(find.text('Save clip'), findsOneWidget);
-      expect(find.text('Default buffer'), findsNothing);
+      expect(find.text('Instant replay'), findsNothing);
 
-      await openTab(t, 'Quality');
-      expect(find.text('Framerate'), findsOneWidget);
+      await openPage(t, 'Storage');
+      expect(find.text('Max storage (GB)'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
 
-      await openTab(t, 'Storage');
-      expect(find.text('Max storage (GB)'), findsOneWidget);
-      expect(find.text('Framerate'), findsNothing);
-
-      await openTab(t, 'About');
+      await openPage(t, 'About');
       expect(find.byKey(const ValueKey('riotDisclaimer')), findsOneWidget);
       expect(find.text('Max storage (GB)'), findsNothing);
 
-      await openTab(t, 'Capture');
-      expect(find.text('Default buffer'), findsOneWidget);
+      await openPage(t, 'Capture');
+      expect(find.text('Instant replay'), findsOneWidget);
       expect(find.byKey(const ValueKey('riotDisclaimer')), findsNothing);
     });
 
     testWidgets(
-        'the selected tab carries a non-colour indicator, not just accent '
+        'the selected page carries a non-colour indicator, not just accent '
         'text', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
@@ -733,22 +942,51 @@ void main() {
         displays: const [],
       )));
 
-      BorderSide bottomBorderOf(String tab) {
+      BorderSide leftBorderOf(String id) {
         final container = t.widget<Container>(find.descendant(
-          of: find.byKey(ValueKey('settingsTab:$tab')),
+          of: find.byKey(ValueKey('settingsTab:$id')),
           matching: find.byType(Container),
         ));
-        return (container.decoration! as BoxDecoration).border!.bottom;
+        final decoration = container.decoration! as BoxDecoration;
+        return (decoration.border! as Border).left;
       }
 
-      // Capture is the default tab: its indicator is drawn, Hotkey's isn't.
-      expect(bottomBorderOf('Capture').width, greaterThan(0));
-      expect(bottomBorderOf('Capture').color, isNot(Colors.transparent));
-      expect(bottomBorderOf('Hotkey').color, Colors.transparent);
+      // Capture is the default page: its indicator is drawn, Hotkey's isn't.
+      expect(leftBorderOf('Capture').width, greaterThan(0));
+      expect(leftBorderOf('Capture').color, isNot(Colors.transparent));
+      expect(leftBorderOf('Hotkey').color, Colors.transparent);
 
-      await openTab(t, 'Hotkey');
-      expect(bottomBorderOf('Hotkey').color, isNot(Colors.transparent));
-      expect(bottomBorderOf('Capture').color, Colors.transparent);
+      await openPage(t, 'Hotkey');
+      expect(leftBorderOf('Hotkey').color, isNot(Colors.transparent));
+      expect(leftBorderOf('Capture').color, Colors.transparent);
     });
+  });
+
+  testWidgets('the close button fires onClose', (t) async {
+    var closed = false;
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+      onClose: () => closed = true,
+    )));
+
+    await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+    await t.pump();
+
+    expect(closed, isTrue);
+  });
+
+  testWidgets('the close button is present and inert without onClose wired',
+      (t) async {
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+
+    expect(find.byKey(const ValueKey('settingsCloseButton')), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+    await t.pump(); // does not throw
   });
 }
