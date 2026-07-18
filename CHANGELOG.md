@@ -184,6 +184,13 @@ All notable changes to Rewind are documented here. Format based on
   capture could bind to the lobby and record the wrong screen. The
   auto-switch now prefers the visible match; the picker still lists every
   window.
+- **League clips no longer record a black screen during matches (macOS)**:
+  League is two separate apps — the client the user browses lobby/champ-select
+  in, and a distinct game app that only exists mid-match. Capture stayed
+  bound to the (by then hidden) client for the whole match, recording nothing
+  but the cursor over a black canvas. Capture now re-aims at the actual game
+  process the moment a match goes live, retrying for a few seconds if the
+  game app's window hasn't enumerated yet (e.g. during the loading screen).
 
 ## [0.1.0] - 2026-07-16
 

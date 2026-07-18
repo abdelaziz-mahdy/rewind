@@ -35,4 +35,15 @@ abstract class GameEventSource {
   /// throughout lobby/champ-select/post-game, not just while a match is
   /// live.
   bool get countsAsPlaying => true;
+
+  /// The app-name/bundle-id substring (case-insensitive) `ClipCoordinator.
+  /// _autoSwitchCaptureFor` matches against currently-capturable windows to
+  /// re-aim capture at this game while it's active. [ProcessWatcherSource]
+  /// reuses the same substring it detects the process with; a vendor-API
+  /// source with no OS process of its own can still supply one when there's
+  /// a distinct app to aim capture at — see `LeagueEventWatcher`, whose
+  /// match-live activation must re-aim at the actual game process, not the
+  /// (unrelated, process-less) source it detects through. Null when there is
+  /// nothing meaningful to match — auto-switch then no-ops for this source.
+  String? get processMatch => null;
 }

@@ -91,6 +91,16 @@ class ClipCoordinator {
   /// deliberately does not touch. Null when no auto-switch is active.
   final ValueNotifier<String?> autoSwitchedAppName = ValueNotifier(null);
 
+  /// Pending [_autoSwitchCaptureFor] retry timers, keyed by gameId — see
+  /// [autoSwitchRetryInterval]'s doc. A later activation of the SAME game
+  /// replaces (cancels) an older retry rather than stacking two loops.
+  final Map<String, Timer> _autoSwitchRetryTimers = {};
+
+  /// Attempt cap for [_autoSwitchCaptureFor]'s retry loop: after this many
+  /// attempts with no window match, it gives up and logs once rather than
+  /// retrying forever.
+  static const _autoSwitchMaxAttempts = 15;
+
   /// How long [_indexClip] waits for a save-reported file to appear on disk
   /// before dropping it (the mux helper can lag the shim's path report
   /// under load). Tests that deliberately report paths with no file (stub
@@ -106,6 +116,16 @@ class ClipCoordinator {
   /// slower (2026-07-14 22:08 log).
   final Duration fileSettleInterval;
 
+  /// How long [_autoSwitchCaptureFor]'s retry loop waits between attempts
+  /// when no capturable window matches [GameActivity.processMatch] yet —
+  /// the gap between a vendor watcher's match-start activation (e.g.
+  /// League's Live Client Data API coming up) and ScreenCaptureKit
+  /// enumerating the game app's window during the loading screen (verified
+  /// live, 2026-07-18: capture stayed bound to the hidden League client and
+  /// recorded 28.7 s of black frames because there was no retry at all).
+  /// Injectable so tests don't sleep for real seconds.
+  final Duration autoSwitchRetryInterval;
+
   ClipCoordinator({
     required this.registry,
     required this.library,
@@ -119,6 +139,7 @@ class ClipCoordinator {
     this.fileSettleInterval = const Duration(milliseconds: 250),
     this.burstQuiet,
     this.manualCoalesceWindow = const Duration(seconds: 3),
+    this.autoSwitchRetryInterval = const Duration(seconds: 2),
   });
 
   /// Hotkey presses within this window of the previous press are absorbed
@@ -202,6 +223,12 @@ class ClipCoordinator {
         // deactivation anyway.
         playingGameIds.value = {...playingGameIds.value}..remove(a.gameId);
         _sessionStartedAt.remove(a.gameId);
+        // A retry loop still hunting for this game's window is pointless
+        // once the game itself is gone — cancel it regardless of whether it
+        // ever found a match (a bare cancel here, separate from
+        // _revertAutoSwitchFor below, which only acts when THIS game is the
+        // one currently switched-to).
+        _cancelAutoSwitchRetry(a.gameId);
         _revertAutoSwitchFor(a);
       }
     });
@@ -255,12 +282,25 @@ class ClipCoordinator {
   /// chosen capture target, which may be unrelated, e.g. a Discord overlay
   /// capture). Reverted by [_revertAutoSwitchFor] when the game exits.
   ///
-  /// No-ops when: there's no capture backend (dev mode), the setting is
-  /// off, the game has no [GameActivity.processMatch] (vendor-API sources
-  /// like League have no OS process to match against a window), or no
-  /// currently-capturable app matches yet (e.g. the game's window hasn't
-  /// appeared yet — no retry loop in this round, a future refinement).
+  /// No-ops when there's no capture backend (dev mode), the setting is off,
+  /// or the game has no [GameActivity.processMatch] (some sources have
+  /// nothing meaningful to match a window against). When no
+  /// currently-capturable app matches yet — e.g. a vendor watcher (League)
+  /// activates during the loading screen, slightly before ScreenCaptureKit
+  /// enumerates the game app's window — retries the same attempt every
+  /// [autoSwitchRetryInterval] up to [_autoSwitchMaxAttempts] times (see
+  /// [_tryAutoSwitch]) before giving up with one warning log. A fresh
+  /// activation of the same game cancels any retry already in flight for it
+  /// (a later activation replaces an older one, never stacks).
   void _autoSwitchCaptureFor(GameActivity a) {
+    _cancelAutoSwitchRetry(a.gameId);
+    _tryAutoSwitch(a, attempt: 1);
+  }
+
+  /// One attempt of [_autoSwitchCaptureFor]'s retry loop. [attempt] is
+  /// 1-based; on the last allowed attempt with still no match, the loop
+  /// gives up instead of scheduling another retry.
+  void _tryAutoSwitch(GameActivity a, {required int attempt}) {
     final capture = engine;
     final processMatch = a.processMatch;
     if (capture == null ||
@@ -289,10 +329,20 @@ class ClipCoordinator {
       }
     }
     if (match == null) {
-      talker
-          .info('Auto-switch: no running window matched ${a.displayName} yet');
+      if (attempt >= _autoSwitchMaxAttempts) {
+        talker.warning('Auto-switch: giving up on ${a.displayName} after '
+            '$attempt attempt(s) — no window ever matched');
+        return;
+      }
+      talker.info('Auto-switch: no running window matched ${a.displayName} '
+          'yet (attempt $attempt/$_autoSwitchMaxAttempts)');
+      _autoSwitchRetryTimers[a.gameId] = Timer(autoSwitchRetryInterval, () {
+        _autoSwitchRetryTimers.remove(a.gameId);
+        _tryAutoSwitch(a, attempt: attempt + 1);
+      });
       return;
     }
+    _cancelAutoSwitchRetry(a.gameId);
 
     // Wine games enumerate with an empty bundle id (no SCK app-capture
     // target exists — see AppInfo.bundleId) but a real window id: capture
@@ -321,6 +371,13 @@ class ClipCoordinator {
     if (!usesOfficialLogo(gameId: a.gameId, bundleId: match.bundleId)) {
       settings.configFor(a.gameId).iconPath ??= match.iconPath;
     }
+  }
+
+  /// Cancels [gameId]'s pending [_autoSwitchCaptureFor] retry, if any —
+  /// called on a successful switch, a fresh activation superseding an older
+  /// retry, the game's deactivation, and [dispose].
+  void _cancelAutoSwitchRetry(String gameId) {
+    _autoSwitchRetryTimers.remove(gameId)?.cancel();
   }
 
   /// The capture-source picker's path for a Wine app (empty
@@ -359,6 +416,10 @@ class ClipCoordinator {
     }
     _burstTimers.clear();
     _pendingBurst.clear();
+    for (final t in _autoSwitchRetryTimers.values) {
+      t.cancel();
+    }
+    _autoSwitchRetryTimers.clear();
   }
 
   /// Saves the pending event burst for [gameId] as ONE clip, labeled with
