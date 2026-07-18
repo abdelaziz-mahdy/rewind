@@ -159,6 +159,34 @@ int rewind_list_audio_inputs_json(char *json_out, int json_cap);
  * is (see rw_plat_log_mic_unavailable). */
 void rewind_set_mic_device(const char *uid_or_null);
 
+/* Set the microphone recording-level multiplier (1.0 = 100%, i.e. unity
+ * gain; clamped to 0.0-2.0). Safe to call before rewind_obs_init (the
+ * preference is remembered and applied whenever the mic source is next
+ * built, same as rewind_set_mic_device); if the mic source already exists,
+ * applied immediately via obs_source_set_volume. No-op in stub mode.
+ * Returns 0 on success. */
+int rewind_set_mic_volume(float volume);
+
+/* Enable/disable live mic monitoring — the mic plays through the system's
+ * default output device (speakers/headphones) while it's on, so the user
+ * can hear what rewind_set_mic_volume sets while adjusting it. Dart-side
+ * this is deliberately transient/never persisted (see AppSettings), but the
+ * shim stores the on/off state like any other mic preference and re-applies
+ * it to every future mic source (re)create, mirroring rewind_set_mic_volume
+ * — simpler than special-casing it, and safe because the Dart caller is
+ * expected to explicitly turn monitoring off before anything that should
+ * end a listen session (see SettingsScreen's doc: dispose, an explicit
+ * toggle, or the mic being switched off). A no-op with no mic source live
+ * (mic capture off, or rewind_obs_init not yet called): the preference is
+ * still stored for next time. As an additional safety net independent of
+ * that caller round-trip, the shim itself always stops monitoring on the
+ * OUTGOING source first (obs_source_set_monitoring_type(..., NONE)) at
+ * every point a mic source is released — rewind_obs_shutdown (which also
+ * resets the stored preference to off), rewind_set_mic_enabled(0), and a
+ * device-change rebuild — so a leaked toggle can never keep audio_monitor
+ * playing past the source's own lifetime. Returns 0 on success. */
+int rewind_set_mic_monitoring(int enabled);
+
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
  * `max_height` caps the output height (aspect preserved) when the display
  * is taller, or 0 for source resolution. Applied at rewind_obs_init — call

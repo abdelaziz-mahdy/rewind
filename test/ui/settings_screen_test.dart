@@ -849,6 +849,130 @@ void main() {
       expect(find.textContaining('System default'), findsOneWidget);
       expect(settings.micDeviceUid, 'mic-unplugged');
     });
+
+    testWidgets('mic volume slider hidden when the mic is off', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: false),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('micVolumeSlider')), findsNothing);
+      expect(find.byKey(const ValueKey('micListenButton')), findsNothing);
+    });
+
+    testWidgets(
+        'mic volume slider shows even with no audio inputs listed (only '
+        'gated on the mic being on, unlike the device dropdown)', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+        audioInputs: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('micVolumeSlider')), findsOneWidget);
+      expect(find.byKey(const ValueKey('micListenButton')), findsOneWidget);
+    });
+
+    testWidgets('mic volume slider shows the current percent label', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true, micVolume: 1.0),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.text('100%'), findsOneWidget);
+    });
+
+    testWidgets(
+        'dragging the mic volume slider writes micVolume on '
+        'drag end, not per pixel', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(captureMicrophone: true);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      final slider = find.byKey(const ValueKey('micVolumeSlider'));
+      expect(slider, findsOneWidget);
+
+      // WidgetTester.drag performs one down->move->up gesture, so this
+      // exercises Slider's onChangeEnd (fired once on release), not the
+      // per-pixel onChanged stream.
+      await t.drag(slider, const Offset(60, 0));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(settings.micVolume, isNot(1.0));
+      expect(calls.last.micVolume, settings.micVolume);
+    });
+
+    testWidgets(
+        'the listen button calls onSetMicMonitoring(true) then (false) on '
+        'toggle off, and shows an active state while on', (t) async {
+      final monitoringCalls = <bool>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+        onSetMicMonitoring: (enabled) => monitoringCalls.add(enabled),
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micListenButton')));
+      await t.pump();
+      expect(monitoringCalls, [true]);
+
+      await t.tap(find.byKey(const ValueKey('micListenButton')));
+      await t.pump();
+      expect(monitoringCalls, [true, false]);
+    });
+
+    testWidgets(
+        'turning "Record my microphone" off while listening turns '
+        'listening off too', (t) async {
+      final monitoringCalls = <bool>[];
+      final settings = AppSettings(captureMicrophone: true);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        onSetMicMonitoring: (enabled) => monitoringCalls.add(enabled),
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micListenButton')));
+      await t.pump();
+      expect(monitoringCalls, [true]);
+
+      await t.tap(find.byKey(const ValueKey('captureMicrophoneSwitch')));
+      await t.pump();
+
+      expect(settings.captureMicrophone, isFalse);
+      expect(monitoringCalls, [true, false]);
+    });
+
+    testWidgets(
+        'disposing the settings screen while listening calls '
+        'onSetMicMonitoring(false)', (t) async {
+      final monitoringCalls = <bool>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+        onSetMicMonitoring: (enabled) => monitoringCalls.add(enabled),
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micListenButton')));
+      await t.pump();
+      expect(monitoringCalls, [true]);
+
+      // Replace the whole tree so SettingsScreen's State disposes.
+      await t.pumpWidget(_app(const SizedBox()));
+
+      expect(monitoringCalls, [true, false]);
+    });
   });
 
   group('Storage section', () {

@@ -27,6 +27,13 @@ All notable changes to Rewind are documented here. Format based on
   as "System default" without losing the choice. macOS only for now
   (CoreAudio device enumeration); Windows/Linux enumerate as empty and hide
   the picker until their backends grow the same device listing.
+- **Mic volume slider + live listen**: set your microphone's recording
+  level yourself instead of always recording it at 100% — a new "Mic
+  volume" slider under Settings → Capture → Audio's Microphone row (0-200%,
+  defaulting to 100%), and a headphones toggle next to it that monitors the
+  mic live through your speakers/headphones while you tune it. Listening
+  stops automatically when you toggle it off, leave Settings, or switch the
+  mic off entirely — it's never left running unattended.
 - **Always-on performance telemetry**: Rewind now samples its own CPU%/RSS
   and — the actually load-bearing signal for "capture is causing input lag"
   reports — libobs's frame-health counters (lagged/skipped frames) every

@@ -97,6 +97,11 @@ class AppSettings {
   /// gone.
   String? micDeviceUid;
 
+  /// Recording-level multiplier applied to the microphone source (see
+  /// `rewind_set_mic_volume`): 1.0 = 100% (unity gain), clamped to 0.0-2.0.
+  /// Default 1.0 — unchanged from every mic source's natural level.
+  double micVolume;
+
   /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
   /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
   /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
@@ -147,6 +152,7 @@ class AppSettings {
     this.audioMode = AudioMode.all,
     this.captureMicrophone = false,
     this.micDeviceUid,
+    this.micVolume = 1.0,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.onboardingComplete = false,
@@ -195,6 +201,7 @@ class AppSettings {
         'audioMode': audioMode.name,
         'captureMicrophone': captureMicrophone,
         'micDeviceUid': micDeviceUid,
+        'micVolume': micVolume,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'onboardingComplete': onboardingComplete,
@@ -216,6 +223,11 @@ class AppSettings {
         audioMode: _audioModeFromJson(j),
         captureMicrophone: j['captureMicrophone'] as bool? ?? false,
         micDeviceUid: j['micDeviceUid'] as String?,
+        // Clamp on load: a hand-edited or otherwise out-of-range stored
+        // value must not reach the shim, which clamps too but has no way to
+        // report that back up to Settings' live percent label.
+        micVolume:
+            ((j['micVolume'] as num?)?.toDouble() ?? 1.0).clamp(0.0, 2.0),
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
         // falls back to the 20 GB default.

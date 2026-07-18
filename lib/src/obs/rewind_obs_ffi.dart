@@ -61,6 +61,12 @@ external int _listAudioInputs(Pointer<Utf8> jsonOut, int jsonCap);
 @Native<Void Function(Pointer<Utf8>)>(symbol: 'rewind_set_mic_device')
 external void _setMicDevice(Pointer<Utf8> uid);
 
+@Native<Int32 Function(Float)>(symbol: 'rewind_set_mic_volume')
+external int _setMicVolume(double volume);
+
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_monitoring')
+external int _setMicMonitoring(int enabled);
+
 @Native<Int32 Function(Int32, Int32)>(symbol: 'rewind_set_capture_quality')
 external int _setCaptureQuality(int fps, int maxHeight);
 
@@ -234,6 +240,14 @@ class RewindObs {
       malloc.free(p);
     }
   }
+
+  /// Sets the microphone recording-level multiplier (1.0 = 100%, clamped by
+  /// the shim to 0.0-2.0).
+  int setMicVolume(double volume) => _setMicVolume(volume);
+
+  /// Enables/disables live mic monitoring (through the speakers/
+  /// headphones) — engine-only, never persisted.
+  int setMicMonitoring(bool enabled) => _setMicMonitoring(enabled ? 1 : 0);
 
   /// Sets capture framerate and output-height cap (0 = source). Applied at
   /// init; call before it.

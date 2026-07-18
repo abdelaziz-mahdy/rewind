@@ -72,6 +72,36 @@ void main() {
     expect(loaded.micDeviceUid, isNull);
   });
 
+  test('micVolume defaults to 1.0 (100%)', () {
+    expect(AppSettings().micVolume, 1.0);
+  });
+
+  test('micVolume round-trips through toJson/fromJson', () {
+    final s = AppSettings(micVolume: 1.5);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.micVolume, 1.5);
+  });
+
+  test('micVolume round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(micVolume: 0.5));
+    final loaded = await store.load();
+    expect(loaded.micVolume, 0.5);
+  });
+
+  test(
+      'fromJson with no micVolume key (pre-existing settings file) falls '
+      'back to 1.0, not a crash', () {
+    final json = AppSettings().toJson()..remove('micVolume');
+    final loaded = AppSettings.fromJson(json);
+    expect(loaded.micVolume, 1.0);
+  });
+
+  test('fromJson clamps an out-of-range stored micVolume to 0.0-2.0', () {
+    expect(AppSettings.fromJson({'micVolume': 5.0}).micVolume, 2.0);
+    expect(AppSettings.fromJson({'micVolume': -1.0}).micVolume, 0.0);
+  });
+
   test('save/load round-trips per-game config', () async {
     final store = SettingsStore(tmp);
     final s = AppSettings(defaultBufferSeconds: 60, hotkey: 'Ctrl+Shift+S');

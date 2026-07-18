@@ -55,6 +55,15 @@ class SettingsScreen extends StatefulWidget {
   /// device picking don't need to wire it.
   final List<AudioInputInfo> audioInputs;
 
+  /// Toggles live mic monitoring (through the speakers/headphones) while
+  /// the user tunes the mic-volume slider — called with `true`/`false` by
+  /// the "listen" button (see `CaptureEngine.setMicMonitoring`). Engine-only,
+  /// transient state: never persisted, so this bypasses [onChanged] entirely,
+  /// the same way `onSetCaptureApp` bypasses it for a live-only capture
+  /// target. Optional so existing callers/tests that don't care about
+  /// monitoring don't need to wire it (the button still renders but no-ops).
+  final void Function(bool enabled)? onSetMicMonitoring;
+
   /// Called with `true` when the hotkey recorder starts listening and
   /// `false` whenever it stops (a captured combo, Escape, clicking away, or
   /// the field being torn down mid-record) — so the caller can suspend the
@@ -112,6 +121,7 @@ class SettingsScreen extends StatefulWidget {
     required this.displays,
     this.capturableApps = const [],
     this.audioInputs = const [],
+    this.onSetMicMonitoring,
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
@@ -156,10 +166,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// The Capture page's single "› Advanced options" disclosure.
   bool _advancedOpen = false;
 
+  /// The mic-volume slider's live position, as a 0-200 percent — separate
+  /// from [AppSettings.micVolume] so dragging updates the label/thumb on
+  /// every pixel without writing settings per pixel (only [_handleMicVolume
+  /// ChangeEnd], on release, commits). Percent (not a 0.0-2.0 multiplier)
+  /// because [Slider] wants a plain double range and the label needs the
+  /// same number un-scaled.
+  late double _micVolumePercent;
+
+  /// Whether live mic monitoring (through the speakers/headphones) is
+  /// currently on — purely local UI state, never read from [AppSettings]
+  /// (monitoring is transient/engine-only, see [SettingsScreen.
+  /// onSetMicMonitoring]'s doc). Turned off on [dispose], an explicit
+  /// listen-button toggle, or the mic being switched off entirely.
+  bool _micListening = false;
+
   @override
   void initState() {
     super.initState();
     _bufferSeconds = widget.settings.defaultBufferSeconds;
+    _micVolumePercent = (widget.settings.micVolume * 100).clamp(0, 200);
     // Must list every preset segment above, or a saved value that HAS a
     // segment (15) falls through to "Custom" and no segment ever highlights.
     _customBuffer =
@@ -197,6 +223,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // A leaked "listen" toggle must not outlive this screen — leaving
+    // Settings (however: ✕, a MY GAMES/GENERAL nav, the app closing) while
+    // monitoring is on would otherwise keep the mic playing through the
+    // speakers with no UI left to turn it off.
+    if (_micListening) widget.onSetMicMonitoring?.call(false);
     // Closing Settings (✕) while a limit field still has focus never fires
     // the blur listeners — commit any pending edit here so leaving the
     // screen counts as "moving out of the field", not as discarding it.
@@ -406,6 +437,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _handleMicrophoneChanged(bool value) {
     widget.settings.captureMicrophone = value;
+    // Switching the mic off entirely must also stop any live listen session
+    // — there's no mic source left to monitor, and leaving the button
+    // showing "on" would be a lie.
+    if (!value && _micListening) {
+      _micListening = false;
+      widget.onSetMicMonitoring?.call(false);
+    }
     setState(() {});
     widget.onChanged(widget.settings);
   }
@@ -426,6 +464,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _handleMicDeviceChanged(String? uid) {
     widget.settings.micDeviceUid = uid;
     widget.onChanged(widget.settings);
+  }
+
+  /// Live drag position — updates the thumb/label every frame without
+  /// touching [AppSettings] (see [_micVolumePercent]'s doc). Continuous
+  /// engine preview isn't wired here: the shim already applies
+  /// [AppSettings.micVolume] live off the drag-end write below, and the
+  /// only way to hear it while dragging is [_handleMicListenToggle]'s
+  /// separate live-monitoring session — no second, per-pixel engine call
+  /// needed on top of that.
+  void _handleMicVolumeChanged(double percent) =>
+      setState(() => _micVolumePercent = percent);
+
+  /// Commits the slider's position ON DRAG END, never per pixel — same
+  /// "wait until they're done" philosophy as [_commitLimit]: every settings
+  /// change here re-applies live to the capture engine, so committing per
+  /// pixel would spam it for no user-visible benefit mid-drag.
+  void _handleMicVolumeChangeEnd(double percent) {
+    widget.settings.micVolume = percent / 100;
+    widget.onChanged(widget.settings);
+  }
+
+  /// Toggles live mic monitoring — see [SettingsScreen.onSetMicMonitoring]'s
+  /// doc. Local UI state only: the on/off flag itself is never persisted.
+  void _handleMicListenToggle() {
+    setState(() => _micListening = !_micListening);
+    widget.onSetMicMonitoring?.call(_micListening);
   }
 
   /// The "Record game & system sound" toggle: OFF maps to [AudioMode.off];
@@ -743,6 +807,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                     ],
                     onChanged: _handleMicDeviceChanged,
+                  ),
+                ),
+              ),
+            // Gated only on the mic being on — unlike the device dropdown
+            // above, this doesn't need `audioInputs` (volume/monitoring work
+            // against whichever mic source the engine already built, device
+            // enumeration or not — e.g. Windows, where enumeration isn't
+            // implemented yet but the mic itself still records).
+            if (widget.settings.captureMicrophone)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.only(left: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                      left: BorderSide(
+                          color: context.rewindTokens.hairline, width: 2)),
+                ),
+                child: _FieldRow(
+                  label: 'Mic volume',
+                  control: Row(
+                    children: [
+                      Expanded(
+                        child: Slider(
+                          key: const ValueKey('micVolumeSlider'),
+                          value: _micVolumePercent,
+                          min: 0,
+                          max: 200,
+                          divisions: 200,
+                          label: '${_micVolumePercent.round()}%',
+                          onChanged: _handleMicVolumeChanged,
+                          onChangeEnd: _handleMicVolumeChangeEnd,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          '${_micVolumePercent.round()}%',
+                          style: Theme.of(context).textTheme.bodyMuted,
+                          textAlign: TextAlign.end,
+                        ),
+                      ),
+                      IconButton(
+                        key: const ValueKey('micListenButton'),
+                        icon: const Icon(Icons.headphones),
+                        tooltip: 'Listen to this mic',
+                        color:
+                            _micListening ? context.rewindTokens.accent : null,
+                        onPressed: _handleMicListenToggle,
+                      ),
+                    ],
                   ),
                 ),
               ),
