@@ -121,6 +121,12 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   ShellDestination _destination = const AllClipsDestination();
 
+  /// The destination showing right before Settings was opened — where the
+  /// full-page Settings screen's ✕ button returns to. Updated only on the
+  /// transition INTO Settings (not while already there), so navigating the
+  /// Settings sidebar itself never overwrites it.
+  ShellDestination _beforeSettings = const AllClipsDestination();
+
   /// Catalog games whose detected-game banner (see [_DetectedGameBanners])
   /// the user has dismissed this session. Session-scoped on purpose — a
   /// dismiss is "not now", not "never"; the banner returns next launch if
@@ -173,8 +179,17 @@ class _ShellState extends State<Shell> {
     ));
   }
 
-  void _select(ShellDestination destination) =>
-      setState(() => _destination = destination);
+  void _select(ShellDestination destination) => setState(() {
+        if (destination is SettingsDestination &&
+            _destination is! SettingsDestination) {
+          _beforeSettings = _destination;
+        }
+        _destination = destination;
+      });
+
+  /// Settings' ✕ button: back to whatever was showing before Settings was
+  /// opened (All Clips by default, if the app launched straight into it).
+  void _closeSettings() => _select(_beforeSettings);
 
   void _openLogs() {
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -224,12 +239,21 @@ class _ShellState extends State<Shell> {
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
+          onClose: _closeSettings,
         ),
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    // Settings is full-page: it covers the whole window with its own
+    // sidebar as the ONLY nav while open, so the app rail (and the error/
+    // detected-game banners that sit above the normal content area) are not
+    // shown at all — same rule a full-screen route would follow, just
+    // without an actual Navigator push.
+    if (_destination is SettingsDestination) {
+      return _content(context);
+    }
     return Scaffold(
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,

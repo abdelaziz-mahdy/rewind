@@ -378,3 +378,12 @@ extension RewindTypography on TextTheme {
 /// right, hairline between) is what keeps a label bound to its control at this
 /// width — the hairline does the work narrowness used to.
 const double settingsMaxContentWidth = 960;
+
+/// Column width for the full-page Settings screen's sidebar content pane
+/// (`settings_screen.dart`), narrower than [settingsMaxContentWidth]: with
+/// its own dedicated 200px sidebar already separating nav from content (no
+/// shared pane with a game hub), the research-locked "variant G" design caps
+/// the column at 720 — matching the eyetracking-research finding that a
+/// scannable settings list wants ~600-760px, not the wider 960 a
+/// label-left/control-right hub panel can still get away with.
+const double settingsPageContentWidth = 720;
