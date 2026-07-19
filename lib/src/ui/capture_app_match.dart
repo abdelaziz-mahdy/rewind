@@ -1,4 +1,5 @@
 import '../events/game_catalog.dart';
+import '../games/game_descriptor.dart';
 import '../obs/app_info.dart';
 
 /// True if [processMatch] is a case-insensitive substring of [app]'s name or
@@ -30,15 +31,21 @@ bool appMatchesProcess(AppInfo app, String processMatch) {
 /// explicit, documented exclusion — do not remove it to "fix" a missing
 /// rail icon for League.
 ///
-/// [gameId] is checked exactly against League's two known ids (the vendor
-/// integration and the catalog's process-watch entry — see `game_directory.
-/// dart`'s doc on why League has both). [bundleId] is checked as a
-/// best-effort (loose substring, not exact) safety net for other Riot
-/// titles a user might pick via the generic capture-source menu, since this
+/// [gameId] is checked against the registered [GameDescriptor]'s
+/// `usesOfficialLogo` flag first (Task 21) — covers League's two known ids
+/// (the vendor integration and the catalog's process-watch entry — see
+/// `game_directory.dart`'s doc on why League has both) and Marvel Rivals.
+/// [bundleId] is checked as a best-effort (loose substring, not exact)
+/// fallback for other Riot titles a user might pick via the generic
+/// capture-source menu that have no registered descriptor, since this
 /// codebase has no verified, hardcoded Riot bundle id to match exactly.
+///
+/// NOTE the polarity: `GameDescriptor.usesOfficialLogo` reads the opposite
+/// way (`true` = safe to show the real icon, `false` = forbidden) — see its
+/// doc comment. This function keeps its own original meaning (`true` =
+/// showing the icon WOULD use a forbidden logo) for its existing callers.
 bool usesOfficialLogo({required String gameId, String? bundleId}) {
-  const riotGameIds = {'league_of_legends', 'app:league_of_legends'};
-  if (riotGameIds.contains(gameId)) return true;
+  if (!descriptorFor(gameId).usesOfficialLogo) return true;
   final bundle = bundleId?.toLowerCase();
   return bundle != null && bundle.contains('riotgames');
 }

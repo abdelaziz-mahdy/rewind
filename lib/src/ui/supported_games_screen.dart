@@ -4,17 +4,10 @@ import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
+import '../games/game_descriptor.dart';
 import '../settings/app_settings.dart';
 import 'theme.dart';
 import 'widgets/game_tile_avatar.dart';
-
-/// League has two gameIds in play (see `game_directory.dart`'s doc on this):
-/// the vendor integration that drives auto-clip-on-event, and the catalog's
-/// generic process-detection entry. This screen merges them into a single
-/// row (§3.5) kept in sync with `game_directory.dart`'s own private
-/// constants by hand, since those aren't exported.
-const _leagueVendorId = 'league_of_legends';
-const _leagueCatalogId = 'app:league_of_legends';
 
 /// One row of the catalog: a display/detection label pair plus the set of
 /// gameIds whose config/clips/activity count toward this row's state — for
@@ -37,22 +30,45 @@ class _CatalogRow {
 
 enum _RowState { running, inLibrary, addable }
 
+/// The processMatch of the first non-primary id in [d]'s merged set that has
+/// a [popularGamesCatalog] entry — e.g. League's "Also via process:
+/// LeagueClientUx" secondary label. Null when there is none (no merged
+/// descriptor lacks one today, but a future one might).
+String? _secondaryLabelFor(GameDescriptor d) {
+  for (final id in d.mergedGameIds) {
+    if (id == d.primaryGameId) continue;
+    final catalogMatch = popularGamesCatalog.where((g) => g.gameId == id);
+    if (catalogMatch.isNotEmpty) {
+      return 'Also via process: ${catalogMatch.first.processMatch}';
+    }
+  }
+  return null;
+}
+
 List<_CatalogRow> _buildCatalogRows() {
-  final leagueCatalog =
-      popularGamesCatalog.firstWhere((g) => g.gameId == _leagueCatalogId);
+  // A descriptor with more than one merged gameId (League: the vendor
+  // integration + the catalog's generic `app:league_of_legends` entry) is
+  // listed first and absorbs its catalog id, rather than showing a
+  // confusing duplicate row (§3.5) — driven by the registry, not a
+  // hardcoded League special case (Task 21).
+  final mergedDescriptors =
+      gameDescriptors.where((d) => d.mergedGameIds.length > 1);
+  final absorbedCatalogIds = <String>{
+    for (final d in mergedDescriptors)
+      for (final id in d.mergedGameIds)
+        if (id != d.primaryGameId) id,
+  };
   return [
-    // The League vendor integration is listed first and absorbs the
-    // catalog's generic `app:league_of_legends` process-detection entry
-    // (§3.5 — "to avoid a confusing duplicate").
-    _CatalogRow(
-      gameId: _leagueVendorId,
-      displayName: 'League of Legends',
-      detectionLabel: 'Live Client API',
-      secondaryLabel: 'Also via process: ${leagueCatalog.processMatch}',
-      matchIds: const {_leagueVendorId, _leagueCatalogId},
-    ),
+    for (final d in mergedDescriptors)
+      _CatalogRow(
+        gameId: d.primaryGameId,
+        displayName: d.displayName,
+        detectionLabel: d.hasLiveFeed ? 'Live Client API' : 'Process detection',
+        secondaryLabel: _secondaryLabelFor(d),
+        matchIds: d.mergedGameIds,
+      ),
     for (final g in popularGamesCatalog)
-      if (g.gameId != _leagueCatalogId)
+      if (!absorbedCatalogIds.contains(g.gameId))
         _CatalogRow(
           gameId: g.gameId,
           displayName: g.displayName,

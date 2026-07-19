@@ -1,5 +1,6 @@
 import '../clip/clip.dart';
 import '../events/game_catalog.dart';
+import '../games/game_descriptor.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
 import 'capture_app_match.dart' show usesOfficialLogo;
@@ -65,16 +66,15 @@ class GameEntry {
   });
 }
 
-/// League of Legends has two gameIds in play: the vendor integration
-/// (`LeagueEventWatcher.gameId`) that drives auto-clip-on-event, and the
-/// generic [popularGamesCatalog] process-detection entry that merely notices
-/// the client is open (see `source_builder.dart`). Shown separately they'd
-/// read as two different games; §3.5 of the redesign spec merges them into
-/// a single row carrying both [DetectionMethod]s.
-const _leagueVendorId = 'league_of_legends';
-const _leagueCatalogId = 'app:league_of_legends';
-
 const _desktopId = 'desktop';
+
+/// Descriptors whose row must merge more than one gameId into one — League
+/// (the vendor id + [popularGamesCatalog]'s `app:league_of_legends` entry)
+/// is the only one today, but this is driven by the registry, not a
+/// hardcoded League check (Task 21) — a future game with the same "vendor
+/// integration + generic catalog entry" shape merges automatically.
+Iterable<GameDescriptor> get _mergedDescriptors =>
+    gameDescriptors.where((d) => d.mergedGameIds.length > 1);
 
 /// Builds the game directory: the union of every game with a [GameConfig]
 /// row, clips in the library, or live activity, plus the pinned `desktop`
@@ -88,37 +88,21 @@ List<GameEntry> buildGameDirectory({
 }) {
   final catalogById = {for (final g in popularGamesCatalog) g.gameId: g};
   final configById = {for (final c in settings.allConfigs) c.gameId: c};
+  final mergedDescriptors = _mergedDescriptors.toList();
 
   final candidateIds = <String>{
     ...configById.keys,
     for (final c in clips) c.gameId,
     ...activeIds,
+  }..remove(_desktopId);
+  for (final d in mergedDescriptors) {
+    candidateIds.removeAll(d.mergedGameIds);
   }
-    ..remove(_leagueVendorId)
-    ..remove(_leagueCatalogId)
-    ..remove(_desktopId);
-
-  final hasLeague = configById.containsKey(_leagueVendorId) ||
-      configById.containsKey(_leagueCatalogId) ||
-      activeIds.contains(_leagueVendorId) ||
-      activeIds.contains(_leagueCatalogId) ||
-      clips.any(
-          (c) => c.gameId == _leagueVendorId || c.gameId == _leagueCatalogId);
 
   final entries = <GameEntry>[
-    if (hasLeague)
-      _buildEntry(
-        gameId: _leagueVendorId,
-        matchIds: const {_leagueVendorId, _leagueCatalogId},
-        detection: const {
-          DetectionMethod.liveClientApi,
-          DetectionMethod.processWatch,
-        },
-        processMatch: catalogById[_leagueCatalogId]?.processMatch,
-        clips: clips,
-        activeIds: activeIds,
-        configById: configById,
-      ),
+    for (final d in mergedDescriptors)
+      if (_descriptorIsPresent(d, clips, activeIds, configById))
+        _buildMergedEntry(d, catalogById, configById, clips, activeIds),
     for (final gameId in candidateIds)
       _buildEntry(
         gameId: gameId,
@@ -164,6 +148,56 @@ Set<DetectionMethod> _detectionFor(
     return {DetectionMethod.processWatch};
   }
   return const {};
+}
+
+/// Whether any of [d]'s merged ids has a config row, a clip, or live
+/// activity — the generic form of the old `hasLeague` gate: a merged row
+/// only appears once one of its halves has actually been seen (§3.5).
+bool _descriptorIsPresent(
+  GameDescriptor d,
+  List<Clip> clips,
+  Set<String> activeIds,
+  Map<String, GameConfig> configById,
+) =>
+    d.mergedGameIds.any((id) =>
+        configById.containsKey(id) ||
+        activeIds.contains(id) ||
+        clips.any((c) => c.gameId == id));
+
+/// Builds the one directory row for a descriptor with more than one merged
+/// gameId (League): keyed at [GameDescriptor.primaryGameId], covering clips/
+/// activity under ANY of its [GameDescriptor.mergedGameIds], with the
+/// [DetectionMethod] union of every id's own detection plus
+/// [DetectionMethod.liveClientApi] when [GameDescriptor.hasLiveFeed].
+GameEntry _buildMergedEntry(
+  GameDescriptor d,
+  Map<String, CatalogGame> catalogById,
+  Map<String, GameConfig> configById,
+  List<Clip> clips,
+  Set<String> activeIds,
+) {
+  final detection = <DetectionMethod>{
+    if (d.hasLiveFeed) DetectionMethod.liveClientApi,
+    for (final id in d.mergedGameIds)
+      ..._detectionFor(id, catalogById, configById),
+  };
+  String? processMatch;
+  for (final id in d.mergedGameIds) {
+    final match = catalogById[id]?.processMatch ?? configById[id]?.processMatch;
+    if (match != null) {
+      processMatch = match;
+      break;
+    }
+  }
+  return _buildEntry(
+    gameId: d.primaryGameId,
+    matchIds: d.mergedGameIds,
+    detection: detection,
+    processMatch: processMatch,
+    clips: clips,
+    activeIds: activeIds,
+    configById: configById,
+  );
 }
 
 GameEntry _buildEntry({

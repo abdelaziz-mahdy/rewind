@@ -19,6 +19,15 @@ import 'process_watcher_source.dart';
 /// catalog, it's skipped here rather than adding a second
 /// [ProcessWatcherSource] that would fight the first over the same id in
 /// [GameRegistry]'s active-set bookkeeping.
+///
+/// The `LeagueEventWatcher()` literal here (and its twin in
+/// `game_registry.dart`'s default constructor) stays hand-written rather
+/// than growing a `watcherFactory` field on `GameDescriptor` (Task 21): that
+/// field would pull `events/league_event_watcher.dart` into the `games/`
+/// layer opposite `game_descriptor.dart`'s existing `events/game_catalog.
+/// dart` dependency, for the sake of deduplicating exactly one line in two
+/// places. Revisit if/when a second vendor-API integration lands — the
+/// `GameEventSource` interface (ARCHITECTURE.md) is already the seam for it.
 List<GameEventSource> buildSources(AppSettings settings) {
   final sources = <GameEventSource>[LeagueEventWatcher()];
   final seenGameIds = {for (final s in sources) s.gameId};

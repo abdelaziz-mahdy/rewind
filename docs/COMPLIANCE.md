@@ -83,6 +83,24 @@ Two more policy points that bind this project:
 - **League of Legends:** integration uses only the official Live Client Data
   API. No memory access. Riot's developer terms apply to any use of Riot data;
   we stay within the local, read-only API.
+- **VALORANT** (research verdict 2026-07-19): **manual-hotkey capture only,
+  permanently** — not "until a vendor API lands." Riot's developer policy
+  (developer.riotgames.com/docs/valorant; the Riot policy disclaimer above
+  covers all Riot titles) restricts real-time match data for this game, so
+  there is no sanctioned event source to integrate even in principle. Also
+  **Windows-only**: Vanguard, Riot's kernel-level anti-cheat, blocks every
+  VM/CrossOver capture path outright, unlike Wine-friendly titles.
+- **Marvel Rivals** (research verdict 2026-07-19): **manual-hotkey capture
+  only** — no sanctioned real-time source exists. There is no public
+  match/event API, and the game's own client logs are encrypted, so even an
+  "official log file" integration (rule 2 above) is unavailable. Process
+  detection only, matching the game binary
+  (`Marvel-Win64-Shipping`) — never the launcher, which runs outside matches.
+  Works on Windows natively and on macOS via CrossOver (NetEase ships no
+  kernel-level anti-cheat that blocks Wine the way Riot's Vanguard does for
+  VALORANT). `GameDescriptor.usesOfficialLogo` is conservatively `false`:
+  Marvel/Disney/NetEase publish no fan-tool logo carve-out the way Riot's
+  policy explicitly does, so the rail/hub never show its real app icon.
 - **Games without an official API (e.g. many mech/action titles):** ship as
   **manual-hotkey capture only** until/unless the vendor provides a sanctioned
   event source. Do not add memory/hook-based detection.

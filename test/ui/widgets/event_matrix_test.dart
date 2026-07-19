@@ -1,11 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/ui/game_directory.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/event_matrix.dart';
 
 Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
+
+GameEntry _entryFor(String gameId) => GameEntry(
+      gameId: gameId,
+      displayName: gameId,
+      // Deliberately empty: eventGroupsFor is now descriptor-driven (Task
+      // 21), not gated on this field — these tests would still pass with
+      // the old DetectionMethod-gated implementation only by accident if
+      // detection here happened to be right, so leaving it empty proves the
+      // gameId alone (via the descriptor) decides the answer.
+      detection: const {},
+      active: false,
+      clipCount: 0,
+      totalSizeBytes: 0,
+    );
 
 /// [EventToggleChip] is shared by every auto-clip event matrix in the app
 /// (currently only `settings_screen.dart`'s per-game MY GAMES page — the
@@ -66,5 +81,19 @@ void main() {
       onChanged: (_) {},
     )));
     expect(find.byIcon(Icons.check), findsNothing);
+  });
+
+  group('eventGroupsFor (descriptor-driven, Task 21)', () {
+    test('League has non-empty groups', () {
+      expect(eventGroupsFor(_entryFor('league_of_legends')), isNotEmpty);
+    });
+
+    test('Marvel Rivals has no groups (process-detection only)', () {
+      expect(eventGroupsFor(_entryFor('app:marvel_rivals')), isEmpty);
+    });
+
+    test('VALORANT has no groups (process-detection only, permanently)', () {
+      expect(eventGroupsFor(_entryFor('app:valorant')), isEmpty);
+    });
   });
 }

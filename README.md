@@ -96,6 +96,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 | Game | Method | Status |
 |------|--------|--------|
 | League of Legends | Live Client Data API (`127.0.0.1:2999`) — official, read-only, anti-cheat safe | Planned (v0.2) |
+| VALORANT | Manual hotkey capture only, permanently — **Windows-only** (Vanguard blocks all VM/CrossOver capture paths), and Riot's developer policy restricts real-time match data | Planned (v0.1) |
+| Marvel Rivals | Manual hotkey capture only — no sanctioned event source (no public API, encrypted logs); Windows native, **macOS via CrossOver** | Planned (v0.1) |
 | Any game (incl. MECCHA CHAMELEON & other mech/action titles) | Manual hotkey capture — always safe | Planned (v0.1) |
 | More titles | Per-game integrations (sanctioned sources only) | Future |
 

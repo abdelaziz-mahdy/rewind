@@ -17,7 +17,7 @@ import '../fakes/fake_capture_engine.dart';
 Widget _app(Widget child) =>
     MaterialApp(theme: rewindTheme(), home: Scaffold(body: child));
 
-/// The catalog is 13 rows tall (12 catalog games + the merged League row) —
+/// The catalog is 14 rows tall (13 catalog games + the merged League row) —
 /// wide enough default viewports still clip the list, so widen the test
 /// surface (matches `game_hub_screen_test.dart`'s identical helper/reason).
 Future<void> _pump(WidgetTester t, Widget child) async {
@@ -178,5 +178,23 @@ void main() {
   testWidgets('the compliance footer note is shown', (t) async {
     await _pump(t, _app(screen()));
     expect(find.textContaining('never game memory'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Marvel Rivals appears as a process-detection row with a monogram '
+      '(usesOfficialLogo false — no icon capture, per the descriptor)',
+      (t) async {
+    await _pump(t, _app(screen()));
+
+    expect(row('app:marvel_rivals'), findsOneWidget);
+    expect(find.text('Marvel Rivals'), findsOneWidget);
+    expect(
+        inRow('app:marvel_rivals',
+            find.textContaining('Process: Marvel-Win64-Shipping')),
+        findsOneWidget);
+    // No iconPath is ever wired into this screen's GameTileAvatar for ANY
+    // row (see game_tile_avatar.dart) — the monogram guarantee that matters
+    // is tested against buildGameDirectory directly in
+    // game_directory_test.dart ("Marvel Rivals never surfaces an iconPath").
   });
 }

@@ -8,6 +8,7 @@ import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../events/game_event.dart';
+import '../games/game_descriptor.dart';
 import '../games/league/ddragon.dart';
 import '../games/match_presentation.dart';
 import '../settings/app_settings.dart';
@@ -26,14 +27,9 @@ import 'widgets/match_card.dart';
 /// catalog's generic process-detection entry. `buildGameDirectory` merges
 /// them into one directory row keyed by the vendor id; this hub mirrors that
 /// merge for its *clip list* (clips filed under either id belong to the one
-/// League hub) — kept in sync with that file's `_leagueVendorId`/
-/// `_leagueCatalogId` constants by hand, since those are private to it.
-const _leagueVendorId = 'league_of_legends';
-const _leagueCatalogId = 'app:league_of_legends';
-
-Set<String> _matchIdsFor(String gameId) => gameId == _leagueVendorId
-    ? const {_leagueVendorId, _leagueCatalogId}
-    : {gameId};
+/// League hub) via the same [GameDescriptor] registry `game_directory.dart`
+/// uses, rather than a second hardcoded copy of League's ids (Task 21).
+Set<String> _matchIdsFor(String gameId) => descriptorFor(gameId).mergedGameIds;
 
 /// The Game Hub (§3.4) — the centerpiece of the game-as-entry-point IA.
 ///
@@ -102,11 +98,11 @@ class GameHubScreen extends StatefulWidget {
 }
 
 class _GameHubScreenState extends State<GameHubScreen> {
-  /// Only League's vendor integration ever emits `GameEvent`s (see
-  /// `docs/COMPLIANCE.md` — process-watched catalog games have no sanctioned
-  /// event API), so the live-events slot and the auto-clip event matrix only
-  /// ever apply to it.
-  bool get _isLeague => widget.gameId == _leagueVendorId;
+  /// Only a descriptor with [GameDescriptor.hasLiveFeed] ever emits
+  /// `GameEvent`s (see `docs/COMPLIANCE.md` — process-watched catalog games
+  /// have no sanctioned event API) — League is the only one today, but this
+  /// no longer hardcodes its id (Task 21).
+  bool get _isLeague => descriptorFor(widget.gameId).hasLiveFeed;
 
   StreamSubscription<GameEvent>? _eventsSub;
   final List<GameEvent> _liveEvents = [];
@@ -156,19 +152,21 @@ class _GameHubScreenState extends State<GameHubScreen> {
           );
   }
 
-  /// [buildGameDirectory] only surfaces League's merged row once it has a
-  /// config, a clip, or live activity (§3.5's `hasLeague` gate) — but this
-  /// hub is the vendor-integrated League hub regardless of whether any of
-  /// those have happened *yet*. Falling back to an empty-detection stub in
-  /// that window would misreport the integration card as "Manual capture"
-  /// for a game that very much has a Live Client API integration, so League
-  /// gets its own synthesized fallback instead of the generic empty one.
+  /// [buildGameDirectory] only surfaces a merged row once it has a config, a
+  /// clip, or live activity (§3.5's presence gate) — but this hub is the
+  /// vendor-integrated hub regardless of whether any of those have happened
+  /// *yet*. Falling back to an empty-detection stub in that window would
+  /// misreport the integration card as "Manual capture" for a game that very
+  /// much has a Live Client API integration, so a [GameDescriptor.hasLiveFeed]
+  /// game gets its own synthesized fallback (generalized from League's,
+  /// Task 21) instead of the generic empty one.
   GameEntry _resolveEntry(List<GameEntry> entries) {
     final found = entries.where((e) => e.gameId == widget.gameId);
     if (found.isNotEmpty) return found.first;
-    if (_isLeague) {
+    final descriptor = descriptorFor(widget.gameId);
+    if (descriptor.hasLiveFeed) {
       final catalogMatch = popularGamesCatalog
-          .where((g) => g.gameId == _leagueCatalogId)
+          .where((g) => descriptor.mergedGameIds.contains(g.gameId))
           .map((g) => g.processMatch);
       return GameEntry(
         gameId: widget.gameId,
@@ -385,15 +383,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
       // A merged row (League) is `active` when EITHER half fires; only the
       // vendor-API half being active means an actual match. The client
       // sitting in the lobby used to read "In match — connected to
-      // 127.0.0.1:2999" while nothing was listening on 2999 at all.
-      if (entry.vendorActive) {
-        return 'In match — connected to 127.0.0.1:2999';
-      }
-      return entry.active
-          ? 'Client open — waiting for a match. Rewind connects '
-              'automatically when one starts.'
-          : 'Waiting for a match. Detection is automatic — start a game '
-              'and Rewind connects.';
+      // 127.0.0.1:2999" while nothing was listening on 2999 at all. The
+      // actual prose now lives on the descriptor (Task 21) — only the
+      // active/vendorActive branching stays generic here.
+      final copy = descriptorFor(entry.gameId).detailCopy!;
+      if (entry.vendorActive) return copy.inMatch;
+      return entry.active ? copy.clientOpenWaiting : copy.waitingForMatch;
     }
     if (entry.detection.contains(DetectionMethod.processWatch)) {
       return entry.active

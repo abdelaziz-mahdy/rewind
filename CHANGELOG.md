@@ -7,6 +7,12 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Marvel Rivals** added to the game catalog — process-detection only (no
+  sanctioned real-time source exists: no public match/event API, and the
+  game's own logs are encrypted). Works on Windows natively and on macOS via
+  CrossOver. Its rail/hub icon is always the monogram, never the real app
+  icon, out of caution absent a Marvel/Disney/NetEase fan-tool logo
+  carve-out.
 - **"Only record while playing"** (Settings → Capture → Instant replay,
   default OFF): opt in and the replay buffer auto-pauses whenever no game
   is detected, resuming the instant one activates — cuts the always-on
@@ -115,6 +121,17 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **Game integrations are now registry-driven** (`lib/src/games/
+  game_descriptor.dart`): the ~11 sites that used to hand-duplicate League's
+  vendor-id/catalog-id pair (match presentation, the game-directory merge,
+  the game hub, Supported Games, icon policy, the auto-clip event taxonomy)
+  now resolve through one `GameDescriptor` registry and a `descriptorFor`
+  lookup. Purely an internal refactor — League's behavior is unchanged; adding
+  a new process-detected game (like Marvel Rivals, above) now needs only a
+  catalog entry, no per-file special-casing. Also fixed VALORANT's
+  `processMatch` to the real game binary (`VALORANT-Win64-Shipping`, not the
+  launcher) and documented it as Windows-only, manual-capture-only
+  permanently (Riot policy + Vanguard blocking CrossOver/VM).
 - **Performance: in-game capture overhead reduced — canvas now renders at
   output resolution.** On a Retina display with a quality cap (the default),
   the render canvas previously stayed at the display's full native pixel
