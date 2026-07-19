@@ -275,16 +275,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..addListener(() {
         if (!_maxAgeFocus.hasFocus) _commitMaxAge();
       });
-    // Live (not just on commit) listeners on both fields: the "Almost
-    // there" status hint and the "Detected Steam account" helper line (see
-    // [_steamDetectedHelperLine]) react to what's IN the fields, per the
-    // friction-cut spec's "detected or typed" wording -- waiting for blur
-    // would leave them a keystroke behind.
-    _steamIdController = TextEditingController(text: widget.settings.steamId64)
-      ..addListener(() => setState(() {}));
+    _steamIdController = TextEditingController(text: widget.settings.steamId64);
     _steamApiKeyController =
-        TextEditingController(text: widget.settings.steamWebApiKey)
-          ..addListener(() => setState(() {}));
+        TextEditingController(text: widget.settings.steamWebApiKey);
     _steamIdFocus = FocusNode()
       ..addListener(() {
         if (!_steamIdFocus.hasFocus) _commitSteamId();
@@ -818,19 +811,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             gameEntries: widget.gameEntries,
             onSelectGeneral: _selectGeneralPage,
             onSelectGame: _selectGame,
+            onClose: widget.onClose,
           ),
-          Expanded(
-            child: Stack(
-              children: [
-                _selectedBody(context),
-                Positioned(
-                  top: 18,
-                  right: 22,
-                  child: _CloseButton(onClose: widget.onClose),
-                ),
-              ],
-            ),
-          ),
+          Expanded(child: _selectedBody(context)),
         ],
       ),
     );
@@ -1409,46 +1392,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: Theme.of(context).textTheme.bodyMuted,
         ),
         const SizedBox(height: 16),
-        _steamStatusLine(context),
+        if (widget.steamStatus case final status?)
+          ListenableBuilder(
+            listenable: status,
+            builder: (context, _) => Text(
+              status.value ?? 'Idle — waiting for the next check.',
+              key: const ValueKey('steamStatusLine'),
+              style: Theme.of(context).textTheme.bodyMuted,
+            ),
+          )
+        else
+          Text(
+            'Add your Steam ID and API key above to start watching.',
+            key: const ValueKey('steamStatusLine'),
+            style: Theme.of(context).textTheme.bodyMuted,
+          ),
       ],
-    );
-  }
-
-  /// The Steam page's status line -- three tiers, checked in order:
-  ///  1. An id typed/detected but no key yet: "Almost there…", pointing at
-  ///     the "Get a key" button above -- unmistakably the one remaining
-  ///     step, and true regardless of whether a watcher exists yet (one
-  ///     never does until BOTH credentials are saved, see
-  ///     `SteamAchievementWatcher`'s doc).
-  ///  2. A live watcher status notifier, once credentials are saved.
-  ///  3. The static "add both" prompt, before anything's been entered.
-  /// Reads the FIELDS live (not committed settings) for tier 1, per the
-  /// spec's "detected or typed" wording -- see the controller listeners
-  /// added in [initState].
-  Widget _steamStatusLine(BuildContext context) {
-    final idPresent = _steamIdController.text.trim().isNotEmpty;
-    final keyPresent = _steamApiKeyController.text.trim().isNotEmpty;
-    if (idPresent && !keyPresent) {
-      return Text(
-        'Almost there — paste your free API key (button above)',
-        key: const ValueKey('steamStatusLine'),
-        style: Theme.of(context).textTheme.bodyMuted,
-      );
-    }
-    if (widget.steamStatus case final status?) {
-      return ListenableBuilder(
-        listenable: status,
-        builder: (context, _) => Text(
-          status.value ?? 'Idle — waiting for the next check.',
-          key: const ValueKey('steamStatusLine'),
-          style: Theme.of(context).textTheme.bodyMuted,
-        ),
-      );
-    }
-    return Text(
-      'Add your Steam ID and API key above to start watching.',
-      key: const ValueKey('steamStatusLine'),
-      style: Theme.of(context).textTheme.bodyMuted,
     );
   }
 
@@ -1598,12 +1557,20 @@ class _SettingsSidebar extends StatelessWidget {
   final ValueChanged<_SettingsPage> onSelectGeneral;
   final ValueChanged<String> onSelectGame;
 
+  /// Close lives at the TOP-LEFT of the sidebar (the page's leading corner),
+  /// not floating over the content: leading-edge placement is where a
+  /// full-page view's exit affordance is conventionally looked for
+  /// (maintainer request, 2026-07-19 — the old top-right overlay read as
+  /// "out of the normal").
+  final VoidCallback? onClose;
+
   const _SettingsSidebar({
     required this.selectedGeneralPage,
     required this.selectedGameId,
     required this.gameEntries,
     required this.onSelectGeneral,
     required this.onSelectGame,
+    this.onClose,
   });
 
   static const _items = [
@@ -1649,7 +1616,14 @@ class _SettingsSidebar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+              padding: const EdgeInsets.fromLTRB(10, 14, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _CloseButton(onClose: onClose),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Text(
                 'GENERAL',
                 style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
