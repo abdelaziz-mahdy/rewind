@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/match_stats.dart';
+import 'package:rewind/src/events/game_catalog.dart'
+    show registerCustomDisplayNames;
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
@@ -257,6 +259,29 @@ void main() {
 
       expect(sessionHeader('app:league_of_legends', started), findsOneWidget);
       expect(sessionHeader('league_of_legends', started), findsNothing);
+      expect(inList(find.textContaining('2 clips')), findsOneWidget);
+    });
+
+    testWidgets(
+        'a renamed game\'s clips still bucket into ONE session under the '
+        'renamed header (Task 28: rename must not fork the bucket)', (t) async {
+      addTearDown(() => registerCustomDisplayNames({}));
+      registerCustomDisplayNames({'app:cs2': 'CS2 ranked'});
+      final started = DateTime(2026, 7, 1, 10);
+      library.add(clip('a', 'app:cs2', GameEventKind.manual,
+          started.add(const Duration(minutes: 2)),
+          sessionAt: started));
+      library.add(clip('b', 'app:cs2', GameEventKind.manual,
+          started.add(const Duration(minutes: 5)),
+          sessionAt: started));
+      await t.pumpWidget(_app(screen()));
+
+      // Bucketed by the renamed display name, not the raw gameId — a
+      // per-gameId header key still exists (both clips share one gameId
+      // here regardless), but the visible label must be the override.
+      expect(sessionHeader('app:cs2', started), findsOneWidget);
+      expect(find.text('CS2 RANKED'), findsOneWidget);
+      expect(find.textContaining('Counter-Strike'), findsNothing);
       expect(inList(find.textContaining('2 clips')), findsOneWidget);
     });
 

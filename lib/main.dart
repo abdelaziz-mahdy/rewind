@@ -44,11 +44,17 @@ import 'src/ui/theme.dart';
 /// AppBar/empty-state buttons and the tray's "Open clips folder" item.
 /// Best-effort: no OS handler available (or an unsupported platform) is not
 /// fatal, mirroring `ClipTile`'s own `_open`/`_reveal` helpers.
-/// gameId → user-facing name for every config carrying a custom
-/// [GameConfig.displayName] (apps picked via the capture-source menu).
+/// gameId → user-facing name for every config carrying a non-blank custom
+/// [GameConfig.displayName] — either a picked app's real-cased name (the
+/// capture-source menu) or a user's explicit rename of a game (Task 28,
+/// `settings_screen.dart`'s `gameNameField`). `displayNameFor` itself
+/// further refuses to honor an entry here for a descriptor-registered game
+/// (see `isGameRenameable`'s doc), so this stays a plain "every override on
+/// record" projection rather than duplicating that precedence check.
 Map<String, String> _customDisplayNamesOf(AppSettings s) => {
       for (final cfg in s.allConfigs)
-        if (cfg.displayName case final name?) cfg.gameId: name,
+        if (cfg.displayName?.trim() case final name? when name.isNotEmpty)
+          cfg.gameId: name,
     };
 
 Future<void> _openClipsFolder(String path) async {

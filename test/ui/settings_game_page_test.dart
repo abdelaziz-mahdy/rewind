@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/settings/app_settings.dart';
+import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_directory.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
@@ -20,6 +21,21 @@ const _league = GameEntry(
 const _valorant = GameEntry(
   gameId: 'valorant',
   displayName: 'VALORANT',
+  detection: {DetectionMethod.processWatch},
+  processMatch: 'VALORANT-Win64-Shipping.exe',
+  active: false,
+  clipCount: 0,
+  totalSizeBytes: 0,
+);
+
+/// Same game, but with the displayName [buildGameDirectory] would have
+/// produced from an already-saved `GameConfig.displayName` override — used
+/// by tests that pre-seed `settings` with an override, since a real caller
+/// (`Shell`) always derives `gameEntries` FROM `settings`, but these widget
+/// tests pass a hand-built [GameEntry] independently of it.
+const _valorantRenamed = GameEntry(
+  gameId: 'valorant',
+  displayName: 'My VALORANT',
   detection: {DetectionMethod.processWatch},
   processMatch: 'VALORANT-Win64-Shipping.exe',
   active: false,
@@ -101,6 +117,118 @@ void main() {
               'everything not set here follows your Capture defaults'),
           findsOneWidget);
       expect(find.text('Instant replay'), findsNothing);
+    });
+  });
+
+  group('Name field (Task 28: renameable game display names)', () {
+    TextEditingController nameController(WidgetTester t) => t
+        .widget<TextField>(find.byKey(const ValueKey('gameNameField')))
+        .controller!;
+
+    testWidgets(
+        'renders for a renameable game, prefilled with its current name',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      expect(find.byKey(const ValueKey('gameNameField')), findsOneWidget);
+      expect(nameController(t).text, 'VALORANT');
+    });
+
+    testWidgets(
+        'is hidden for a descriptor-registered game (League) — not '
+        'renameable in v1: renaming it would desync its two merged gameIds\' '
+        'names', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      expect(find.byKey(const ValueKey('gameNameField')), findsNothing);
+    });
+
+    testWidgets(
+        'committing a new name on blur writes GameConfig.displayName, fires '
+        'onChanged, and updates the page title + sidebar row live', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      await t.enterText(
+          find.byKey(const ValueKey('gameNameField')), 'My VALORANT');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+
+      expect(settings.configFor('valorant').displayName, 'My VALORANT');
+      expect(calls, isNotEmpty);
+      expect(calls.last.configFor('valorant').displayName, 'My VALORANT');
+      // Both the page title and the still-visible sidebar row must show the
+      // new name immediately — no need to close and reopen Settings.
+      expect(find.text('My VALORANT'), findsAtLeastNWidgets(2));
+      expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('settingsGame:valorant')),
+            matching: find.text('My VALORANT'),
+          ),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'clearing the field on blur removes the override (writes null, '
+        'never an empty string) and snaps the field back to the derived '
+        'name', (t) async {
+      final settings = AppSettings();
+      settings.setConfig(
+          GameConfig(gameId: 'valorant', displayName: 'My VALORANT'));
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_valorantRenamed],
+        initialGameId: 'valorant',
+      )));
+
+      expect(nameController(t).text, 'My VALORANT');
+
+      await t.enterText(find.byKey(const ValueKey('gameNameField')), '   ');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+
+      expect(settings.configFor('valorant').displayName, isNull);
+      expect(nameController(t).text, 'Valorant');
+    });
+
+    testWidgets('leaving the field unchanged does not fire onChanged',
+        (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        gameEntries: const [_valorant],
+        initialGameId: 'valorant',
+      )));
+
+      await t.tap(find.byKey(const ValueKey('gameNameField')));
+      await t.pump();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+
+      expect(calls, isEmpty);
     });
   });
 

@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
+import '../events/game_catalog.dart'
+    show derivedDisplayNameFor, isGameRenameable;
 import '../events/game_event.dart';
 import '../events/steam_account_locator.dart';
 import '../hotkey/key_capture.dart';
@@ -227,6 +229,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   _SettingsPage? _selectedGeneralPage = _SettingsPage.capture;
   String? _selectedGameId;
 
+  /// Same-session rename overrides, keyed by gameId — [widget.gameEntries]
+  /// is a snapshot `Shell` computed once when Settings opened, and nothing
+  /// makes it recompute just because a `_GameSettingsPage` commits a rename
+  /// underneath it (that commit only touches `AppSettings`, not this
+  /// widget's props). Populated by [_handleGameRenamed]; read by
+  /// [_effectiveGameEntries] so the MY GAMES sidebar row — and the page
+  /// title, via [_selectedBody]'s lookup — reflect a rename immediately
+  /// instead of only after Settings is closed and reopened.
+  final Map<String, String> _gameNameOverrides = {};
+
   /// Whether the Custom video-preset card has been tapped this session —
   /// reveals the Resolution/Framerate rows without writing to [AppSettings]
   /// (see [_selectVideoPreset]). Independent of [_currentVideoPreset]: once
@@ -323,6 +335,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _selectedGameId = gameId;
         _selectedGeneralPage = null;
       });
+
+  /// [widget.gameEntries] with any [_gameNameOverrides] entry applied — see
+  /// that field's doc for why the raw prop can't be trusted to be current
+  /// mid-session.
+  List<GameEntry> get _effectiveGameEntries => [
+        for (final e in widget.gameEntries)
+          if (_gameNameOverrides[e.gameId] case final name?)
+            GameEntry(
+              gameId: e.gameId,
+              displayName: name,
+              detection: e.detection,
+              processMatch: e.processMatch,
+              active: e.active,
+              vendorActive: e.vendorActive,
+              clipCount: e.clipCount,
+              totalSizeBytes: e.totalSizeBytes,
+              lastClipAt: e.lastClipAt,
+              iconPath: e.iconPath,
+            )
+          else
+            e,
+      ];
+
+  /// Called by the open [_GameSettingsPage] the instant its own Name field
+  /// commits — see [_gameNameOverrides]'s doc.
+  void _handleGameRenamed(String gameId, String displayName) {
+    setState(() => _gameNameOverrides[gameId] = displayName);
+  }
 
   @override
   void dispose() {
@@ -813,7 +853,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _selectedBody(BuildContext context) {
     final gameId = _selectedGameId;
     if (gameId != null) {
-      final entry = widget.gameEntries.firstWhere(
+      final entry = _effectiveGameEntries.firstWhere(
         (e) => e.gameId == gameId,
         // Defensive only: [_selectGame] is only ever called with an id drawn
         // from widget.gameEntries, and initState guards initialGameId the
@@ -834,6 +874,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         entry: entry,
         settings: widget.settings,
         onChanged: widget.onChanged,
+        onRenamed: _handleGameRenamed,
       );
     }
     return switch (_selectedGeneralPage!) {
@@ -854,7 +895,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SettingsSidebar(
             selectedGeneralPage: _selectedGeneralPage,
             selectedGameId: _selectedGameId,
-            gameEntries: widget.gameEntries,
+            gameEntries: _effectiveGameEntries,
             onSelectGeneral: _selectGeneralPage,
             onSelectGame: _selectGame,
             onClose: widget.onClose,
@@ -1939,10 +1980,18 @@ class _GameSettingsPage extends StatefulWidget {
   final AppSettings settings;
   final Future<void> Function(AppSettings) onChanged;
 
+  /// Called the instant the Name field ([_GameSettingsPageState._commitName])
+  /// commits, with the newly-resolved display name — lets the parent
+  /// [_SettingsScreenState] keep the MY GAMES sidebar row in sync (see
+  /// `_SettingsScreenState._gameNameOverrides`'s doc). Null in tests that
+  /// don't care about the sidebar staying in sync.
+  final void Function(String gameId, String displayName)? onRenamed;
+
   const _GameSettingsPage({
     required this.entry,
     required this.settings,
     required this.onChanged,
+    this.onRenamed,
     super.key,
   });
 
@@ -1956,6 +2005,38 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   late bool _autoClip;
   late Set<GameEventKind> _enabledEvents;
   bool _advancedOpen = false;
+
+  /// Whether this game's name is user-renameable — false for a
+  /// descriptor-registered game (League, Marvel Rivals). See
+  /// `game_catalog.dart`'s `isGameRenameable` doc for why: renaming League
+  /// would desync its two merged gameIds' display names, and break the All
+  /// Clips bucket-by-display-name merge along with it. The Name field is
+  /// hidden entirely for these rather than accepting an edit `displayNameFor`
+  /// would then silently ignore.
+  bool get _renameable => isGameRenameable(widget.entry.gameId);
+
+  /// The page title — starts at [GameEntry.displayName] (a snapshot `Shell`/
+  /// `_SettingsScreenState` computed when Settings opened) and is updated
+  /// locally, synchronously, the instant a rename commits (see
+  /// [_commitName]) rather than waiting on `main.dart`'s `onChanged`
+  /// callback to asynchronously refresh `registerCustomDisplayNames`.
+  late String _displayName;
+
+  /// Non-null only when [_renameable] — no controller/focus node is created
+  /// at all for a descriptor-registered game, since the field never renders.
+  TextEditingController? _nameController;
+  FocusNode? _nameFocus;
+
+  /// The override actually on record as of the last commit (or, before any
+  /// edit, [_snapshot]'s) — compared against in [_commitName] to decide
+  /// whether there's a real change to write. Deliberately NOT re-derived by
+  /// re-reading [AppSettings.configFor] at commit time: for a game with no
+  /// config row yet, that call CREATES one with `displayName: null`, while
+  /// the field is prefilled with the DERIVED name (equal to the catalog
+  /// name here, not an override) — comparing the freshly-created `null`
+  /// against that prefilled text would misread "field untouched" as "field
+  /// changed" and write a redundant, spurious override.
+  String? _lastOverride;
 
   /// Seeds local editable state from any existing [GameConfig] — read-only
   /// (unlike [AppSettings.configFor], this never creates/persists a row just
@@ -1981,6 +2062,72 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     _postEventSeconds = snapshot.postEventSeconds;
     _autoClip = snapshot.autoClip;
     _enabledEvents = Set.of(snapshot.enabledEvents);
+    _displayName = widget.entry.displayName;
+    if (_renameable) {
+      _lastOverride = snapshot.displayName;
+      _nameController = TextEditingController(text: _displayName);
+      // Blur commits — same "never per keystroke" reasoning as
+      // `_SettingsScreenState._commitLimit`.
+      _nameFocus = FocusNode()
+        ..addListener(() {
+          if (!_nameFocus!.hasFocus) _commitName();
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    // This page is keyed per game id (`_SettingsScreenState._selectedBody`),
+    // so switching games — or closing Settings — while the field still has
+    // focus never fires the blur listener above; commit any pending edit
+    // here, same reasoning as `_SettingsScreenState.dispose`'s storage-limit
+    // fields.
+    if (_renameable) {
+      _commitName();
+      _nameController!.dispose();
+      _nameFocus!.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Commits the Name field on blur/submit. An empty/whitespace field is
+  /// not an error — it means "clear the override": persisted as `null`
+  /// (never `''`, so `GameConfig.displayName`'s "no override" contract
+  /// round-trips through JSON exactly like never having set it), and the
+  /// field snaps back to the DERIVED name (`derivedDisplayNameFor` —
+  /// catalog/descriptor/title-case, no override in play) instead of
+  /// staying blank.
+  ///
+  /// A no-op write is skipped in TWO cases, not just a plain text-equality
+  /// check: the field is normally seeded with the RESOLVED name (so it's
+  /// never blank even with no override on record), so "the trimmed text
+  /// still matches what's already shown" catches "blurred without editing"
+  /// for an existing override; separately, "cleared, but there was never an
+  /// override to clear" (`_lastOverride` already null) catches blurring an
+  /// empty field for a game that was never renamed — without that second
+  /// check, clearing an already-unrenamed field would still fire a
+  /// redundant `null`-over-`null` write.
+  void _commitName() {
+    final controller = _nameController;
+    if (controller == null) return;
+    final trimmed = controller.text.trim();
+    final override = trimmed.isEmpty ? null : trimmed;
+    if (trimmed == _displayName ||
+        (override == null && _lastOverride == null)) {
+      if (controller.text != _displayName) controller.text = _displayName;
+      return;
+    }
+    final resolved = override ?? derivedDisplayNameFor(widget.entry.gameId);
+    final cfg = widget.settings.configFor(widget.entry.gameId);
+    cfg.displayName = override;
+    widget.settings.setConfig(cfg);
+    widget.onChanged(widget.settings);
+    _lastOverride = override;
+    setState(() {
+      _displayName = resolved;
+      controller.text = resolved;
+    });
+    widget.onRenamed?.call(widget.entry.gameId, resolved);
   }
 
   /// Every write goes through this same read-mutate-persist-notify path —
@@ -2044,10 +2191,23 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
 
     return _settingsPage(
       context,
-      entry.displayName,
+      _displayName,
       description: 'Overrides for this game — everything not set here '
           'follows your Capture defaults.',
       [
+        if (_renameable) ...[
+          _TextFieldRow(
+            label: 'Name',
+            field: TextField(
+              key: const ValueKey('gameNameField'),
+              controller: _nameController,
+              focusNode: _nameFocus,
+              // Commit on blur/submit ONLY — see _commitName's doc.
+              onSubmitted: (_) => _nameFocus!.unfocus(),
+            ),
+          ),
+          _sectionDivider(context),
+        ],
         // Games with NO auto-clip event source (process-detected, desktop)
         // get no Capture-mode choice at all: offering "Highlights — auto-clip
         // the moments you pick below" for a game that can never produce an

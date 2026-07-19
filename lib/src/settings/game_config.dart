@@ -29,11 +29,20 @@ class GameConfig {
   /// `_pickApp` and `lib/src/events/source_builder.dart`).
   String? processMatch;
 
-  /// Human-readable name for this entry when [gameId] isn't a catalog id —
-  /// e.g. the picked app's real name ("PenguinHotel-Win64-Shipping") whose
-  /// casing the `app:<slug>` gameId loses. Null for catalog games (the
-  /// catalog carries its own displayName). Consulted by
-  /// `displayNameFor` via `registerCustomDisplayNames`.
+  /// User-chosen display-name override for this game (Task 28's rename
+  /// feature) — either the picked app's real name ("PenguinHotel-Win64-
+  /// Shipping") whose casing the `app:<slug>` gameId loses, or an explicit
+  /// rename the user typed for ANY renameable game, catalog games included
+  /// (e.g. "Counter-Strike 2" → "CS2 ranked"). Null means no override (the
+  /// derived catalog/descriptor/title-case name wins) — a cleared rename
+  /// field writes null, never `''`, so this round-trips through JSON
+  /// exactly like "never set". ALWAYS null for a descriptor-registered game
+  /// (League, Marvel Rivals — see `game_catalog.dart`'s `isGameRenameable`
+  /// doc for why those aren't renameable in v1); `displayNameFor` ignores
+  /// this field for such a game even if it's somehow non-null. Consulted by
+  /// `displayNameFor` via `registerCustomDisplayNames`, and directly by
+  /// `game_directory.dart`'s `buildGameDirectory` for `GameEntry.
+  /// displayName`.
   String? displayName;
 
   /// Absolute path to this game's app icon (an `.icns` bundle icon, the

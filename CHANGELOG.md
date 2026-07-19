@@ -7,6 +7,19 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **User-renameable game display names**: auto-detected games used to
+  surface raw executable-derived names ("PENGUINHOTEL-WIN64-SHIPPING")
+  everywhere — the hub title, All Clips session headers, the rail, the MY
+  GAMES sidebar. A new "Name" field at the top of each game's Settings page
+  (MY GAMES → game) lets you rename it once and have the friendly name win
+  everywhere, live, without restarting — the same commit-on-blur field as
+  the Storage limits, snapping back to the derived name when cleared.
+  Precedence is a config override (when set) ahead of the catalog/descriptor
+  name ahead of generic title-casing. League and Marvel Rivals — the two
+  games with a `games/game_descriptor.dart` entry — are not renameable in
+  v1: renaming League would desync its two merged gameIds' names and break
+  the All Clips bucket-by-display-name merge along with it, so the field is
+  hidden for them.
 - **Audio balance controls: game-audio volume + mic auto-leveling**: two
   levers for clips that mixed mic and game audio with no way to balance
   them. A "Game audio" volume slider (Settings → Capture → Audio, next to

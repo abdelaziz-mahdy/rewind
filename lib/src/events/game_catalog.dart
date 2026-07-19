@@ -169,29 +169,74 @@ void registerCustomDisplayNames(Map<String, String> names) {
     ..addAll(names);
 }
 
-/// Human-friendly label for a gameId, used everywhere a gameId is shown to
-/// the user (status strip, clip rows, the filter rail, per-game settings).
-/// Resolution order: a [popularGamesCatalog] hit (covers process-detected
-/// `app:<slug>` ids) first, then the null/`'desktop'` sentinel, then a
-/// [registerCustomDisplayNames] entry, then a registered
+/// Whether [gameId] belongs to an explicit `games/game_descriptor.dart`
+/// entry — today League (whose descriptor's one name drives BOTH its merged
+/// ids, `league_of_legends` and `app:league_of_legends`, so they can never
+/// desync) and Marvel Rivals (kept consistent with its `usesOfficialLogo`
+/// branding call). See [isGameRenameable]'s doc for why this gates renaming.
+bool isDescriptorRegistered(String gameId) =>
+    gameDescriptors.any((d) => d.mergedGameIds.contains(gameId));
+
+/// Whether the user is allowed to override [gameId]'s display name (Task
+/// 28's per-game rename, `GameConfig.displayName`) — false for
+/// [isDescriptorRegistered]. Renaming League would desync its two merged
+/// gameIds' names (the whole point of the descriptor merge is that both ids
+/// render as ONE row with ONE name) and break the All Clips bucket-by-
+/// display-name merge (`all_clips_screen.dart`'s `_sessionFeed`) along with
+/// it — so descriptor-registered games keep their descriptor name
+/// unconditionally. [displayNameFor] enforces this itself (never honors a
+/// [registerCustomDisplayNames] entry for such an id, even a stray one),
+/// and `settings_screen.dart`'s `_GameSettingsPage` hides the rename field
+/// entirely for these games using this same check — defense in depth, not
+/// just a UI nicety.
+bool isGameRenameable(String gameId) => !isDescriptorRegistered(gameId);
+
+/// The name [gameId] resolves to with NO [registerCustomDisplayNames]/
+/// `GameConfig.displayName` override in play: a registered
 /// `games/game_descriptor.dart` entry (covers a vendor id with no catalog
-/// counterpart, e.g. League's `league_of_legends` — a "known-name map" of
-/// one before Task 21's registry), then generic title-casing on underscores.
+/// counterpart, e.g. League's `league_of_legends`), else a
+/// [popularGamesCatalog] hit, else generic title-casing on underscores. Used
+/// both by [displayNameFor] (unconditionally, for a descriptor-registered
+/// id — see [isGameRenameable]'s doc) and by the MY GAMES rename field to
+/// snap back to when an override is cleared (`settings_screen.dart`'s
+/// `gameNameField`).
 ///
 /// Deliberately scans [gameDescriptors] directly rather than calling
 /// `descriptorFor` (which falls back to *this* function for an unregistered
 /// id's display name) — that would recurse.
-String displayNameFor(String? gameId) {
-  if (gameId == null || gameId == 'desktop') return 'Desktop';
-  for (final game in popularGamesCatalog) {
-    if (game.gameId == gameId) return game.displayName;
-  }
-  final custom = _customDisplayNames[gameId];
-  if (custom != null) return custom;
+String derivedDisplayNameFor(String gameId) {
   for (final d in gameDescriptors) {
     if (d.mergedGameIds.contains(gameId)) return d.displayName;
   }
+  for (final game in popularGamesCatalog) {
+    if (game.gameId == gameId) return game.displayName;
+  }
   return titleCaseGameId(gameId);
+}
+
+/// Human-friendly label for a gameId, used everywhere a gameId is shown to
+/// the user (status strip, clip rows, the filter rail, per-game settings,
+/// All Clips session buckets/headers). Resolution order: the null/
+/// `'desktop'` sentinel first, then — when [isGameRenameable] — a
+/// [registerCustomDisplayNames] entry (fed from every `GameConfig.
+/// displayName`, whether a picked-app's real-cased name or a user's
+/// explicit rename of a catalog game), else [derivedDisplayNameFor]
+/// (descriptor > catalog > title-case). A descriptor-registered id (League,
+/// Marvel Rivals) always gets its descriptor's name — an override never
+/// applies, even a stray one left over from before a game was added to the
+/// registry (Task 28's precedence contract; see [isGameRenameable]'s doc).
+String displayNameFor(String? gameId) {
+  if (gameId == null || gameId == 'desktop') return 'Desktop';
+  if (isGameRenameable(gameId)) {
+    final custom = _customDisplayNames[gameId];
+    // A blank override is never registered by `main.dart`'s
+    // `_customDisplayNamesOf` (it only forwards a non-null
+    // `GameConfig.displayName`), but this stays defensive against stale/
+    // hand-edited settings data — "empty override" must mean the same
+    // thing as "no override", not a blank display name.
+    if (custom != null && custom.trim().isNotEmpty) return custom;
+  }
+  return derivedDisplayNameFor(gameId);
 }
 
 /// Generic underscore-to-title-case fallback ("my_cool_game" -> "My Cool
