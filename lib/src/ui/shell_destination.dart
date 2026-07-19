@@ -54,12 +54,24 @@ class SettingsDestination extends ShellDestination {
   /// Settings.
   final String? initialGameId;
 
-  const SettingsDestination({this.initialGameId});
+  /// When set, Settings opens directly on this GENERAL sidebar tab (the
+  /// `settingsTab:<id>` suffix, e.g. `"Steam"`) instead of the default
+  /// Capture page -- onboarding's "Set up Steam achievements" shortcut sets
+  /// this so finishing onboarding lands straight on the Steam tab. Null for
+  /// every other entry point. Ignored if [initialGameId] is also set (a MY
+  /// GAMES page takes precedence -- the two are never set together in
+  /// practice).
+  final String? initialTab;
+
+  const SettingsDestination({this.initialGameId, this.initialTab});
 
   @override
   bool operator ==(Object other) =>
-      other is SettingsDestination && other.initialGameId == initialGameId;
+      other is SettingsDestination &&
+      other.initialGameId == initialGameId &&
+      other.initialTab == initialTab;
 
   @override
-  int get hashCode => Object.hash(SettingsDestination, initialGameId);
+  int get hashCode =>
+      Object.hash(SettingsDestination, initialGameId, initialTab);
 }

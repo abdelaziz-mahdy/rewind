@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
 import '../events/game_event.dart';
+import '../events/steam_account_locator.dart';
 import '../hotkey/key_capture.dart';
 import '../log/log.dart';
 import '../obs/app_info.dart';
@@ -116,11 +119,24 @@ class SettingsScreen extends StatefulWidget {
   /// back to Capture) if it doesn't match any [gameEntries] entry.
   final String? initialGameId;
 
+  /// When set (and [initialGameId] is not), Settings opens directly on this
+  /// GENERAL sidebar tab -- the `settingsTab:<id>` key suffix, e.g.
+  /// `"Steam"` (see `_SettingsSidebar._items`) -- instead of the default
+  /// Capture page. Ignored if it doesn't match any tab id.
+  final String? initialTab;
+
   /// The live `SteamAchievementWatcher.status` notifier, for the Steam
   /// page's status line. Null when no watcher exists yet (no Steam
   /// credentials configured — see `source_builder.dart`) — the page then
   /// shows a static "not configured" line instead of a live status.
   final ValueListenable<String?>? steamStatus;
+
+  /// Looks up this machine's local Steam accounts (`loginusers.vdf`), for
+  /// the Steam page's SteamID auto-detect -- see `steam_account_locator.
+  /// dart`. Defaults to the real, this-machine lookup
+  /// (`locateSteamAccountsOnThisMachine`); tests inject a fake so detection
+  /// is hermetic (no real filesystem paths touched).
+  final Future<List<SteamAccountEntry>> Function()? steamAccountLocator;
 
   const SettingsScreen({
     required this.settings,
@@ -135,7 +151,9 @@ class SettingsScreen extends StatefulWidget {
     this.onClose,
     this.gameEntries = const [],
     this.initialGameId,
+    this.initialTab,
     this.steamStatus,
+    this.steamAccountLocator,
     super.key,
   });
 
@@ -147,6 +165,19 @@ class SettingsScreen extends StatefulWidget {
 /// suffix, kept as "Hotkey" (singular) even though its label is "Hotkeys" to
 /// minimize churn against the pre-redesign key.
 enum _SettingsPage { capture, hotkey, storage, steam, about }
+
+/// Maps a page to its `settingsTab:<id>` id -- the same string
+/// `SettingsScreen.initialTab` is matched against, so a caller (and a test)
+/// can select a page with the exact id `_SettingsSidebar._items` renders.
+extension on _SettingsPage {
+  String get tabId => switch (this) {
+        _SettingsPage.capture => 'Capture',
+        _SettingsPage.hotkey => 'Hotkey',
+        _SettingsPage.storage => 'Storage',
+        _SettingsPage.steam => 'Steam',
+        _SettingsPage.about => 'About',
+      };
+}
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late int _bufferSeconds;
@@ -160,6 +191,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _steamApiKeyController;
   late final FocusNode _steamIdFocus;
   late final FocusNode _steamApiKeyFocus;
+
+  /// Whether the Steam page's local-account auto-detect has run once
+  /// automatically already this session -- guards [_scheduleSteamDetect] so
+  /// re-selecting the tab doesn't re-scan every time; the "Detect" button
+  /// bypasses this and always re-runs (see [_detectSteamAccounts]).
+  bool _steamAutoDetectAttempted = false;
+
+  /// True while a detect scan is in flight (auto or via the button) --
+  /// disables the button so a double-click can't overlap two scans.
+  bool _steamDetecting = false;
+
+  /// Every account the last scan found -- drives the "pick one" choice UI
+  /// when more than one was found and none is unambiguously MostRecent
+  /// (see `pickMostLikelyAccount`).
+  List<SteamAccountEntry> _detectedSteamAccounts = const [];
+
+  /// The persona name of whichever account is CURRENTLY prefilled into
+  /// [_steamIdController] by detection (auto-picked, or manually chosen
+  /// from the ambiguous list) -- shown as the field's helper line. Null
+  /// once the id no longer matches a detected account (the user edited it,
+  /// or nothing's been detected yet).
+  String? _detectedPersonaName;
+
+  /// The id [_detectedPersonaName] describes -- once [_steamIdController]'s
+  /// text diverges from it (the user edited the field further), the helper
+  /// line is stale and gets cleared (see the controller listener added in
+  /// [initState]).
+  String? _detectedAccountId;
 
   /// The current GENERAL page, or null while a MY GAMES page
   /// ([_selectedGameId]) is showing — exactly one of the two is non-null at
@@ -216,9 +275,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..addListener(() {
         if (!_maxAgeFocus.hasFocus) _commitMaxAge();
       });
-    _steamIdController = TextEditingController(text: widget.settings.steamId64);
+    // Live (not just on commit) listeners on both fields: the "Almost
+    // there" status hint and the "Detected Steam account" helper line (see
+    // [_steamDetectedHelperLine]) react to what's IN the fields, per the
+    // friction-cut spec's "detected or typed" wording -- waiting for blur
+    // would leave them a keystroke behind.
+    _steamIdController = TextEditingController(text: widget.settings.steamId64)
+      ..addListener(() => setState(() {}));
     _steamApiKeyController =
-        TextEditingController(text: widget.settings.steamWebApiKey);
+        TextEditingController(text: widget.settings.steamWebApiKey)
+          ..addListener(() => setState(() {}));
     _steamIdFocus = FocusNode()
       ..addListener(() {
         if (!_steamIdFocus.hasFocus) _commitSteamId();
@@ -231,13 +297,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (initial != null && widget.gameEntries.any((e) => e.gameId == initial)) {
       _selectedGeneralPage = null;
       _selectedGameId = initial;
+    } else if (widget.initialTab case final tab?) {
+      final page =
+          _SettingsPage.values.where((p) => p.tabId == tab).firstOrNull;
+      if (page != null) _selectedGeneralPage = page;
     }
+    if (_selectedGeneralPage == _SettingsPage.steam) _scheduleSteamDetect();
   }
 
-  void _selectGeneralPage(_SettingsPage page) => setState(() {
-        _selectedGeneralPage = page;
-        _selectedGameId = null;
-      });
+  void _selectGeneralPage(_SettingsPage page) {
+    setState(() {
+      _selectedGeneralPage = page;
+      _selectedGameId = null;
+    });
+    if (page == _SettingsPage.steam) _scheduleSteamDetect();
+  }
 
   void _selectGame(String gameId) => setState(() {
         _selectedGameId = gameId;
@@ -357,6 +431,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (trimmed == widget.settings.steamWebApiKey) return;
     widget.settings.steamWebApiKey = trimmed;
     widget.onChanged(widget.settings);
+  }
+
+  /// Runs the auto-detect scan exactly once per Settings session, the first
+  /// time the Steam page is shown -- called from [initState] (an
+  /// [initialTab] landing straight on Steam) and [_selectGeneralPage]
+  /// (navigating to it manually). A no-op once [_steamAutoDetectAttempted]
+  /// is set; the "Detect" button's [_detectSteamAccounts] bypasses this
+  /// guard so it always re-scans on demand.
+  void _scheduleSteamDetect() {
+    if (_steamAutoDetectAttempted) return;
+    _steamAutoDetectAttempted = true;
+    unawaited(_detectSteamAccounts());
+  }
+
+  /// Scans this machine's local Steam account cache
+  /// ([SettingsScreen.steamAccountLocator], defaulting to
+  /// `locateSteamAccountsOnThisMachine`) and, if the id can be
+  /// unambiguously picked, prefills [_steamIdController] -- NEVER writes
+  /// [AppSettings.steamId64] itself; the user still commits it via the
+  /// normal blur-to-save path, same as typing it by hand.
+  Future<void> _detectSteamAccounts() async {
+    if (_steamDetecting) return;
+    setState(() => _steamDetecting = true);
+    final locate =
+        widget.steamAccountLocator ?? locateSteamAccountsOnThisMachine;
+    List<SteamAccountEntry> accounts;
+    try {
+      accounts = await locate();
+    } catch (_) {
+      // Best-effort: a locator failure just means nothing got detected.
+      accounts = const [];
+    }
+    if (!mounted) return;
+    setState(() {
+      _steamDetecting = false;
+      _detectedSteamAccounts = accounts;
+    });
+    final picked = pickMostLikelyAccount(accounts);
+    if (picked != null) _applyDetectedAccount(picked);
+  }
+
+  /// Prefills the SteamID field with [account], but only when there's
+  /// nothing saved to protect -- see [SettingsScreen.steamAccountLocator]'s
+  /// doc: never overwrite a non-empty SAVED id, whether the prefill comes
+  /// from the automatic scan (a single/MostRecent match) or the user
+  /// tapping one of the ambiguous choices.
+  void _applyDetectedAccount(SteamAccountEntry account) {
+    if (widget.settings.steamId64.trim().isNotEmpty) return;
+    setState(() {
+      _detectedPersonaName = account.personaName;
+      _detectedAccountId = account.steamId64;
+      _steamIdController.text = account.steamId64;
+    });
+  }
+
+  /// The SteamID field's helper line while it still shows exactly the
+  /// account [_applyDetectedAccount] prefilled -- null once the user edits
+  /// the field further (typed text no longer matches [_detectedAccountId])
+  /// so a stale "Detected…" line never lingers under a value the user
+  /// typed themselves.
+  String? get _steamDetectedHelperLine {
+    if (_detectedAccountId == null) return null;
+    if (_steamIdController.text.trim() != _detectedAccountId) return null;
+    final name = _detectedPersonaName ?? '';
+    return name.isEmpty
+        ? 'Detected Steam account'
+        : 'Detected Steam account: $name';
+  }
+
+  /// The account choice list shown when the last scan found several
+  /// accounts and none was an unambiguous MostRecent pick (see
+  /// `pickMostLikelyAccount`) -- empty once the field already holds
+  /// something (a saved id, or a choice already made), since the field
+  /// stays editable regardless but the "pick one" prompt would otherwise
+  /// keep dangling under an already-filled field.
+  List<SteamAccountEntry> get _ambiguousSteamAccounts {
+    if (_steamIdController.text.trim().isNotEmpty) return const [];
+    if (pickMostLikelyAccount(_detectedSteamAccounts) != null) return const [];
+    return _detectedSteamAccounts;
   }
 
   void _handleClipSteamAchievementsChanged(bool value) {
@@ -1158,6 +1311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// credentials, the auto-clip toggle, and a live status line reflecting
   /// what the watcher is currently doing.
   Widget _steamPage(BuildContext context) {
+    final ambiguous = _ambiguousSteamAccounts;
     return _settingsPage(
       context,
       'Steam',
@@ -1167,17 +1321,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
           label: 'Steam ID',
           field: SizedBox(
             width: 320,
-            child: TextField(
-              key: const ValueKey('steamIdField'),
-              controller: _steamIdController,
-              focusNode: _steamIdFocus,
-              decoration: const InputDecoration(
-                hintText: 'Profile URL, vanity name, or SteamID64',
-              ),
-              onSubmitted: (_) => _steamIdFocus.unfocus(),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('steamIdField'),
+                    controller: _steamIdController,
+                    focusNode: _steamIdFocus,
+                    decoration: const InputDecoration(
+                      hintText: 'Profile URL, vanity name, or SteamID64',
+                    ),
+                    onSubmitted: (_) => _steamIdFocus.unfocus(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('steamDetectButton'),
+                  onPressed: _steamDetecting
+                      ? null
+                      : () => unawaited(_detectSteamAccounts()),
+                  child: Text(_steamDetecting ? 'Detecting…' : 'Detect'),
+                ),
+              ],
             ),
           ),
+          footnote: _steamDetectedHelperLine,
         ),
+        if (ambiguous.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('Multiple Steam accounts found on this machine — pick one:',
+              style: Theme.of(context).textTheme.bodyMuted),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final account in ambiguous)
+                OutlinedButton(
+                  key: ValueKey('steamAccountChoice:${account.steamId64}'),
+                  onPressed: () => _applyDetectedAccount(account),
+                  child: Text(account.personaName.isEmpty
+                      ? account.steamId64
+                      : account.personaName),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         _TextFieldRow(
           label: 'Steam Web API key',
@@ -1220,22 +1409,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: Theme.of(context).textTheme.bodyMuted,
         ),
         const SizedBox(height: 16),
-        if (widget.steamStatus case final status?)
-          ListenableBuilder(
-            listenable: status,
-            builder: (context, _) => Text(
-              status.value ?? 'Idle — waiting for the next check.',
-              key: const ValueKey('steamStatusLine'),
-              style: Theme.of(context).textTheme.bodyMuted,
-            ),
-          )
-        else
-          Text(
-            'Add your Steam ID and API key above to start watching.',
-            key: const ValueKey('steamStatusLine'),
-            style: Theme.of(context).textTheme.bodyMuted,
-          ),
+        _steamStatusLine(context),
       ],
+    );
+  }
+
+  /// The Steam page's status line -- three tiers, checked in order:
+  ///  1. An id typed/detected but no key yet: "Almost there…", pointing at
+  ///     the "Get a key" button above -- unmistakably the one remaining
+  ///     step, and true regardless of whether a watcher exists yet (one
+  ///     never does until BOTH credentials are saved, see
+  ///     `SteamAchievementWatcher`'s doc).
+  ///  2. A live watcher status notifier, once credentials are saved.
+  ///  3. The static "add both" prompt, before anything's been entered.
+  /// Reads the FIELDS live (not committed settings) for tier 1, per the
+  /// spec's "detected or typed" wording -- see the controller listeners
+  /// added in [initState].
+  Widget _steamStatusLine(BuildContext context) {
+    final idPresent = _steamIdController.text.trim().isNotEmpty;
+    final keyPresent = _steamApiKeyController.text.trim().isNotEmpty;
+    if (idPresent && !keyPresent) {
+      return Text(
+        'Almost there — paste your free API key (button above)',
+        key: const ValueKey('steamStatusLine'),
+        style: Theme.of(context).textTheme.bodyMuted,
+      );
+    }
+    if (widget.steamStatus case final status?) {
+      return ListenableBuilder(
+        listenable: status,
+        builder: (context, _) => Text(
+          status.value ?? 'Idle — waiting for the next check.',
+          key: const ValueKey('steamStatusLine'),
+          style: Theme.of(context).textTheme.bodyMuted,
+        ),
+      );
+    }
+    return Text(
+      'Add your Steam ID and API key above to start watching.',
+      key: const ValueKey('steamStatusLine'),
+      style: Theme.of(context).textTheme.bodyMuted,
     );
   }
 

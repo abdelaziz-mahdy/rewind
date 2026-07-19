@@ -35,6 +35,7 @@ import 'src/settings/settings_store.dart';
 import 'src/tray/tray_service.dart';
 import 'src/ui/onboarding_screen.dart';
 import 'src/ui/shell.dart';
+import 'src/ui/shell_destination.dart';
 import 'src/ui/theme.dart';
 
 /// Reveals the clips folder in the OS file manager — shared by the Home
@@ -617,6 +618,13 @@ class RewindApp extends StatefulWidget {
 class _RewindAppState extends State<RewindApp> {
   late bool _showOnboarding = !widget.settings.onboardingComplete;
 
+  /// Set by [_setUpSteam] just before completing onboarding, and consumed
+  /// once when the Shell is first built below -- seeds `Shell.
+  /// initialDestination` so the "Set up Steam achievements" shortcut lands
+  /// straight on Settings' Steam tab. Null (a plain finish/skip) keeps
+  /// today's default (All Clips).
+  ShellDestination? _shellInitialDestination;
+
   Future<void> _completeOnboarding() async {
     widget.settings.onboardingComplete = true;
     await widget.onSettingsChanged(widget.settings);
@@ -625,6 +633,16 @@ class _RewindAppState extends State<RewindApp> {
     // widget is never rebuilt (e.g. already-unmounted in a test harness).
     widget.onboardingActive?.value = false;
     if (mounted) setState(() => _showOnboarding = false);
+  }
+
+  /// Onboarding's "Set up Steam achievements" shortcut: finishes onboarding
+  /// exactly like [_completeOnboarding] (same settings persist +
+  /// `onboardingActive` flip), then routes the Shell straight to Settings'
+  /// Steam tab instead of the usual All Clips landing -- an API key needs a
+  /// web visit, so the credential fields themselves stay out of onboarding.
+  Future<void> _setUpSteam() async {
+    _shellInitialDestination = const SettingsDestination(initialTab: 'Steam');
+    await _completeOnboarding();
   }
 
   @override
@@ -643,6 +661,7 @@ class _RewindAppState extends State<RewindApp> {
               captureError: widget.captureError,
               onRelaunch: widget.onRelaunch,
               listApps: widget.listApps,
+              onSetUpSteam: _setUpSteam,
             )
           : Shell(
               coordinator: widget.coordinator,
@@ -665,6 +684,7 @@ class _RewindAppState extends State<RewindApp> {
               thumbnails: widget.thumbnails,
               ddragon: widget.ddragon,
               steamStatus: widget.steamStatus,
+              initialDestination: _shellInitialDestination,
             ),
     );
   }

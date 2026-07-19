@@ -17,7 +17,15 @@ All notable changes to Rewind are documented here. Format based on
   the Settings page's live status line reports exactly what's happening
   (watching, waiting for a game, a bad key, a private profile, or a
   connectivity hiccup). Credentials are stored locally in `settings.json`
-  only. See docs/COMPLIANCE.md.
+  only. See docs/COMPLIANCE.md. Onboarding's "Controls & games" step now
+  pitches the feature in one line with a "Set up Steam achievements"
+  shortcut that finishes onboarding straight into the Steam tab (the API
+  key still needs a web visit, so credential fields stay out of onboarding
+  itself); the Steam tab also auto-detects the SteamID from Steam's own
+  local `loginusers.vdf` (native install and CrossOver bottles on macOS,
+  the standard install path on Windows) so most users never have to hunt
+  for it — the API key paste is the only manual step left, and the status
+  line says so ("Almost there…") once the id is set.
 - **Marvel Rivals** added to the game catalog — process-detection only (no
   sanctioned real-time source exists: no public match/event API, and the
   game's own logs are encrypted). Works on Windows natively and on macOS via

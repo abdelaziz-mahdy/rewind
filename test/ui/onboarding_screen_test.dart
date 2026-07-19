@@ -25,6 +25,7 @@ void main() {
     String? captureError,
     VoidCallback? onRelaunch,
     List<AppInfo> Function()? listApps,
+    VoidCallback? onSetUpSteam,
   }) =>
       OnboardingScreen(
         settings: settings ?? AppSettings(),
@@ -36,6 +37,7 @@ void main() {
         captureError: captureError,
         onRelaunch: onRelaunch,
         listApps: listApps,
+        onSetUpSteam: onSetUpSteam,
       );
 
   Future<void> nextTo(WidgetTester t, int steps) async {
@@ -198,6 +200,37 @@ void main() {
     await t.pumpWidget(_app(screen(listApps: () => const [])));
     await nextTo(t, 4); // -> controls & games
     expect(find.textContaining('We can see'), findsNothing);
+  });
+
+  testWidgets('the games step pitches Steam achievement clipping', (t) async {
+    await t.pumpWidget(_app(screen()));
+    await nextTo(t, 4); // -> controls & games
+    expect(
+        find.textContaining('Any Steam game: unlocking an achievement '
+            'saves a clip labeled with its name.'),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'the games step hides the Steam setup button when onSetUpSteam is null',
+      (t) async {
+    await t.pumpWidget(_app(screen()));
+    await nextTo(t, 4); // -> controls & games
+    expect(find.byKey(const ValueKey('steamSetupButton')), findsNothing);
+  });
+
+  testWidgets(
+      'the games step shows a Steam setup button that invokes onSetUpSteam',
+      (t) async {
+    var calls = 0;
+    await t.pumpWidget(_app(screen(onSetUpSteam: () => calls++)));
+    await nextTo(t, 4); // -> controls & games
+    final button = find.byKey(const ValueKey('steamSetupButton'));
+    expect(button, findsOneWidget);
+    await t.ensureVisible(button);
+    await t.pump();
+    await t.tap(button);
+    expect(calls, 1);
   });
 
   testWidgets(

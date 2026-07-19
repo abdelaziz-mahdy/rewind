@@ -122,6 +122,44 @@ void main() {
     expect(find.text('Never miss a play'), findsNothing);
   });
 
+  testWidgets(
+      'the Steam setup shortcut finishes onboarding and lands on Settings\' '
+      'Steam tab', (t) async {
+    final settings = AppSettings();
+    final onboardingActive = ValueNotifier<bool>(!settings.onboardingComplete);
+
+    await t.pumpWidget(app(rewindApp(
+      settings: settings,
+      onboardingActive: onboardingActive,
+    )));
+
+    // Page to the controls & games step (welcome/permission/buffer/
+    // preferences -> controls&games = 4 transitions), same as the
+    // onboarding_screen_test.dart button tests.
+    for (var i = 0; i < 4; i++) {
+      await t.tap(find.byKey(const ValueKey('onboardingNext')));
+      await t.pumpAndSettle();
+    }
+    final button = find.byKey(const ValueKey('steamSetupButton'));
+    expect(button, findsOneWidget);
+    await t.ensureVisible(button);
+    await t.pump();
+    await t.tap(button);
+    // Bounded pump, not pumpAndSettle: the Shell's recorder deck (now
+    // visible under Settings' full-page chrome? no -- Settings hides the
+    // rail, but the deck's REC dot animation lives inside a Ticker that
+    // keeps running regardless) never settles -- see CLAUDE.md.
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(onboardingActive.value, isFalse);
+    expect(settings.onboardingComplete, isTrue);
+    expect(find.text('Never miss a play'), findsNothing);
+    // Settings opened directly on the Steam tab -- its fields are visible
+    // without any extra navigation.
+    expect(find.byKey(const ValueKey('steamIdField')), findsOneWidget);
+  });
+
   testWidgets('an already-onboarded install never flips onboardingActive true',
       (t) async {
     final settings = AppSettings()..onboardingComplete = true;
