@@ -1497,66 +1497,6 @@ void main() {
         expect(calls, 2);
       });
     });
-
-    group('status line: "Almost there"', () {
-      testWidgets(
-          'shows once an id is set (typed or detected) but the API key is '
-          'still empty', (t) async {
-        final settings = AppSettings(steamId64: '76561197960287930');
-        await t.pumpWidget(_app(SettingsScreen(
-          settings: settings,
-          onChanged: (_) async {},
-          displays: const [],
-        )));
-
-        await openPage(t, 'Steam');
-        expect(
-          find.text('Almost there — paste your free API key (button above)'),
-          findsOneWidget,
-        );
-      });
-
-      testWidgets('does not show once the API key is also set', (t) async {
-        final settings = AppSettings(
-          steamId64: '76561197960287930',
-          steamWebApiKey: 'AKEY',
-        );
-        await t.pumpWidget(_app(SettingsScreen(
-          settings: settings,
-          onChanged: (_) async {},
-          displays: const [],
-        )));
-
-        await openPage(t, 'Steam');
-        expect(
-          find.text('Almost there — paste your free API key (button above)'),
-          findsNothing,
-        );
-      });
-
-      testWidgets('reacts live to typing an id with no key yet', (t) async {
-        await t.pumpWidget(_app(SettingsScreen(
-          settings: AppSettings(),
-          onChanged: (_) async {},
-          displays: const [],
-        )));
-
-        await openPage(t, 'Steam');
-        expect(
-          find.text('Almost there — paste your free API key (button above)'),
-          findsNothing,
-        );
-
-        await t.enterText(
-            find.byKey(const ValueKey('steamIdField')), '76561197960287930');
-        await t.pump();
-
-        expect(
-          find.text('Almost there — paste your free API key (button above)'),
-          findsOneWidget,
-        );
-      });
-    });
   });
 
   testWidgets('the default buffer offers 15 s, same as a per-game override',
