@@ -187,6 +187,17 @@ int rewind_set_mic_volume(float volume);
  * playing past the source's own lifetime. Returns 0 on success. */
 int rewind_set_mic_monitoring(int enabled);
 
+/* Enable/disable mic auto-leveling: a compressor (evens out the recording
+ * envelope) followed by a limiter (catches whatever peaks through) attached
+ * to the mic source as private filters, default ON — the "set once, forget"
+ * lever that keeps voice sitting consistently against game audio instead of
+ * swinging between too quiet and too loud. Safe to call before
+ * rewind_obs_init (the preference is remembered and applied whenever the
+ * mic source is next built, same as rewind_set_mic_volume); if the mic
+ * source already exists, the filters are attached/removed immediately.
+ * No-op in stub mode. Returns 0 on success. */
+int rewind_set_mic_leveling(int enabled);
+
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
  * `max_height` caps the output height (aspect preserved) when the display
  * is taller, or 0 for source resolution. Applied at rewind_obs_init — call
@@ -201,6 +212,17 @@ int rewind_set_capture_quality(int fps, int max_height);
  * none it captures silence rather than leaking desktop audio. Safe before
  * init (stored) or after (rebuilds the source live). Returns 0. */
 int rewind_set_audio_mode(int mode);
+
+/* Set the game/desktop-audio recording-level multiplier (1.0 = 100%, i.e.
+ * unity gain; clamped to 0.0-2.0) — the same lever as rewind_set_mic_volume
+ * but against the desktop-audio source (channel 1) instead of the mic, so
+ * game audio can be pulled down under voice. Safe to call before
+ * rewind_obs_init (the preference is remembered and applied whenever the
+ * desktop-audio source is next built — rewind_obs_init, rewind_set_audio_
+ * mode, and rewind_set_capture_app's app-audio-mode rebuild all (re)create
+ * it); if it already exists, applied immediately via
+ * obs_source_set_volume. No-op in stub mode. Returns 0 on success. */
+int rewind_set_game_volume(float volume);
 
 /* Reports whether screen-capture permission is CURRENTLY granted, without
  * prompting — safe to poll repeatedly (e.g. once a second from onboarding

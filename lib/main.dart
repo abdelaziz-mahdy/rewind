@@ -169,7 +169,9 @@ Future<void> main() async {
   engine.setMicEnabled(settings.captureMicrophone);
   engine.setMicDevice(settings.micDeviceUid);
   engine.setMicVolume(settings.micVolume);
+  engine.setMicLeveling(settings.micAutoLevel);
   engine.setAudioMode(audioModeToShim(settings.audioMode));
+  engine.setGameVolume(settings.gameAudioVolume);
   engine.setCaptureQuality(settings.captureFps, settings.captureMaxHeight ?? 0);
   if (!engine.init(
       outDir: clipsDir.path, seconds: settings.defaultBufferSeconds)) {
@@ -484,7 +486,9 @@ Future<void> main() async {
       engine?.setMicEnabled(s.captureMicrophone);
       engine?.setMicDevice(s.micDeviceUid);
       engine?.setMicVolume(s.micVolume);
+      engine?.setMicLeveling(s.micAutoLevel);
       engine?.setAudioMode(audioModeToShim(s.audioMode));
+      engine?.setGameVolume(s.gameAudioVolume);
       // Quality stored for next launch (a live pipeline can't change fps/res).
       engine?.setCaptureQuality(s.captureFps, s.captureMaxHeight ?? 0);
       await bindBothHotkeys();

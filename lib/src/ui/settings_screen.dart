@@ -251,6 +251,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// same number un-scaled.
   late double _micVolumePercent;
 
+  /// The game/desktop-audio volume slider's live position, as a 0-200
+  /// percent — same "drag updates the label, drag-end commits" split as
+  /// [_micVolumePercent], for the same reason (see [_handleGameVolume
+  /// ChangeEnd]).
+  late double _gameVolumePercent;
+
   /// Whether live mic monitoring (through the speakers/headphones) is
   /// currently on — purely local UI state, never read from [AppSettings]
   /// (monitoring is transient/engine-only, see [SettingsScreen.
@@ -263,6 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _bufferSeconds = widget.settings.defaultBufferSeconds;
     _micVolumePercent = (widget.settings.micVolume * 100).clamp(0, 200);
+    _gameVolumePercent = (widget.settings.gameAudioVolume * 100).clamp(0, 200);
     // Must list every preset segment above, or a saved value that HAS a
     // segment (15) falls through to "Custom" and no segment ever highlights.
     _customBuffer =
@@ -707,6 +714,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// Live drag position for the game-volume slider — mirrors
+  /// [_handleMicVolumeChanged].
+  void _handleGameVolumeChanged(double percent) =>
+      setState(() => _gameVolumePercent = percent);
+
+  /// Commits the game-volume slider's position on drag end, never per
+  /// pixel — mirrors [_handleMicVolumeChangeEnd].
+  void _handleGameVolumeChangeEnd(double percent) {
+    widget.settings.gameAudioVolume = percent / 100;
+    widget.onChanged(widget.settings);
+  }
+
+  /// Writes [AppSettings.micAutoLevel] straight through, same as every
+  /// other plain toggle on this screen (e.g. [_handleFeedbackSoundsChanged]).
+  void _handleMicAutoLevelChanged(bool value) {
+    widget.settings.micAutoLevel = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   /// Toggles live mic monitoring — see [SettingsScreen.onSetMicMonitoring]'s
   /// doc. Local UI state only: the on/off flag itself is never persisted.
   void _handleMicListenToggle() {
@@ -888,15 +915,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               switchKey: const ValueKey('onlyInGameSwitch'),
               onChanged: _handleCaptureOnlyInGameChanged,
             ),
-            const SizedBox(height: 12),
-            _ToggleRow(
-              label: 'Sound on save',
-              hint: 'Plays a short sound when a manual save succeeds or '
-                  'fails, and when recording starts or stops.',
-              value: widget.settings.playFeedbackSounds,
-              switchKey: const ValueKey('feedbackSoundsSwitch'),
-              onChanged: _handleFeedbackSoundsChanged,
-            ),
           ],
         ),
       ),
@@ -966,24 +984,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       left: BorderSide(
                           color: context.rewindTokens.hairline, width: 2)),
                 ),
-                child: _FieldRow(
-                  label: 'From',
-                  control: DropdownButtonFormField<AudioMode>(
-                    key: const ValueKey('audioSourceDropdown'),
-                    initialValue: widget.settings.audioMode == AudioMode.app
-                        ? AudioMode.app
-                        : AudioMode.all,
-                    isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(
-                          value: AudioMode.all, child: Text('All apps')),
-                      DropdownMenuItem(
-                          value: AudioMode.app, child: Text('Game only')),
-                    ],
-                    onChanged: (m) {
-                      if (m != null) _handleAudioModeChanged(m);
-                    },
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _FieldRow(
+                      label: 'From',
+                      control: DropdownButtonFormField<AudioMode>(
+                        key: const ValueKey('audioSourceDropdown'),
+                        initialValue: widget.settings.audioMode == AudioMode.app
+                            ? AudioMode.app
+                            : AudioMode.all,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(
+                              value: AudioMode.all, child: Text('All apps')),
+                          DropdownMenuItem(
+                              value: AudioMode.app, child: Text('Game only')),
+                        ],
+                        onChanged: (m) {
+                          if (m != null) _handleAudioModeChanged(m);
+                        },
+                      ),
+                    ),
+                    _FieldRow(
+                      label: 'Game audio',
+                      control: Row(
+                        children: [
+                          Expanded(
+                            child: Slider(
+                              key: const ValueKey('gameVolumeSlider'),
+                              value: _gameVolumePercent,
+                              min: 0,
+                              max: 200,
+                              divisions: 200,
+                              label: '${_gameVolumePercent.round()}%',
+                              onChanged: _handleGameVolumeChanged,
+                              onChangeEnd: _handleGameVolumeChangeEnd,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              '${_gameVolumePercent.round()}%',
+                              style: Theme.of(context).textTheme.bodyMuted,
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             _ToggleRow(
@@ -1081,6 +1131,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+              ),
+            // Same gate as the volume row above — works against whichever
+            // mic source the engine already built, no `audioInputs` needed.
+            if (widget.settings.captureMicrophone)
+              _ToggleRow(
+                label: 'Auto-level my voice',
+                hint: 'Evens out your mic so quiet and loud moments sit '
+                    'consistently against the game — recommended.',
+                value: widget.settings.micAutoLevel,
+                switchKey: const ValueKey('micAutoLevelSwitch'),
+                onChanged: _handleMicAutoLevelChanged,
               ),
           ],
         ),
@@ -1224,6 +1285,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onRecording: widget.onHotkeyRecording,
           ),
         ),
+      ),
+      const SizedBox(height: 12),
+      _ToggleRow(
+        label: 'Sound on save',
+        hint: 'Plays a short sound when a manual save succeeds or fails, '
+            'and when recording starts or stops.',
+        value: widget.settings.playFeedbackSounds,
+        switchKey: const ValueKey('feedbackSoundsSwitch'),
+        onChanged: _handleFeedbackSoundsChanged,
       ),
     ]);
   }
