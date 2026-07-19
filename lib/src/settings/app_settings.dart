@@ -141,21 +141,26 @@ class AppSettings {
   /// The user's Steam id64 (17-digit numeric), or a vanity name/profile URL
   /// normalized down to its trailing segment at save time (see
   /// `SettingsScreen`'s SteamID field) — `SteamAchievementWatcher` resolves
-  /// a non-numeric value via `ISteamUser/ResolveVanityURL` itself. Empty
-  /// string (the default) means "not configured"; alongside
-  /// [steamWebApiKey], both must be non-empty for the watcher to run.
+  /// a non-numeric value via `ISteamUser/ResolveVanityURL` itself. UNUSED by
+  /// the keyless local trigger path (`SteamStatsWatcher`, which discovers
+  /// accounts itself from Steam's own `loginusers.vdf` — see
+  /// docs/COMPLIANCE.md); kept for the optional, currently-unbuilt web
+  /// watcher's possible future enrichment. Empty string (the default) means
+  /// "not configured".
   String steamId64;
 
   /// A Steam Web API key (steamcommunity.com/dev/apikey). Stored locally in
   /// settings.json only — never sent anywhere but api.steampowered.com as a
-  /// query param, per that API's own auth scheme. Empty string (the
-  /// default) means "not configured".
+  /// query param, per that API's own auth scheme. Same "unused today" status
+  /// as [steamId64] — see its doc. Empty string (the default) means "not
+  /// configured".
   String steamWebApiKey;
 
-  /// Whether a new Steam achievement unlock should auto-clip. Default TRUE,
-  /// but inert until both [steamId64] and [steamWebApiKey] are set — there's
-  /// nothing to watch without credentials, so a default-on toggle can't spam
-  /// anyone.
+  /// Whether a new Steam achievement unlock should auto-clip. Default TRUE:
+  /// gates `SteamStatsWatcher`, which needs no credentials and exists
+  /// unconditionally, so unlike the retired credential-gated design a
+  /// default-on toggle IS live from first launch (as soon as the watcher's
+  /// local discovery finds a Steam install with a logged-in account).
   bool clipSteamAchievements;
 
   final Map<String, GameConfig> _perGame;

@@ -78,9 +78,12 @@ class OnboardingScreen extends StatefulWidget {
 
   /// The "Controls & games" step's secondary "Set up Steam achievements"
   /// button -- finishes onboarding (same as [onDone]) and then opens
-  /// Settings directly on the Steam tab, since the API key it needs
-  /// requires a web visit that doesn't belong mid-flow. Null hides the
-  /// button (e.g. existing callers/tests that don't wire it).
+  /// Settings directly on the Steam tab. Detection itself is keyless and
+  /// on by default (see `SteamStatsWatcher`), so this is really a
+  /// "see it/turn it off" shortcut rather than a required setup step; kept
+  /// as a named landing spot since the toggle/status line are still worth
+  /// a glance. Null hides the button (e.g. existing callers/tests that
+  /// don't wire it).
   final VoidCallback? onSetUpSteam;
 
   const OnboardingScreen({

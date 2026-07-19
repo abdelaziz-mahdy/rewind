@@ -55,6 +55,15 @@ class SteamHttpResponse {
 /// a (game session, appid) pair only SEEDS the currently-unlocked set — it
 /// must never replay a game's whole achievement history as clips the
 /// moment Rewind starts watching it.
+///
+/// RETIRED as the trigger path (maintainer decision 2026-07-19): `source_
+/// builder.dart` no longer constructs this class — `SteamStatsWatcher`
+/// (steam_stats_watcher.dart) replaced it with keyless, local, read-only
+/// detection off Steam's own stats cache, needing no API key and no
+/// network. This class stays in the tree, compiling and tested, purely as a
+/// seam for POSSIBLE future enrichment (a field the local cache doesn't
+/// carry, e.g. a global unlock-rate stat) — it is not started by anything
+/// today. See docs/COMPLIANCE.md's Steam entry for the full reasoning.
 class SteamAchievementWatcher implements GameEventSource {
   static const _apiHost = 'api.steampowered.com';
   static const _requestTimeout = Duration(seconds: 10);

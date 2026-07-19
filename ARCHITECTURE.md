@@ -27,7 +27,7 @@ Owns everything the user sees and most of the logic:
   system: `RewindTokens` in `theme.dart`; base spec in
   `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`, settings
   redesign rationale in the 2026-07-18 research pass (variants artifact).
-- **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. Two source SHAPES exist so far: `LeagueEventWatcher`, which polls a **local, cert-pinned** HTTPS endpoint at `https://127.0.0.1:2999/liveclientdata/eventdata` (no credentials, only exists mid-match); and `SteamAchievementWatcher`, which polls the **public, credentialed** Steam Web API (`api.steampowered.com`) for achievement unlocks — generic across EVERY Steam game rather than one title, and deliberately never "activates" through `GameRegistry`'s normal `isGameRunning` tick (it drives no capture/buffer-policy signal of its own; events are attributed to whatever game is otherwise detected active). See that class's doc for the full contrast.
+- **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. THREE source SHAPES exist so far: `LeagueEventWatcher`, which polls a **local, cert-pinned** HTTPS endpoint at `https://127.0.0.1:2999/liveclientdata/eventdata` (no credentials, only exists mid-match); `SteamAchievementWatcher`, which polls the **public, credentialed** Steam Web API (`api.steampowered.com`) for achievement unlocks — kept in the tree but no longer constructed, see below; and `SteamStatsWatcher` (maintainer decision 2026-07-19, replacing the Web API watcher as `source_builder.dart`'s actual Steam source), a **local file watcher**: no credentials, no network, discovers every Steam install on the machine and watches its `appcache/stats/` cache directly for achievement unlocks. All three are generic across EVERY Steam/League game rather than one title where applicable, and (Steam sources only) deliberately never "activate" through `GameRegistry`'s normal `isGameRunning` tick (they drive no capture/buffer-policy signal of their own; events are attributed to whatever game is otherwise detected active). See each class's doc for the full contrast.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
 - **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,
   behind a small **`CaptureEngine`** interface. The coordinator and UI depend
@@ -288,10 +288,10 @@ Adding a new game now follows one of two paths:
    explicit `GameDescriptor` if this game deviates from that default — e.g. a
    `usesOfficialLogo: false` override for a publisher with no fan-tool logo
    carve-off (Marvel Rivals; see docs/COMPLIANCE.md's per-game notes).
-2. **A sanctioned vendor API (rare — League is the only one that fits this
-   per-game recipe; `SteamAchievementWatcher` is a vendor-API integration
-   too, but a cross-game one with no single `gameId` of its own to attach a
-   `GameDescriptor` to — see the events layer bullet above):**
+2. **A sanctioned vendor API OR local file (rare — League is the only
+   per-game-API fit; the Steam integrations are cross-game ones with no
+   single `gameId` of their own to attach a `GameDescriptor` to — see the
+   events layer bullet above):**
    implement `GameEventSource` and register it (`source_builder.dart`,
    `game_registry.dart` — see the section above), THEN add a `GameDescriptor`
    entry with `mergedGameIds` covering both the vendor id and any catalog

@@ -125,10 +125,11 @@ class SettingsScreen extends StatefulWidget {
   /// Capture page. Ignored if it doesn't match any tab id.
   final String? initialTab;
 
-  /// The live `SteamAchievementWatcher.status` notifier, for the Steam
-  /// page's status line. Null when no watcher exists yet (no Steam
-  /// credentials configured — see `source_builder.dart`) — the page then
-  /// shows a static "not configured" line instead of a live status.
+  /// The live `SteamStatsWatcher.status` notifier, for the Steam page's
+  /// status line. A keyless watcher exists unconditionally in production
+  /// (see `source_builder.dart`), so this is only ever null in a test that
+  /// doesn't bother wiring one -- the page falls back to a plain idle line
+  /// either way (see `_steamPage`'s doc).
   final ValueListenable<String?>? steamStatus;
 
   /// Looks up this machine's local Steam accounts (`loginusers.vdf`), for
@@ -236,6 +237,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// The Capture page's single "› Advanced options" disclosure.
   bool _advancedOpen = false;
+
+  /// The Steam page's own "› Advanced (optional web API)" disclosure --
+  /// separate from [_advancedOpen] so opening one page's disclosure doesn't
+  /// also flip the other's.
+  bool _steamAdvancedOpen = false;
 
   /// The mic-volume slider's live position, as a 0-200 percent — separate
   /// from [AppSettings.micVolume] so dragging updates the label/thumb on
@@ -408,7 +414,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// down to its trailing id/vanity segment first (a bare id64 or vanity
   /// name passes through unchanged) — see [_normalizeSteamIdInput]. Actual
   /// vanity->id64 RESOLUTION (a network call) is `SteamAchievementWatcher`'s
-  /// job, not the UI's; this only strips the URL wrapper.
+  /// job, not the UI's -- moot today since that watcher is unbuilt (see
+  /// source_builder.dart), left accurate for if/when it's re-enabled for
+  /// enrichment; this field is otherwise unused by the keyless trigger path.
+  /// This method only strips the URL wrapper.
   void _commitSteamId() {
     final normalized = _normalizeSteamIdInput(_steamIdController.text);
     if (_steamIdController.text != normalized) {
@@ -1290,97 +1299,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// The generic "any Steam game" achievement auto-clip integration (see
-  /// `SteamAchievementWatcher`/docs/COMPLIANCE.md): SteamID + API key
-  /// credentials, the auto-clip toggle, and a live status line reflecting
-  /// what the watcher is currently doing.
+  /// `SteamStatsWatcher`/docs/COMPLIANCE.md): a keyless local watcher that
+  /// exists unconditionally, so the primary controls are just the toggle and
+  /// its live status line (which, reporting "Watching (N Steam accounts)" or
+  /// similar, doubles as the detected-account signal — there's no separate
+  /// "not configured" state to show anymore). The optional Steam Web API
+  /// credentials -- unused by the local trigger path today, kept for
+  /// possible future enrichment -- live under a collapsed disclosure so they
+  /// don't crowd out the (now much simpler) primary setup story.
   Widget _steamPage(BuildContext context) {
     final ambiguous = _ambiguousSteamAccounts;
     return _settingsPage(
       context,
       'Steam',
-      description: 'Auto-clip achievement unlocks in any Steam game you play.',
+      description: 'Auto-clip achievement unlocks in any Steam game you '
+          'play — detected straight from Steam\'s own local files, no key '
+          'needed.',
       [
-        _TextFieldRow(
-          label: 'Steam ID',
-          field: SizedBox(
-            width: 320,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('steamIdField'),
-                    controller: _steamIdController,
-                    focusNode: _steamIdFocus,
-                    decoration: const InputDecoration(
-                      hintText: 'Profile URL, vanity name, or SteamID64',
-                    ),
-                    onSubmitted: (_) => _steamIdFocus.unfocus(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  key: const ValueKey('steamDetectButton'),
-                  onPressed: _steamDetecting
-                      ? null
-                      : () => unawaited(_detectSteamAccounts()),
-                  child: Text(_steamDetecting ? 'Detecting…' : 'Detect'),
-                ),
-              ],
-            ),
-          ),
-          footnote: _steamDetectedHelperLine,
-        ),
-        if (ambiguous.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text('Multiple Steam accounts found on this machine — pick one:',
-              style: Theme.of(context).textTheme.bodyMuted),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final account in ambiguous)
-                OutlinedButton(
-                  key: ValueKey('steamAccountChoice:${account.steamId64}'),
-                  onPressed: () => _applyDetectedAccount(account),
-                  child: Text(account.personaName.isEmpty
-                      ? account.steamId64
-                      : account.personaName),
-                ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 8),
-        _TextFieldRow(
-          label: 'Steam Web API key',
-          field: SizedBox(
-            width: 320,
-            child: TextField(
-              key: const ValueKey('steamApiKeyField'),
-              controller: _steamApiKeyController,
-              focusNode: _steamApiKeyFocus,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: 'API key'),
-              onSubmitted: (_) => _steamApiKeyFocus.unfocus(),
-            ),
-          ),
-          footnote:
-              'Stored locally on this Mac — never sent anywhere but Steam\'s '
-              'own api.steampowered.com.',
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            key: const ValueKey('steamGetApiKeyButton'),
-            onPressed: () => openUrl('https://steamcommunity.com/dev/apikey'),
-            child: const Text('Get a key'),
-          ),
-        ),
-        const SizedBox(height: 8),
         _ToggleRow(
           label: 'Auto-clip achievements',
           hint: 'A new achievement unlock saves a clip labeled with its '
-              'real name — works for any Steam game.',
+              'real name — works for any Steam game, for every account '
+              'logged into Steam on this machine.',
           value: widget.settings.clipSteamAchievements,
           onChanged: _handleClipSteamAchievementsChanged,
           switchKey: const ValueKey('steamClipToggle'),
@@ -1392,6 +1332,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: Theme.of(context).textTheme.bodyMuted,
         ),
         const SizedBox(height: 16),
+        // A keyless watcher exists unconditionally (see source_builder.
+        // dart), so `widget.steamStatus` is only ever null in a test that
+        // doesn't bother wiring one — both that case and a wired notifier
+        // whose value is still null (nothing checked yet) fall back to the
+        // same idle line; there's no dead "not configured" branch left.
         if (widget.steamStatus case final status?)
           ListenableBuilder(
             listenable: status,
@@ -1403,10 +1348,109 @@ class _SettingsScreenState extends State<SettingsScreen> {
           )
         else
           Text(
-            'Add your Steam ID and API key above to start watching.',
+            'Idle — waiting for the next check.',
             key: const ValueKey('steamStatusLine'),
             style: Theme.of(context).textTheme.bodyMuted,
           ),
+        const SizedBox(height: 8),
+        _AdvancedDisclosure(
+          open: _steamAdvancedOpen,
+          onToggle: () =>
+              setState(() => _steamAdvancedOpen = !_steamAdvancedOpen),
+          label: 'Advanced (optional web API)',
+          toggleKey: const ValueKey('steamAdvancedToggle'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'A Steam Web API key adds nothing today — achievement '
+                'detection above already works without one. Reserved for '
+                'possible future enrichment.',
+                style: Theme.of(context).textTheme.bodyMuted,
+              ),
+              const SizedBox(height: 8),
+              _TextFieldRow(
+                label: 'Steam ID',
+                field: SizedBox(
+                  width: 320,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          key: const ValueKey('steamIdField'),
+                          controller: _steamIdController,
+                          focusNode: _steamIdFocus,
+                          decoration: const InputDecoration(
+                            hintText: 'Profile URL, vanity name, or SteamID64',
+                          ),
+                          onSubmitted: (_) => _steamIdFocus.unfocus(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        key: const ValueKey('steamDetectButton'),
+                        onPressed: _steamDetecting
+                            ? null
+                            : () => unawaited(_detectSteamAccounts()),
+                        child: Text(_steamDetecting ? 'Detecting…' : 'Detect'),
+                      ),
+                    ],
+                  ),
+                ),
+                footnote: _steamDetectedHelperLine,
+              ),
+              if (ambiguous.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                    'Multiple Steam accounts found on this machine — pick '
+                    'one:',
+                    style: Theme.of(context).textTheme.bodyMuted),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final account in ambiguous)
+                      OutlinedButton(
+                        key:
+                            ValueKey('steamAccountChoice:${account.steamId64}'),
+                        onPressed: () => _applyDetectedAccount(account),
+                        child: Text(account.personaName.isEmpty
+                            ? account.steamId64
+                            : account.personaName),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              _TextFieldRow(
+                label: 'Steam Web API key',
+                field: SizedBox(
+                  width: 320,
+                  child: TextField(
+                    key: const ValueKey('steamApiKeyField'),
+                    controller: _steamApiKeyController,
+                    focusNode: _steamApiKeyFocus,
+                    obscureText: true,
+                    decoration: const InputDecoration(hintText: 'API key'),
+                    onSubmitted: (_) => _steamApiKeyFocus.unfocus(),
+                  ),
+                ),
+                footnote: 'Stored locally on this Mac — never sent anywhere '
+                    'but Steam\'s own api.steampowered.com.',
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const ValueKey('steamGetApiKeyButton'),
+                  onPressed: () =>
+                      openUrl('https://steamcommunity.com/dev/apikey'),
+                  child: const Text('Get a key'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -2443,10 +2487,24 @@ class _AdvancedDisclosure extends StatelessWidget {
   final VoidCallback onToggle;
   final Widget child;
 
+  /// The toggle row's caption. Defaults to the original, still-accurate
+  /// wording for the Capture/per-game usages; the Steam page passes its own
+  /// ("Advanced (optional web API)") since that disclosure holds a
+  /// specifically-optional thing, not general advanced settings.
+  final String label;
+
+  /// Defaults to the original shared key so existing Capture/per-game call
+  /// sites (and their tests) are unaffected. A page with its OWN disclosure
+  /// alongside others -- currently just Steam -- passes a distinct key so
+  /// tests can target it unambiguously.
+  final Key toggleKey;
+
   const _AdvancedDisclosure({
     required this.open,
     required this.onToggle,
     required this.child,
+    this.label = 'Advanced options',
+    this.toggleKey = const ValueKey('advancedOptionsToggle'),
   });
 
   @override
@@ -2459,7 +2517,7 @@ class _AdvancedDisclosure extends StatelessWidget {
         Material(
           type: MaterialType.transparency,
           child: InkWell(
-            key: const ValueKey('advancedOptionsToggle'),
+            key: toggleKey,
             onTap: onToggle,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -2473,7 +2531,7 @@ class _AdvancedDisclosure extends StatelessWidget {
                         size: 16, color: tokens.textMuted),
                   ),
                   const SizedBox(width: 6),
-                  Text('Advanced options',
+                  Text(label,
                       style: theme.textTheme.body
                           .copyWith(color: tokens.textMuted)),
                 ],

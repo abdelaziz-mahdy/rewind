@@ -3,7 +3,7 @@ import 'package:rewind/src/events/game_catalog.dart';
 import 'package:rewind/src/events/league_event_watcher.dart';
 import 'package:rewind/src/events/process_watcher_source.dart';
 import 'package:rewind/src/events/source_builder.dart';
-import 'package:rewind/src/events/steam_achievement_watcher.dart';
+import 'package:rewind/src/events/steam_stats_watcher.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 
@@ -47,10 +47,10 @@ void main() {
     });
 
     test(
-        'total source count is League + catalog when no user config has '
-        'a processMatch', () {
+        'total source count is League + Steam + catalog when no user '
+        'config has a processMatch', () {
       final sources = buildSources(AppSettings());
-      expect(sources.length, 1 + popularGamesCatalog.length);
+      expect(sources.length, 2 + popularGamesCatalog.length);
     });
 
     test(
@@ -69,7 +69,7 @@ void main() {
 
       expect(custom, hasLength(1));
       expect(custom.single.processMatch, 'MyCustomGame');
-      expect(sources.length, 1 + popularGamesCatalog.length + 1);
+      expect(sources.length, 2 + popularGamesCatalog.length + 1);
     });
 
     test('a user config source uses its displayName when set, gameId when not',
@@ -102,7 +102,7 @@ void main() {
         ..setConfig(GameConfig(gameId: 'league_of_legends'));
 
       final sources = buildSources(settings);
-      expect(sources.length, 1 + popularGamesCatalog.length);
+      expect(sources.length, 2 + popularGamesCatalog.length);
     });
 
     test(
@@ -122,42 +122,21 @@ void main() {
       final gameIds = sources.map((s) => s.gameId).toList();
       expect(gameIds.toSet().length, gameIds.length,
           reason: 'duplicate gameId in built sources: $gameIds');
-      expect(sources.length, 1 + popularGamesCatalog.length);
+      expect(sources.length, 2 + popularGamesCatalog.length);
     });
 
-    group('SteamAchievementWatcher', () {
-      test('absent when no Steam credentials are configured (default)', () {
-        final sources = buildSources(AppSettings());
-        expect(sources.whereType<SteamAchievementWatcher>(), isEmpty);
-      });
-
-      test('absent when only one of the two credentials is set', () {
-        final onlyId = AppSettings(steamId64: '76561197960287930');
-        expect(
-            buildSources(onlyId).whereType<SteamAchievementWatcher>(), isEmpty);
-
-        final onlyKey = AppSettings(steamWebApiKey: 'ABCDEF');
-        expect(buildSources(onlyKey).whereType<SteamAchievementWatcher>(),
-            isEmpty);
-      });
-
-      test('present with gameId "steam" once both credentials are set', () {
-        final settings = AppSettings(
-          steamId64: '76561197960287930',
-          steamWebApiKey: 'ABCDEF0123456789',
-        );
+    group('SteamStatsWatcher', () {
+      test(
+          'present unconditionally, with gameId "steam" -- no credentials '
+          'needed to construct it (keyless local detection)', () {
         final steam =
-            buildSources(settings).whereType<SteamAchievementWatcher>();
+            buildSources(AppSettings()).whereType<SteamStatsWatcher>();
         expect(steam, hasLength(1));
         expect(steam.single.gameId, 'steam');
       });
 
       test('does not collide with or displace any catalog/League source', () {
-        final settings = AppSettings(
-          steamId64: '76561197960287930',
-          steamWebApiKey: 'ABCDEF0123456789',
-        );
-        final sources = buildSources(settings);
+        final sources = buildSources(AppSettings());
         expect(sources.length, 2 + popularGamesCatalog.length);
         final gameIds = sources.map((s) => s.gameId).toList();
         expect(gameIds.toSet().length, gameIds.length);
@@ -189,7 +168,7 @@ void main() {
 
       expect(discord, hasLength(1));
       expect(discord.single.processMatch, 'Discord');
-      expect(sources.length, 1 + popularGamesCatalog.length + 1);
+      expect(sources.length, 2 + popularGamesCatalog.length + 1);
     });
 
     test(
@@ -209,7 +188,7 @@ void main() {
       // built first and the user config is skipped once its gameId is seen.
       expect(cs2, hasLength(1));
       expect(cs2.single.processMatch, 'cs2');
-      expect(sources.length, 1 + popularGamesCatalog.length);
+      expect(sources.length, 2 + popularGamesCatalog.length);
     });
   });
 }

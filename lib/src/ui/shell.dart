@@ -108,13 +108,13 @@ class Shell extends StatefulWidget {
   /// button (see `SettingsScreen.onSetMicMonitoring`).
   final void Function(bool enabled)? onSetMicMonitoring;
 
-  /// Resolves the live `SteamAchievementWatcher.status` notifier for the
-  /// embedded Settings destination's Steam page — a GETTER, not the
-  /// notifier itself, since no watcher exists until Steam credentials are
-  /// first saved (see `source_builder.dart`); re-read every time Settings
-  /// builds so a watcher created mid-session is picked up with no extra
-  /// plumbing. Null (e.g. every existing Shell test) shows Settings' static
-  /// "not configured" line instead of a live one.
+  /// Resolves the live `SteamStatsWatcher.status` notifier for the embedded
+  /// Settings destination's Steam page — a GETTER, not the notifier itself,
+  /// re-read every time Settings builds (a keyless watcher exists
+  /// unconditionally, see `source_builder.dart`, so this is really about
+  /// picking up `main.dart`'s registry lookup consistently, not about
+  /// waiting for one to appear). Null (e.g. every existing Shell test that
+  /// doesn't wire it) shows Settings' plain idle line instead of a live one.
   final ValueListenable<String?>? Function()? steamStatus;
 
   /// Seeds the Shell's starting destination -- used by onboarding's "Set up

@@ -39,6 +39,14 @@ Future<void> openAdvanced(WidgetTester t) async {
   await t.pumpAndSettle();
 }
 
+/// Opens the Steam page's own "› Advanced (optional web API)" disclosure --
+/// the SteamID/API key fields (and everything under them) only exist in the
+/// widget tree once this has run.
+Future<void> openSteamAdvanced(WidgetTester t) async {
+  await t.tap(find.byKey(const ValueKey('steamAdvancedToggle')));
+  await t.pumpAndSettle();
+}
+
 void main() {
   // The Capture page (Instant replay, the 2x2 preset grid, Audio, and the
   // Advanced disclosure) is tall enough that the default 800x600 test
@@ -1165,7 +1173,26 @@ void main() {
       await t.pump();
     }
 
-    testWidgets('fields render the current settings values', (t) async {
+    testWidgets(
+        'the toggle and status line are visible without opening the '
+        'Advanced disclosure', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.byKey(const ValueKey('steamClipToggle')), findsOneWidget);
+      expect(find.byKey(const ValueKey('steamStatusLine')), findsOneWidget);
+      expect(find.byKey(const ValueKey('steamIdField')), findsNothing,
+          reason: 'moved under the collapsed Advanced disclosure');
+      expect(find.byKey(const ValueKey('steamApiKeyField')), findsNothing);
+    });
+
+    testWidgets(
+        'opening Advanced reveals fields with the current settings values',
+        (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(
           steamId64: '76561197960287930',
@@ -1176,6 +1203,7 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       expect(
         t
             .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
@@ -1199,6 +1227,7 @@ void main() {
         displays: const [],
       )));
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       expect(
         t
             .widget<TextField>(find.byKey(const ValueKey('steamApiKeyField')))
@@ -1218,6 +1247,7 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       await t.enterText(
           find.byKey(const ValueKey('steamIdField')), '76561197960287930');
       await blur(t);
@@ -1237,6 +1267,7 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       await t.enterText(
         find.byKey(const ValueKey('steamIdField')),
         'https://steamcommunity.com/id/someVanityName',
@@ -1255,6 +1286,7 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       await t.enterText(
         find.byKey(const ValueKey('steamIdField')),
         'https://steamcommunity.com/profiles/76561197960287930',
@@ -1275,6 +1307,7 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      await openSteamAdvanced(t);
       await t.enterText(
           find.byKey(const ValueKey('steamApiKeyField')), 'MYKEY123');
       await blur(t);
@@ -1303,8 +1336,9 @@ void main() {
     });
 
     testWidgets(
-        'with no watcher wired (steamStatus null), the status line shows a '
-        'static "not configured" message', (t) async {
+        'with no watcher wired (steamStatus null), the status line falls '
+        'back to a plain idle message -- a keyless watcher always exists in '
+        'production, so there is no "not configured" state to show', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1313,13 +1347,13 @@ void main() {
 
       await openPage(t, 'Steam');
       expect(find.byKey(const ValueKey('steamStatusLine')), findsOneWidget);
-      expect(find.textContaining('Add your Steam ID'), findsOneWidget);
+      expect(find.textContaining('Idle'), findsOneWidget);
     });
 
     testWidgets(
         'with a watcher wired, the status line reflects its live status '
         'notifier', (t) async {
-      final status = ValueNotifier<String?>('Waiting for a Steam game');
+      final status = ValueNotifier<String?>('Watching (1 Steam account)');
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1328,11 +1362,11 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
-      expect(find.text('Waiting for a Steam game'), findsOneWidget);
+      expect(find.text('Watching (1 Steam account)'), findsOneWidget);
 
-      status.value = 'Watching (in Counter-Strike 2)';
+      status.value = 'No Steam installation found';
       await t.pump();
-      expect(find.text('Watching (in Counter-Strike 2)'), findsOneWidget);
+      expect(find.text('No Steam installation found'), findsOneWidget);
     });
 
     testWidgets('a null status value falls back to an idle message', (t) async {
@@ -1361,6 +1395,22 @@ void main() {
       expect(find.textContaining('Game details'), findsWidgets);
     });
 
+    testWidgets(
+        'the Advanced disclosure explains the API key is optional and '
+        'adds nothing today', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(
+          find.textContaining('Advanced (optional web API)'), findsOneWidget);
+      await openSteamAdvanced(t);
+      expect(find.textContaining('adds nothing today'), findsOneWidget);
+    });
+
     group('SteamID auto-detect', () {
       testWidgets(
           'prefills an empty SteamID field from the injected locator, '
@@ -1381,6 +1431,7 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
+        await openSteamAdvanced(t);
 
         expect(
           t
@@ -1411,6 +1462,7 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
+        await openSteamAdvanced(t);
 
         expect(
           t
@@ -1446,6 +1498,7 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
+        await openSteamAdvanced(t);
 
         expect(
           t
@@ -1490,6 +1543,7 @@ void main() {
         await t.pump();
         await t.pump();
         expect(calls, 1); // the automatic scan on first Steam-tab visit
+        await openSteamAdvanced(t);
 
         await t.tap(find.byKey(const ValueKey('steamDetectButton')));
         await t.pump();
@@ -1579,7 +1633,7 @@ void main() {
         initialTab: 'Steam',
       )));
 
-      expect(find.byKey(const ValueKey('steamIdField')), findsOneWidget);
+      expect(find.byKey(const ValueKey('steamClipToggle')), findsOneWidget);
       expect(find.text('Instant replay'), findsNothing);
     });
 

@@ -101,22 +101,50 @@ Two more policy points that bind this project:
   VALORANT). `GameDescriptor.usesOfficialLogo` is conservatively `false`:
   Marvel/Disney/NetEase publish no fan-tool logo carve-out the way Riot's
   policy explicitly does, so the rail/hub never show its real app icon.
-- **Steam (achievement auto-clip):** `SteamAchievementWatcher` uses ONLY the
-  official Steam Web API (`api.steampowered.com`) — `GetPlayerSummaries`
-  (which appid the user is playing), `GetPlayerAchievements` (unlocked
-  flags/timestamps), `GetSchemaForGame` (achievement display names), and
-  `ResolveVanityURL` (vanity name → SteamID64). No memory access, no
-  process hooking, no packet capture — same rule as every other
-  integration. The user supplies their own Steam Web API key
-  (steamcommunity.com/dev/apikey) and SteamID64; both are stored locally in
-  `settings.json` only and sent nowhere but `api.steampowered.com` as query
-  params, per that API's own auth scheme. This works for EVERY Steam game
-  (not one title at a time, unlike League) because it reads Steam's own
-  account-level achievement data rather than anything game-specific — the
-  achievement's game itself never has to sanction anything separately. The
-  user's Steam profile must have "Game details" set to Public (a Steam
-  privacy setting) for `GetPlayerAchievements` to return data at all; the
-  Settings → Steam page's status line reports this plainly when it isn't.
+- **Steam (achievement auto-clip, maintainer decision 2026-07-19):**
+  `SteamStatsWatcher` detects unlocks entirely from files Steam's OWN client
+  already writes to the user's own disk for its own use —
+  `appcache/stats/UserGameStats_<accountId3>_<appid>.bin` (an
+  `AchievementTimes` index → unix-timestamp map, updated seconds after every
+  real unlock) and the sibling `UserGameStatsSchema_<appid>.bin` (achievement
+  display names). This is rule 2 above ("official log files / telemetry the
+  game" — here, the Steam client itself — "writes to disk for the user"):
+  Rewind only ever OPENS and READS these files, on a plain `stat()`/read
+  cadence, exactly like watching a log file grow. No memory access, no
+  process hooking, no injection, no packet capture, and — the one rule
+  specific to this integration — **Rewind must NEVER write to any file under
+  a Steam install's `appcache/` or `userdata/` trees, under any
+  circumstance.** Writing there is Steam's job alone; a third-party writer
+  risks corrupting the client's own cache.
+
+  The file format itself (binary VDF / KeyValues) is UNDOCUMENTED by Valve,
+  but has been stable for roughly a decade, is the same format multiple
+  long-running open-source tools already parse this same way (e.g.
+  Achievement Watcher, Steam Achievement Manager — prior art, not copied
+  code; see `steam_stats_vdf.dart`'s doc), and — being a read-only local
+  file, not a network protocol — a Rewind version that guesses a field wrong
+  degrades to "no display name" or "no detection," never a crash, a ban
+  risk, or corrupted Steam state.
+
+  Unlike the retired Web API design this replaces, NO credentials are
+  needed: the watcher discovers every Steam install ("tree" — native, plus
+  every independent CrossOver bottle) on this machine itself, reading each
+  tree's own `config/loginusers.vdf` (already used by `steam_account_
+  locator.dart` for onboarding) to find its logged-in account id3(s), then
+  watches every tree simultaneously. This works for EVERY Steam game (not
+  one title at a time, unlike League) for the same reason the retired
+  design did: it reads Steam's own account-level achievement data, not
+  anything game-specific — the achievement's game itself never has to
+  sanction anything separately, and there is no "Game details must be
+  Public" privacy requirement either (that was specific to the Web API this
+  no longer calls).
+
+  The Web API integration (`SteamAchievementWatcher`, `api.steampowered.
+  com`) stays in the tree, compiling and tested, but is no longer
+  constructed by `source_builder.dart` — kept only as a seam for possible
+  future enrichment. If it's ever re-enabled, its own rules still apply
+  unchanged: user-supplied key + SteamID64, both local-only, sent nowhere
+  but `api.steampowered.com`.
 - **Games without an official API (e.g. many mech/action titles):** ship as
   **manual-hotkey capture only** until/unless the vendor provides a sanctioned
   event source. Do not add memory/hook-based detection.

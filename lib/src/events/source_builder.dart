@@ -3,7 +3,7 @@ import 'game_catalog.dart';
 import 'game_event_source.dart';
 import 'league_event_watcher.dart';
 import 'process_watcher_source.dart';
-import 'steam_achievement_watcher.dart';
+import 'steam_stats_watcher.dart';
 
 /// Builds the full list of [GameEventSource]s [GameRegistry] should
 /// supervise: the vendor-API League integration, one generic
@@ -30,31 +30,19 @@ import 'steam_achievement_watcher.dart';
 /// places. Revisit if/when a second vendor-API integration lands — the
 /// `GameEventSource` interface (ARCHITECTURE.md) is already the seam for it.
 ///
-/// Steam credentials-change wiring: `SteamAchievementWatcher` holds a LIVE
-/// reference to [settings] (not a snapshot), so an edited API key/Steam ID
-/// or a flipped `clipSteamAchievements` toggle on an ALREADY-running watcher
-/// takes effect on its very next poll with no rebuild at all. What this
-/// function's credential gate below actually controls is narrower: going
-/// from "no credentials" (watcher doesn't exist yet) to "credentials set for
-/// the first time" needs a NEW instance, which only happens when this
-/// function runs again. `main.dart` covers that via the existing
-/// `registry.addNewSources(buildSources(s))` call already made on every
-/// settings change (see its doc) — `main.dart` additionally re-scans
-/// `registry.sources` for a `SteamAchievementWatcher` after that call and
-/// starts it if it's newly present, since (per [SteamAchievementWatcher.
-/// isGameRunning]'s doc) `GameRegistry`'s normal activation tick never
-/// starts this source itself. The smallest-honest-wiring gap this leaves:
-/// clearing credentials back to empty doesn't tear the instance down (no
-/// source removal exists in `GameRegistry` at all, by design — see
-/// `addNewSources`' doc) — it just idles (its own live-settings check
-/// no-ops every poll) until the next full restart drops it from a fresh
-/// [buildSources] call. That's consistent with how every other
-/// settings-driven source already behaves here.
+/// Steam wiring: unlike the retired credential-gated design (see
+/// `SteamAchievementWatcher`'s doc), [SteamStatsWatcher] needs no
+/// credentials to be USEFUL to construct -- it discovers local Steam
+/// installs itself, and the `clipSteamAchievements` toggle (read live off
+/// [settings], not snapshotted) gates emission, not construction. So it's
+/// added HERE unconditionally, once, same as `LeagueEventWatcher` — no
+/// "credentials entered for the first time" special case for `main.dart` to
+/// handle on a later `buildSources` re-run, unlike the watcher it replaces.
 List<GameEventSource> buildSources(AppSettings settings) {
-  final sources = <GameEventSource>[LeagueEventWatcher()];
-  if (settings.steamId64.isNotEmpty && settings.steamWebApiKey.isNotEmpty) {
-    sources.add(SteamAchievementWatcher(settings: settings));
-  }
+  final sources = <GameEventSource>[
+    LeagueEventWatcher(),
+    SteamStatsWatcher(settings: settings),
+  ];
   final seenGameIds = {for (final s in sources) s.gameId};
 
   // ONE shared, tick-cached lister for every process watcher: without it,
