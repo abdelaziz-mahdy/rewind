@@ -125,6 +125,22 @@ abstract class CaptureEngine {
   /// (rebuilds live). Returns false on failure.
   bool setAudioMode(int mode);
 
+  /// Set the game/desktop-audio recording-level multiplier (1.0 = 100%,
+  /// clamped to 0.0-2.0) — the same lever as [setMicVolume] but against the
+  /// desktop-audio source, letting the user pull game audio down under
+  /// their voice. Safe to call before [init] (the preference is remembered
+  /// and applied whenever the desktop-audio source is next built); if it's
+  /// already live, the level changes immediately. Returns false on failure.
+  bool setGameVolume(double volume);
+
+  /// Enable/disable mic auto-leveling: a compressor->limiter filter chain
+  /// on the microphone source that evens out voice so it sits consistently
+  /// against the game, default ON. Safe to call before [init] (the
+  /// preference is remembered and applied whenever the mic source is next
+  /// built, same as [setMicVolume]); if the mic is already live, the
+  /// filters are attached/removed immediately. Returns false on failure.
+  bool setMicLeveling(bool enabled);
+
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;

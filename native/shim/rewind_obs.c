@@ -242,6 +242,32 @@ int g_monitoring_device_set = 0;
  * desktop audio (every app), 2 = only the captured app's audio. Default 1. */
 int g_audio_mode = AUDIO_MODE_ALL;
 
+/* Game/desktop-audio recording-level multiplier (see rewind_set_game_
+ * volume), applied via obs_source_set_volume to g_sysaudio; 1.0 = unity
+ * gain (100%), mirroring g_mic_volume's own doc above. Unlike g_mic_volume
+ * this needs no extern seam in rewind_obs_internal.h: every (re)create of
+ * g_sysaudio goes through rw_plat_rebuild_system_audio(), but every CALLER
+ * of that function already lives in this same file (rewind_obs_init,
+ * rewind_set_audio_mode, rewind_set_capture_app's app-mode branch) — see
+ * rw_apply_game_volume(), called right after each of those three call
+ * sites, the same discipline rw_apply_mic_prefs uses for the mic. */
+static float g_game_volume = 1.0f;
+
+/* Mic auto-leveling (see rewind_set_mic_leveling): a compressor->limiter
+ * filter chain attached to the mic source, default ON. g_mic_compressor/
+ * g_mic_limiter are non-owning pointers once attached: obs_source_filter_
+ * add() takes its own ref (see rw_attach_mic_leveling below), so ownership
+ * lives with the mic source's filter list from that point on, and
+ * obs_source_filter_remove() (rw_release_mic_leveling) is what actually
+ * drops that ref — this file must never obs_source_release() them again.
+ * Both NULL whenever nothing is currently attached (leveling off, or no mic
+ * source exists yet); rw_attach_mic_leveling/rw_release_mic_leveling are
+ * idempotent on that state, so every call site can call them
+ * unconditionally. */
+static int g_mic_leveling = 1;
+static obs_source_t *g_mic_compressor = NULL;
+static obs_source_t *g_mic_limiter = NULL;
+
 int fail(const char *msg) { set_error(msg); return 1; }
 
 /* ---- SDK / module path discovery -----------------------------------
@@ -345,8 +371,106 @@ int find_obs_sdk_dir(char *out, size_t out_size) {
     return 0;
 }
 
-/* Applies the current mic-volume/monitoring preferences to `mic` — called
- * right after every (re)creation of the mic source (rewind_obs_init's
+/* Creates and attaches the mic auto-leveling filter chain — a compressor
+ * (evens out the envelope) followed by a limiter (catches whatever peaks
+ * through) — to `mic`, if g_mic_leveling is on and nothing is attached yet.
+ * Filter ids/setting keys verified against the vendored source: compressor_
+ * filter's ratio/threshold/attack_time/release_time/output_gain
+ * (native/third_party/work/obs-studio/plugins/obs-filters/compressor-
+ * filter.c) and limiter_filter's threshold/release_time (limiter-filter.c
+ * in the same directory).
+ *
+ * ADD ORDER MATTERS: obs_source_filter_add() inserts each new filter at
+ * index 0 of source->filters (see obs-source.c), but audio actually runs
+ * from the HIGHEST index down to 0 (filter_async_audio's `for (i =
+ * source->filters.num; i > 0; i--)`), so the filter added FIRST ends up
+ * with the highest index and therefore runs FIRST. Adding the compressor
+ * before the limiter (as done below) is what makes the signal hit the
+ * compressor, then the limiter — not the reverse.
+ *
+ * Private sources (obs_source_create_private): these are pipeline-internal
+ * and never meant to be user-visible/enumerable, the same reasoning
+ * obs_source_duplicate's own duplicate_filter() helper uses for
+ * programmatically-attached filters.
+ *
+ * Idempotent: a second call with filters already attached (e.g. from both
+ * rewind_set_mic_leveling(1) and rw_apply_mic_prefs on the same mic source)
+ * is a no-op — g_mic_compressor/g_mic_limiter are always cleared by
+ * rw_release_mic_leveling before a new mic source is built (see every
+ * mic-teardown call site below), so this only ever fires once per live mic
+ * source. */
+static void rw_attach_mic_leveling(obs_source_t *mic) {
+    if (!mic || !g_mic_leveling) return;
+    if (g_mic_compressor || g_mic_limiter) return;
+
+    obs_data_t *cs = obs_data_create();
+    obs_data_set_double(cs, "ratio", 4.0);
+    obs_data_set_double(cs, "threshold", -18.0);
+    obs_data_set_int(cs, "attack_time", 6);
+    obs_data_set_int(cs, "release_time", 60);
+    obs_data_set_double(cs, "output_gain", 6.0);
+    g_mic_compressor = obs_source_create_private("compressor_filter", "rewind-mic-compressor", cs);
+    obs_data_release(cs);
+    if (g_mic_compressor) {
+        obs_source_filter_add(mic, g_mic_compressor);
+        /* filter_add() took its own ref (obs_source_get_ref internally) —
+         * release the creation ref the same way obs_source_duplicate's
+         * duplicate_filter() does. g_mic_compressor stays a valid pointer,
+         * now kept alive by the filter-list ref until rw_release_mic_
+         * leveling's obs_source_filter_remove() drops it — this file must
+         * not release it again. */
+        obs_source_release(g_mic_compressor);
+    } else {
+        blog(LOG_WARNING, "rewind: compressor_filter unavailable; mic auto-leveling skipped");
+    }
+
+    obs_data_t *ls = obs_data_create();
+    obs_data_set_double(ls, "threshold", -6.0);
+    obs_data_set_int(ls, "release_time", 60);
+    g_mic_limiter = obs_source_create_private("limiter_filter", "rewind-mic-limiter", ls);
+    obs_data_release(ls);
+    if (g_mic_limiter) {
+        obs_source_filter_add(mic, g_mic_limiter);
+        obs_source_release(g_mic_limiter);
+    } else {
+        blog(LOG_WARNING, "rewind: limiter_filter unavailable; mic auto-leveling incomplete");
+    }
+}
+
+/* Removes+releases whatever of the auto-leveling filter chain is currently
+ * attached to `mic` (see rw_attach_mic_leveling above) and clears the
+ * stored pointers. MUST run before `mic` itself is released on every
+ * teardown path: obs_source_filter_remove() needs its filter's parent
+ * source still alive (native/third_party/work/obs-studio/libobs/obs-
+ * source.c) — it looks the filter up in the source's own filter list before
+ * dropping the ref obs_source_filter_add() took, so calling this AFTER
+ * obs_source_release(mic) would operate on a source already torn down.
+ * Called from every rewind_obs.c site that releases g_mic
+ * (rewind_obs_init's failure cleanup, rewind_obs_shutdown,
+ * rewind_set_mic_enabled's disable path, rewind_set_mic_device's rebuild),
+ * mirroring the existing "stop monitoring on the outgoing source" safety
+ * net at those same sites. Safe to call with `mic` NULL or with nothing
+ * attached (both branches are individually NULL-guarded). */
+static void rw_release_mic_leveling(obs_source_t *mic) {
+    if (mic && g_mic_limiter) obs_source_filter_remove(mic, g_mic_limiter);
+    g_mic_limiter = NULL;
+    if (mic && g_mic_compressor) obs_source_filter_remove(mic, g_mic_compressor);
+    g_mic_compressor = NULL;
+}
+
+/* Applies g_game_volume to g_sysaudio if it currently exists — called right
+ * after every rw_plat_rebuild_system_audio() call (rewind_obs_init,
+ * rewind_set_audio_mode, rewind_set_capture_app's app-mode branch), mirroring
+ * rw_apply_mic_prefs's discipline for the mic. A no-op when g_sysaudio is
+ * NULL (audio mode off, or app mode with no capture target set yet) —
+ * nothing to apply to; rewind_set_game_volume itself still stores the
+ * preference for whenever a desktop-audio source next exists. */
+static void rw_apply_game_volume(void) {
+    if (g_sysaudio) obs_source_set_volume(g_sysaudio, g_game_volume);
+}
+
+/* Applies the current mic-volume/monitoring/leveling preferences to `mic` —
+ * called right after every (re)creation of the mic source (rewind_obs_init's
  * best-effort mic setup, rewind_set_mic_enabled's create path, and
  * rewind_set_mic_device's rebuild path), the same three call sites
  * rw_plat_create_mic_source() itself is called from. Mirrors how
@@ -375,6 +499,7 @@ static void rw_apply_mic_prefs(obs_source_t *mic) {
         }
         obs_source_set_monitoring_type(mic, OBS_MONITORING_TYPE_MONITOR_ONLY);
     }
+    rw_attach_mic_leveling(mic);
 }
 
 /* Attaches `capture` (the platform's current g_capture, or NULL to detach)
@@ -579,6 +704,7 @@ int rewind_obs_init(const char *out_dir, int seconds) {
      * carries video only — without an audio source a clip's AAC track is
      * silence). Built per g_audio_mode; see rw_plat_rebuild_system_audio(). */
     rw_plat_rebuild_system_audio();
+    rw_apply_game_volume();
 
     /* Microphone, if the preference was set before init. */
     if (g_mic_enabled) {
@@ -619,6 +745,7 @@ cleanup:
     if (g_venc) { obs_encoder_release(g_venc); g_venc = NULL; }
     if (g_aenc) { obs_encoder_release(g_aenc); g_aenc = NULL; }
     if (g_mic) {
+        rw_release_mic_leveling(g_mic);
         obs_set_output_source(2, NULL);
         obs_source_release(g_mic);
         g_mic = NULL;
@@ -844,6 +971,9 @@ int rewind_obs_shutdown(void) {
      * rewind_set_mic_monitoring(1) call. */
     if (g_mic) obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
     g_mic_monitoring = 0;
+    /* Same "must run before the source itself is released" rule as the
+     * monitoring safety net above — see rw_release_mic_leveling's doc. */
+    rw_release_mic_leveling(g_mic);
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);      g_mic = NULL;
     obs_set_output_source(1, NULL);
@@ -864,7 +994,10 @@ int rewind_set_audio_mode(int mode) {
     g_audio_mode = (mode == AUDIO_MODE_APP || mode == AUDIO_MODE_ALL)
                        ? mode
                        : AUDIO_MODE_OFF;
-    if (g_initialized) rw_plat_rebuild_system_audio();
+    if (g_initialized) {
+        rw_plat_rebuild_system_audio();
+        rw_apply_game_volume();
+    }
     set_error("");
     return 0;
 }
@@ -899,8 +1032,11 @@ int rewind_set_mic_enabled(int enabled) {
          * rewind_set_mic_monitoring's doc on this being a safety net
          * independent of whatever g_mic_monitoring itself is currently set
          * to (the Dart caller is expected to have already turned it off
-         * explicitly, but this makes it unconditional). */
+         * explicitly, but this makes it unconditional). Same discipline for
+         * the leveling filter chain — see rw_release_mic_leveling's doc on
+         * why it must run before the release below. */
         obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
+        rw_release_mic_leveling(g_mic);
         obs_set_output_source(2, NULL);
         obs_source_release(g_mic);
         g_mic = NULL;
@@ -926,8 +1062,10 @@ void rewind_set_mic_device(const char *uid_or_null) {
     if (!g_mic) return;
 
     /* Safety net, same as rewind_set_mic_enabled's disable branch — stop
-     * monitoring on the OUTGOING source before it's released. */
+     * monitoring on the OUTGOING source, and release its leveling filters,
+     * before it's released. */
     obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
+    rw_release_mic_leveling(g_mic);
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);
     g_mic = rw_plat_create_mic_source();
@@ -956,6 +1094,25 @@ int rewind_set_mic_monitoring(int enabled) {
         obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_MONITOR_ONLY);
     } else {
         obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
+    }
+    set_error("");
+    return 0;
+}
+
+int rewind_set_game_volume(float volume) {
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 2.0f) volume = 2.0f;
+    g_game_volume = volume;
+    rw_apply_game_volume();
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_leveling(int enabled) {
+    g_mic_leveling = enabled ? 1 : 0;
+    if (g_mic) {
+        if (g_mic_leveling) rw_attach_mic_leveling(g_mic);
+        else rw_release_mic_leveling(g_mic);
     }
     set_error("");
     return 0;
@@ -996,7 +1153,10 @@ int rewind_set_capture_app(const char *bundle_id) {
 
     /* App-audio mode targets the captured app — follow the new app (or fall
      * back to silence if this cleared it). */
-    if (g_initialized && g_audio_mode == AUDIO_MODE_APP) rw_plat_rebuild_system_audio();
+    if (g_initialized && g_audio_mode == AUDIO_MODE_APP) {
+        rw_plat_rebuild_system_audio();
+        rw_apply_game_volume();
+    }
     set_error("");
     return 0;
 }
@@ -1258,6 +1418,18 @@ int rewind_set_capture_quality(int fps, int max_height) {
 
 int rewind_set_audio_mode(int mode) {
     (void)mode;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_game_volume(float volume) {
+    (void)volume;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_leveling(int enabled) {
+    (void)enabled;
     set_error("");
     return 0;
 }

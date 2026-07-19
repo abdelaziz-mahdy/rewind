@@ -489,6 +489,10 @@ void main() {
     });
   });
 
+  // Lives on the Hotkeys page (moved from Capture → Instant replay): it's
+  // feedback for the hotkeys, not a capture setting — see openPage(t,
+  // 'Hotkey') below, same navigation the save/record hotkey field tests
+  // above use.
   group('Sound on save', () {
     testWidgets('defaults on and toggling writes playFeedbackSounds',
         (t) async {
@@ -498,6 +502,7 @@ void main() {
         onChanged: (s) async => calls.add(s),
         displays: const [],
       )));
+      await openPage(t, 'Hotkey');
 
       expect(
           t
@@ -525,6 +530,7 @@ void main() {
         onChanged: (_) async {},
         displays: const [],
       )));
+      await openPage(t, 'Hotkey');
 
       expect(
           find.text('Plays a short sound when a manual save succeeds or '
@@ -928,8 +934,14 @@ void main() {
     });
 
     testWidgets('mic volume slider shows the current percent label', (t) async {
+      // audioMode: off keeps the game-volume slider (also default 100%) off
+      // screen, so the label assertion below isn't ambiguous between them.
       await t.pumpWidget(_app(SettingsScreen(
-        settings: AppSettings(captureMicrophone: true, micVolume: 1.0),
+        settings: AppSettings(
+          captureMicrophone: true,
+          micVolume: 1.0,
+          audioMode: AudioMode.off,
+        ),
         onChanged: (_) async {},
         displays: const [],
       )));
@@ -960,6 +972,93 @@ void main() {
       expect(calls, isNotEmpty);
       expect(settings.micVolume, isNot(1.0));
       expect(calls.last.micVolume, settings.micVolume);
+    });
+
+    testWidgets('game volume slider hidden when system audio is off',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(audioMode: AudioMode.off),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('gameVolumeSlider')), findsNothing);
+    });
+
+    testWidgets('game volume slider shows the current percent label',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(audioMode: AudioMode.all, gameAudioVolume: 1.0),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('gameVolumeSlider')), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
+    });
+
+    testWidgets(
+        'dragging the game volume slider writes gameAudioVolume on '
+        'drag end, not per pixel', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(audioMode: AudioMode.all);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      final slider = find.byKey(const ValueKey('gameVolumeSlider'));
+      expect(slider, findsOneWidget);
+
+      // Same rationale as the mic-volume drag test above: WidgetTester.drag
+      // fires onChangeEnd once on release, not the per-pixel stream.
+      await t.drag(slider, const Offset(60, 0));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(settings.gameAudioVolume, isNot(1.0));
+      expect(calls.last.gameAudioVolume, settings.gameAudioVolume);
+    });
+
+    testWidgets('mic auto-level toggle hidden when the mic is off', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: false),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('micAutoLevelSwitch')), findsNothing);
+    });
+
+    testWidgets('mic auto-level toggle shows on (default) when the mic is on',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      final toggle =
+          t.widget<Switch>(find.byKey(const ValueKey('micAutoLevelSwitch')));
+      expect(toggle.value, isTrue);
+    });
+
+    testWidgets('toggling mic auto-level writes micAutoLevel', (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(captureMicrophone: true);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micAutoLevelSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(settings.micAutoLevel, isFalse);
+      expect(calls.last.micAutoLevel, isFalse);
     });
 
     testWidgets(

@@ -103,6 +103,62 @@ void main() {
     expect(AppSettings.fromJson({'micVolume': -1.0}).micVolume, 0.0);
   });
 
+  test('gameAudioVolume defaults to 1.0 (100%)', () {
+    expect(AppSettings().gameAudioVolume, 1.0);
+  });
+
+  test('gameAudioVolume round-trips through toJson/fromJson', () {
+    final s = AppSettings(gameAudioVolume: 0.5);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.gameAudioVolume, 0.5);
+  });
+
+  test('gameAudioVolume round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(gameAudioVolume: 1.5));
+    final loaded = await store.load();
+    expect(loaded.gameAudioVolume, 1.5);
+  });
+
+  test(
+      'fromJson with no gameAudioVolume key (pre-existing settings file) '
+      'falls back to 1.0, not a crash', () {
+    final json = AppSettings().toJson()..remove('gameAudioVolume');
+    final loaded = AppSettings.fromJson(json);
+    expect(loaded.gameAudioVolume, 1.0);
+  });
+
+  test('fromJson clamps an out-of-range stored gameAudioVolume to 0.0-2.0', () {
+    expect(AppSettings.fromJson({'gameAudioVolume': 5.0}).gameAudioVolume, 2.0);
+    expect(
+        AppSettings.fromJson({'gameAudioVolume': -1.0}).gameAudioVolume, 0.0);
+  });
+
+  test('micAutoLevel defaults to true', () {
+    expect(AppSettings().micAutoLevel, isTrue);
+  });
+
+  test('micAutoLevel round-trips through toJson/fromJson', () {
+    final s = AppSettings(micAutoLevel: false);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.micAutoLevel, isFalse);
+  });
+
+  test('micAutoLevel round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(micAutoLevel: false));
+    final loaded = await store.load();
+    expect(loaded.micAutoLevel, isFalse);
+  });
+
+  test(
+      'fromJson with no micAutoLevel key (pre-existing settings file) falls '
+      'back to true — auto-leveling is on by default', () {
+    final json = AppSettings().toJson()..remove('micAutoLevel');
+    final loaded = AppSettings.fromJson(json);
+    expect(loaded.micAutoLevel, isTrue);
+  });
+
   test('save/load round-trips per-game config', () async {
     final store = SettingsStore(tmp);
     final s = AppSettings(defaultBufferSeconds: 60, hotkey: 'Ctrl+Shift+S');

@@ -233,6 +233,34 @@ class FakeCaptureEngine implements CaptureEngine {
   /// Last value passed to [setAudioMode].
   int? audioMode;
 
+  /// Every value passed to [setGameVolume], in call order.
+  final List<double> setGameVolumeCalls = [];
+
+  /// Last value passed to [setGameVolume].
+  double? gameVolume;
+
+  @override
+  bool setGameVolume(double volume) {
+    calls.add('setGameVolume:$volume');
+    setGameVolumeCalls.add(volume);
+    gameVolume = volume;
+    return true;
+  }
+
+  /// Every value passed to [setMicLeveling], in call order.
+  final List<bool> setMicLevelingCalls = [];
+
+  /// Last value passed to [setMicLeveling].
+  bool? micLeveling;
+
+  @override
+  bool setMicLeveling(bool enabled) {
+    calls.add('setMicLeveling:$enabled');
+    setMicLevelingCalls.add(enabled);
+    micLeveling = enabled;
+    return true;
+  }
+
   /// Settable current screen-capture permission state, mirroring the real
   /// engine's live/pollable grant state — tests flip this directly to
   /// simulate a grant happening in System Settings while the app runs.

@@ -102,6 +102,19 @@ class AppSettings {
   /// Default 1.0 — unchanged from every mic source's natural level.
   double micVolume;
 
+  /// Recording-level multiplier applied to the desktop/game-audio source
+  /// (see `rewind_set_game_volume`), the same lever as [micVolume] but
+  /// against game audio instead of the mic — pulls game audio down under
+  /// voice. 1.0 = 100% (unity gain), clamped to 0.0-2.0. Default 1.0.
+  double gameAudioVolume;
+
+  /// Whether the mic auto-leveling filter chain (compressor->limiter, see
+  /// `rewind_set_mic_leveling`) is on — evens out voice so it sits
+  /// consistently against the game rather than swinging between too quiet
+  /// and too loud. Default TRUE: this is the "set once, forget" feature's
+  /// whole point, so it's on from first launch, not an opt-in.
+  bool micAutoLevel;
+
   /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
   /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
   /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
@@ -189,6 +202,8 @@ class AppSettings {
     this.captureMicrophone = false,
     this.micDeviceUid,
     this.micVolume = 1.0,
+    this.gameAudioVolume = 1.0,
+    this.micAutoLevel = true,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.onboardingComplete = false,
@@ -242,6 +257,8 @@ class AppSettings {
         'captureMicrophone': captureMicrophone,
         'micDeviceUid': micDeviceUid,
         'micVolume': micVolume,
+        'gameAudioVolume': gameAudioVolume,
+        'micAutoLevel': micAutoLevel,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'onboardingComplete': onboardingComplete,
@@ -272,6 +289,13 @@ class AppSettings {
         // report that back up to Settings' live percent label.
         micVolume:
             ((j['micVolume'] as num?)?.toDouble() ?? 1.0).clamp(0.0, 2.0),
+        // Same clamp-on-load discipline as micVolume above.
+        gameAudioVolume:
+            ((j['gameAudioVolume'] as num?)?.toDouble() ?? 1.0).clamp(0.0, 2.0),
+        // Absent key (a settings file predating this feature) falls back to
+        // ON — the feature's whole point is "set once, forget", so a fresh
+        // install and an existing settings file both start auto-leveled.
+        micAutoLevel: j['micAutoLevel'] as bool? ?? true,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
         // falls back to the 20 GB default.

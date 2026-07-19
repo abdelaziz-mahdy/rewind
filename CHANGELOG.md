@@ -7,6 +7,21 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Audio balance controls: game-audio volume + mic auto-leveling**: two
+  levers for clips that mixed mic and game audio with no way to balance
+  them. A "Game audio" volume slider (Settings → Capture → Audio, next to
+  the existing audio-source picker) pulls game/desktop audio down under
+  voice, mirroring the existing mic-volume slider but against the
+  desktop-audio source (`rewind_set_game_volume`). "Auto-level my voice"
+  (on by default) attaches libobs' own compressor and limiter filters to
+  the mic source — a compressor evens out the recording envelope, a limiter
+  catches whatever peaks through — so voice sits consistently against the
+  game instead of swinging between too quiet and too loud
+  (`rewind_set_mic_leveling`). Both apply live if the capture pipeline is
+  already running. Not in this pass: capturing a specific friend's voice
+  app separately (needs a third app-audio source), and multi-track audio in
+  the mux (both would need mixer-level changes beyond these two per-source
+  levers).
 - **Audible feedback for manual saves and recording**: a short confirmation
   sound plays when the save hotkey (or `.save-now`) succeeds or fails, and
   when the record hotkey (or `.record-toggle`) starts/stops a manual
@@ -16,10 +31,12 @@ All notable changes to Rewind are documented here. Format based on
   didn't trigger would just be noise mid-fight. On macOS this reuses stock
   `/System/Library/Sounds` system sounds via `afplay` (zero bundled assets);
   Windows/Linux are no-ops for now (`ClipSounds`'s doc has the future
-  recipes). Gated by a new "Sound on save" toggle in Settings → Capture →
-  Instant replay, on by default. A coalesced burst of save-hotkey presses
-  (see the 2026-07-18 coalescing fix) still plays exactly one sound, for the
-  save that actually happened.
+  recipes). Gated by a "Sound on save" toggle, on by default — now on
+  Settings → Hotkeys (moved from Capture → Instant replay: it's feedback
+  for the hotkeys, not a capture setting, and that's where a user looking
+  for it goes first). A coalesced burst of save-hotkey presses (see the
+  2026-07-18 coalescing fix) still plays exactly one sound, for the save
+  that actually happened.
 - **Steam achievement auto-clip, for any Steam game — keyless**: no Steam ID,
   no Web API key, no setup beyond the toggle in Settings → Steam (on by
   default). Detects unlocks by watching the local, read-only stats-cache

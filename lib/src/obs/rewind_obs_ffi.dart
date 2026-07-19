@@ -73,6 +73,12 @@ external int _setCaptureQuality(int fps, int maxHeight);
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_audio_mode')
 external int _setAudioMode(int mode);
 
+@Native<Int32 Function(Float)>(symbol: 'rewind_set_game_volume')
+external int _setGameVolume(double volume);
+
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_leveling')
+external int _setMicLeveling(int enabled);
+
 @Native<Int32 Function()>(symbol: 'rewind_preflight_screen_permission')
 external int _preflightScreenPermission();
 
@@ -256,6 +262,14 @@ class RewindObs {
 
   /// Sets the system/app audio mode (0 = off, 1 = all, 2 = app).
   int setAudioMode(int mode) => _setAudioMode(mode);
+
+  /// Sets the game/desktop-audio recording-level multiplier (1.0 = 100%,
+  /// clamped by the shim to 0.0-2.0).
+  int setGameVolume(double volume) => _setGameVolume(volume);
+
+  /// Enables/disables the mic auto-leveling filter chain
+  /// (compressor->limiter).
+  int setMicLeveling(bool enabled) => _setMicLeveling(enabled ? 1 : 0);
 
   /// True if screen-capture permission is currently granted. Safe to poll
   /// repeatedly (e.g. from onboarding UI) — never prompts.

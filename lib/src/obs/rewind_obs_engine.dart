@@ -106,6 +106,12 @@ class RewindObsEngine implements CaptureEngine {
   bool setAudioMode(int mode) => _obs.setAudioMode(mode) == 0;
 
   @override
+  bool setGameVolume(double volume) => _obs.setGameVolume(volume) == 0;
+
+  @override
+  bool setMicLeveling(bool enabled) => _obs.setMicLeveling(enabled) == 0;
+
+  @override
   bool preflightScreenPermission() => _obs.preflightScreenPermission();
 
   @override
