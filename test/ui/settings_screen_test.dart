@@ -1158,6 +1158,209 @@ void main() {
     });
   });
 
+  group('Steam section', () {
+    Future<void> blur(WidgetTester t) async {
+      FocusManager.instance.primaryFocus?.unfocus();
+      await t.pump();
+    }
+
+    testWidgets('fields render the current settings values', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(
+          steamId64: '76561197960287930',
+          steamWebApiKey: 'ABCDEF0123456789',
+        ),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(
+        t
+            .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
+            .controller!
+            .text,
+        '76561197960287930',
+      );
+      expect(
+        t
+            .widget<TextField>(find.byKey(const ValueKey('steamApiKeyField')))
+            .controller!
+            .text,
+        'ABCDEF0123456789',
+      );
+    });
+
+    testWidgets('the API key field is obscured', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+      await openPage(t, 'Steam');
+      expect(
+        t
+            .widget<TextField>(find.byKey(const ValueKey('steamApiKeyField')))
+            .obscureText,
+        isTrue,
+      );
+    });
+
+    testWidgets('the SteamID field commits on blur and fires onChanged',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      await t.enterText(
+          find.byKey(const ValueKey('steamIdField')), '76561197960287930');
+      await blur(t);
+
+      expect(settings.steamId64, '76561197960287930');
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets(
+        'a pasted profile URL is normalized down to its trailing segment '
+        'at commit', (t) async {
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      await t.enterText(
+        find.byKey(const ValueKey('steamIdField')),
+        'https://steamcommunity.com/id/someVanityName',
+      );
+      await blur(t);
+
+      expect(settings.steamId64, 'someVanityName');
+    });
+
+    testWidgets('a profiles/<id64> URL normalizes to the bare id64', (t) async {
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      await t.enterText(
+        find.byKey(const ValueKey('steamIdField')),
+        'https://steamcommunity.com/profiles/76561197960287930',
+      );
+      await blur(t);
+
+      expect(settings.steamId64, '76561197960287930');
+    });
+
+    testWidgets('the API key field commits on blur and fires onChanged',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      await t.enterText(
+          find.byKey(const ValueKey('steamApiKeyField')), 'MYKEY123');
+      await blur(t);
+
+      expect(settings.steamWebApiKey, 'MYKEY123');
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets(
+        'the auto-clip toggle defaults on and writes '
+        'clipSteamAchievements', (t) async {
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      final toggle = find.byKey(const ValueKey('steamClipToggle'));
+      expect(t.widget<Switch>(toggle).value, isTrue);
+
+      await t.tap(toggle);
+      await t.pump();
+      expect(settings.clipSteamAchievements, isFalse);
+    });
+
+    testWidgets(
+        'with no watcher wired (steamStatus null), the status line shows a '
+        'static "not configured" message', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.byKey(const ValueKey('steamStatusLine')), findsOneWidget);
+      expect(find.textContaining('Add your Steam ID'), findsOneWidget);
+    });
+
+    testWidgets(
+        'with a watcher wired, the status line reflects its live status '
+        'notifier', (t) async {
+      final status = ValueNotifier<String?>('Waiting for a Steam game');
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        steamStatus: status,
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.text('Waiting for a Steam game'), findsOneWidget);
+
+      status.value = 'Watching (in Counter-Strike 2)';
+      await t.pump();
+      expect(find.text('Watching (in Counter-Strike 2)'), findsOneWidget);
+    });
+
+    testWidgets('a null status value falls back to an idle message', (t) async {
+      final status = ValueNotifier<String?>(null);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        steamStatus: status,
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.byKey(const ValueKey('steamStatusLine')), findsOneWidget);
+      expect(find.textContaining('Idle'), findsOneWidget);
+    });
+
+    testWidgets('the privacy hint mentions Game details must be Public',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.textContaining('Game details'), findsWidgets);
+    });
+  });
+
   testWidgets('the default buffer offers 15 s, same as a per-game override',
       (t) async {
     // The global default offered only 30/60/Custom while a game hub's

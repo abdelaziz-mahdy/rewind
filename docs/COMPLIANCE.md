@@ -101,6 +101,22 @@ Two more policy points that bind this project:
   VALORANT). `GameDescriptor.usesOfficialLogo` is conservatively `false`:
   Marvel/Disney/NetEase publish no fan-tool logo carve-out the way Riot's
   policy explicitly does, so the rail/hub never show its real app icon.
+- **Steam (achievement auto-clip):** `SteamAchievementWatcher` uses ONLY the
+  official Steam Web API (`api.steampowered.com`) — `GetPlayerSummaries`
+  (which appid the user is playing), `GetPlayerAchievements` (unlocked
+  flags/timestamps), `GetSchemaForGame` (achievement display names), and
+  `ResolveVanityURL` (vanity name → SteamID64). No memory access, no
+  process hooking, no packet capture — same rule as every other
+  integration. The user supplies their own Steam Web API key
+  (steamcommunity.com/dev/apikey) and SteamID64; both are stored locally in
+  `settings.json` only and sent nowhere but `api.steampowered.com` as query
+  params, per that API's own auth scheme. This works for EVERY Steam game
+  (not one title at a time, unlike League) because it reads Steam's own
+  account-level achievement data rather than anything game-specific — the
+  achievement's game itself never has to sanction anything separately. The
+  user's Steam profile must have "Game details" set to Public (a Steam
+  privacy setting) for `GetPlayerAchievements` to return data at all; the
+  Settings → Steam page's status line reports this plainly when it isn't.
 - **Games without an official API (e.g. many mech/action titles):** ship as
   **manual-hotkey capture only** until/unless the vendor provides a sanctioned
   event source. Do not add memory/hook-based detection.

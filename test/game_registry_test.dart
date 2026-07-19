@@ -1,9 +1,66 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
 
 import 'fakes/fake_game_source.dart';
 
 void main() {
+  group('event merging is independent of activation', () {
+    // SteamAchievementWatcher's isGameRunning() always answers false (it
+    // never drives activeGameIds/capture-switch/buffer policy — see its
+    // doc), so _tick's activation branch never fires for it. Its events
+    // must still reach GameRegistry.events, or an always-off-activation
+    // source could never emit anything at all.
+    test(
+        'a source whose isGameRunning() never returns true still has its '
+        'events merged (constructor-registered)', () async {
+      final neverActive = FakeGameSource('steam'); // running defaults false
+      final registry = GameRegistry(sources: [neverActive]);
+
+      final received = <GameEvent>[];
+      registry.events.listen(received.add);
+
+      neverActive.emit(GameEventKind.achievement);
+      await registry.tickNow(); // proves activation truly never fires
+      await Future<void>.delayed(Duration.zero);
+
+      expect(received, hasLength(1));
+      expect(received.single.kind, GameEventKind.achievement);
+    });
+
+    test('the same holds for a source adopted live via addNewSources',
+        () async {
+      final registry = GameRegistry(sources: []);
+      final neverActive = FakeGameSource('steam');
+      registry.addNewSources([neverActive]);
+
+      final received = <GameEvent>[];
+      registry.events.listen(received.add);
+
+      neverActive.emit(GameEventKind.achievement);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(received, hasLength(1));
+    });
+
+    test(
+        'a normally-activating source never double-emits (constructor '
+        'subscription + activation must not both wire it up)', () async {
+      final source = FakeGameSource('app:normal')..running = true;
+      final registry = GameRegistry(sources: [source]);
+
+      final received = <GameEvent>[];
+      registry.events.listen(received.add);
+
+      await registry.tickNow(); // activates
+      await Future<void>.delayed(Duration.zero);
+      source.emit(GameEventKind.kill);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(received, hasLength(1));
+    });
+  });
+
   group('GameRegistry.addNewSources', () {
     test('adopts sources with unseen gameIds, skips already-supervised ones',
         () {

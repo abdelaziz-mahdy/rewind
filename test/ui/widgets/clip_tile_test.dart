@@ -178,6 +178,57 @@ void main() {
     });
   });
 
+  group('achievement events', () {
+    testWidgets(
+        'badge renders the generic "ACHIEVEMENT" text (kind-based, '
+        'not the specific unlock name)', (t) async {
+      final achievementClip = Clip(
+        path: '${tmp.path}/ach.mp4',
+        gameId: 'steam:730',
+        event: GameEventKind.achievement,
+        createdAt: DateTime.now(),
+        sizeBytes: 1024,
+        eventLabel: 'Winner Winner',
+      );
+      await t
+          .pumpWidget(app(ClipTile(clip: achievementClip, library: library)));
+      expect(find.text('ACHIEVEMENT'), findsOneWidget);
+    });
+
+    testWidgets(
+        'the specific unlock name (Clip.eventLabel) appears in the footer',
+        (t) async {
+      final achievementClip = Clip(
+        path: '${tmp.path}/ach.mp4',
+        gameId: 'steam:730',
+        event: GameEventKind.achievement,
+        createdAt: DateTime.now(),
+        sizeBytes: 1024,
+        eventLabel: 'Winner Winner',
+      );
+      await t
+          .pumpWidget(app(ClipTile(clip: achievementClip, library: library)));
+      expect(find.textContaining('Winner Winner'), findsOneWidget);
+    });
+
+    testWidgets('a clip with no eventLabel shows no extra text (unaffected)',
+        (t) async {
+      await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
+      expect(find.textContaining(formatSize(clip.sizeBytes)), findsOneWidget);
+    });
+
+    testWidgets('eventColor gives achievement a distinct tint from a kill',
+        (t) async {
+      late BuildContext ctx;
+      await t.pumpWidget(app(Builder(builder: (context) {
+        ctx = context;
+        return const SizedBox();
+      })));
+      expect(eventColor(ctx, GameEventKind.achievement),
+          isNot(eventColor(ctx, GameEventKind.kill)));
+    });
+  });
+
   group('card footer', () {
     testWidgets('showGameName (default true) renders the game name', (t) async {
       await t.pumpWidget(app(ClipTile(clip: clip, library: library)));

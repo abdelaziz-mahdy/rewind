@@ -301,6 +301,17 @@ automatically. This is a `GameEventSource`.
    - it does **not** emit for events that aren't the active player / are
      stale / are replayed history (League's tests are a good template).
 
+Path B assumes a per-game, uncredentialed, activation-driving API like
+League's. A credentialed, cross-game vendor API (a game's own official
+publisher API, a storefront's API, etc.) is a variant worth reading
+`lib/src/events/steam_achievement_watcher.dart` for first: it never
+"activates" through `GameRegistry`'s normal `isGameRunning` tick at all (see
+`GameEventSource.isGameRunning`'s doc), attributes events to whatever game
+is otherwise detected active, and needs a richer transport signature than
+League's body-or-null one (status codes distinguish failure modes like a
+bad key from a privacy setting). Don't force that shape through Path B's
+`isGameRunning`-drives-activation assumption — copy Steam's pattern instead.
+
 ### Both paths — finishing the PR
 
 - Add the game to the supported-games table in `README.md`.

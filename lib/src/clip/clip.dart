@@ -26,6 +26,15 @@ class Clip {
   /// without an event API, older clips).
   final int killCount;
 
+  /// A per-instance label for [event], for kinds where the generic
+  /// [event]-derived badge text ("ACHIEVEMENT") alone would lose the
+  /// specific thing that happened — currently only Steam achievement
+  /// unlocks, whose real display name (e.g. "Speed Run Master") comes from
+  /// `SteamAchievementWatcher`'s `GameEvent.meta['label']` and is threaded
+  /// through by `ClipCoordinator._indexClip`. Null for every other event
+  /// kind and for clips saved before this field existed.
+  final String? eventLabel;
+
   Clip({
     required this.path,
     required this.gameId,
@@ -35,6 +44,7 @@ class Clip {
     this.protected = false,
     this.sessionAt,
     this.killCount = 0,
+    this.eventLabel,
   });
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +56,7 @@ class Clip {
         'protected': protected,
         'sessionAt': sessionAt?.toIso8601String(),
         'killCount': killCount,
+        'eventLabel': eventLabel,
       };
 
   factory Clip.fromJson(Map<String, dynamic> j) => Clip(
@@ -60,5 +71,6 @@ class Clip {
             ? DateTime.parse(j['sessionAt'] as String)
             : null,
         killCount: j['killCount'] as int? ?? 0,
+        eventLabel: j['eventLabel'] as String?,
       );
 }

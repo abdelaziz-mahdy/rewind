@@ -3,6 +3,7 @@ import 'package:rewind/src/events/game_catalog.dart';
 import 'package:rewind/src/events/league_event_watcher.dart';
 import 'package:rewind/src/events/process_watcher_source.dart';
 import 'package:rewind/src/events/source_builder.dart';
+import 'package:rewind/src/events/steam_achievement_watcher.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 
@@ -122,6 +123,45 @@ void main() {
       expect(gameIds.toSet().length, gameIds.length,
           reason: 'duplicate gameId in built sources: $gameIds');
       expect(sources.length, 1 + popularGamesCatalog.length);
+    });
+
+    group('SteamAchievementWatcher', () {
+      test('absent when no Steam credentials are configured (default)', () {
+        final sources = buildSources(AppSettings());
+        expect(sources.whereType<SteamAchievementWatcher>(), isEmpty);
+      });
+
+      test('absent when only one of the two credentials is set', () {
+        final onlyId = AppSettings(steamId64: '76561197960287930');
+        expect(
+            buildSources(onlyId).whereType<SteamAchievementWatcher>(), isEmpty);
+
+        final onlyKey = AppSettings(steamWebApiKey: 'ABCDEF');
+        expect(buildSources(onlyKey).whereType<SteamAchievementWatcher>(),
+            isEmpty);
+      });
+
+      test('present with gameId "steam" once both credentials are set', () {
+        final settings = AppSettings(
+          steamId64: '76561197960287930',
+          steamWebApiKey: 'ABCDEF0123456789',
+        );
+        final steam =
+            buildSources(settings).whereType<SteamAchievementWatcher>();
+        expect(steam, hasLength(1));
+        expect(steam.single.gameId, 'steam');
+      });
+
+      test('does not collide with or displace any catalog/League source', () {
+        final settings = AppSettings(
+          steamId64: '76561197960287930',
+          steamWebApiKey: 'ABCDEF0123456789',
+        );
+        final sources = buildSources(settings);
+        expect(sources.length, 2 + popularGamesCatalog.length);
+        final gameIds = sources.map((s) => s.gameId).toList();
+        expect(gameIds.toSet().length, gameIds.length);
+      });
     });
 
     test('all built sources have unique gameIds', () {

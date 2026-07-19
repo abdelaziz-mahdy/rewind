@@ -27,7 +27,7 @@ Owns everything the user sees and most of the logic:
   system: `RewindTokens` in `theme.dart`; base spec in
   `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`, settings
   redesign rationale in the 2026-07-18 research pass (variants artifact).
-- **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. First implementation: `LeagueEventWatcher`, which polls the League **Live Client Data API** at `https://127.0.0.1:2999/liveclientdata/eventdata`.
+- **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. Two source SHAPES exist so far: `LeagueEventWatcher`, which polls a **local, cert-pinned** HTTPS endpoint at `https://127.0.0.1:2999/liveclientdata/eventdata` (no credentials, only exists mid-match); and `SteamAchievementWatcher`, which polls the **public, credentialed** Steam Web API (`api.steampowered.com`) for achievement unlocks — generic across EVERY Steam game rather than one title, and deliberately never "activates" through `GameRegistry`'s normal `isGameRunning` tick (it drives no capture/buffer-policy signal of its own; events are attributed to whatever game is otherwise detected active). See that class's doc for the full contrast.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
 - **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,
   behind a small **`CaptureEngine`** interface. The coordinator and UI depend
@@ -288,7 +288,10 @@ Adding a new game now follows one of two paths:
    explicit `GameDescriptor` if this game deviates from that default — e.g. a
    `usesOfficialLogo: false` override for a publisher with no fan-tool logo
    carve-off (Marvel Rivals; see docs/COMPLIANCE.md's per-game notes).
-2. **A sanctioned vendor API (rare — League is still the only one):**
+2. **A sanctioned vendor API (rare — League is the only one that fits this
+   per-game recipe; `SteamAchievementWatcher` is a vendor-API integration
+   too, but a cross-game one with no single `gameId` of its own to attach a
+   `GameDescriptor` to — see the events layer bullet above):**
    implement `GameEventSource` and register it (`source_builder.dart`,
    `game_registry.dart` — see the section above), THEN add a `GameDescriptor`
    entry with `mergedGameIds` covering both the vendor id and any catalog
@@ -307,6 +310,18 @@ League's shape. Generalizing either into a seam now would be speculative —
 there is exactly one vendor-API integration to generalize FROM. Extract them
 when a second sanctioned vendor API actually lands, informed by its real
 constraints instead of guessed ones.
+
+Task 22 (`SteamAchievementWatcher`) IS that second vendor-API integration,
+and the YAGNI call above still stands even with two data points: League
+polls ONE local, uncredentialed, cert-pinned endpoint per match, seeded via
+`activeplayername`/`playerlist`, driving `GameRegistry` activation directly.
+Steam polls a public, credentialed API across TWO tiers (presence,
+achievements) with no OS-level activation signal at all (see the events
+layer bullet above) and its own vanity-id resolution/backoff/status-mapping
+concerns. The only real overlap is the "seed on first poll, diff after"
+pattern (the League 44 MB lesson) and a poll re-entrancy guard — both are a
+few lines each, copied rather than shared. Revisit extraction if/when a
+THIRD vendor-API source lands and the overlap looks like more than that.
 
 ## Storage-aware clip library
 

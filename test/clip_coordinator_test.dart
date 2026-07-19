@@ -166,6 +166,72 @@ void main() {
     expect(library.all.single.event, GameEventKind.kill);
   });
 
+  group('achievement events (Steam)', () {
+    test(
+        'an achievement event for a NEVER-configured gameId still auto-clips '
+        '— GameConfig\'s default enabledEvents covers it with no '
+        'coordinator special-case', () async {
+      final steamSource = FakeGameSource('steam:730', 'Counter-Strike 2')
+        ..running = true;
+      final steamRegistry = GameRegistry(sources: [steamSource]);
+      final steamCoordinator = ClipCoordinator(
+        registry: steamRegistry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        burstQuiet: const Duration(milliseconds: 60),
+      )..start(supervise: false);
+      addTearDown(steamCoordinator.dispose);
+
+      steamSource.running = true;
+      await steamRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      final saved = Completer<void>();
+      library.addListener(() {
+        if (!saved.isCompleted) saved.complete();
+      });
+      steamSource.emitEvent(GameEvent(
+        gameId: 'steam:730',
+        kind: GameEventKind.achievement,
+        meta: const {'label': 'Winner Winner', 'appId': 730},
+      ));
+      await saved.future;
+
+      expect(library.all, hasLength(1));
+      expect(library.all.single.gameId, 'steam:730');
+      expect(library.all.single.event, GameEventKind.achievement);
+    });
+
+    test(
+        'the achievement\'s label (GameEvent.meta[\'label\']) threads '
+        'through onto Clip.eventLabel', () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      final saved = Completer<void>();
+      library.addListener(() {
+        if (!saved.isCompleted) saved.complete();
+      });
+      league.emitEvent(GameEvent(
+        gameId: 'league_of_legends',
+        kind: GameEventKind.achievement,
+        meta: const {'label': 'Speed Run Master', 'appId': 1},
+      ));
+      await saved.future;
+
+      expect(library.all.single.eventLabel, 'Speed Run Master');
+    });
+
+    test('a non-achievement clip carries no eventLabel', () async {
+      await coordinator.onHotkey();
+      expect(library.all.single.eventLabel, isNull);
+    });
+  });
+
   test('disabled event kind does not save', () async {
     settings.setConfig(GameConfig(
       gameId: 'league_of_legends',

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/settings/settings_store.dart';
@@ -215,6 +216,15 @@ void main() {
     expect(loaded.configFor('g').iconPath, isNull);
   });
 
+  test('GameConfig default enabledEvents includes achievement', () {
+    // Any Steam achievement event must pass a fresh (never-configured)
+    // game's gate — see ClipCoordinator's autoClip/enabledEvents check and
+    // SteamAchievementWatcher's fallback `steam:<appid>` gameId, which
+    // always resolves through AppSettings.configFor's default constructor.
+    expect(GameConfig(gameId: 'g').enabledEvents,
+        contains(GameEventKind.achievement));
+  });
+
   group('GameConfig.postEventSeconds', () {
     test('defaults to 5', () {
       expect(GameConfig(gameId: 'g').postEventSeconds, 5);
@@ -373,6 +383,53 @@ void main() {
     final s = await store.load();
     expect(s.defaultBufferSeconds, 30);
     expect(File('${store.file.path}.bad').existsSync(), isTrue);
+  });
+
+  group('Steam achievement settings', () {
+    test(
+        'steamId64/steamWebApiKey default to empty, clipSteamAchievements '
+        'defaults to true', () {
+      final s = AppSettings();
+      expect(s.steamId64, '');
+      expect(s.steamWebApiKey, '');
+      expect(s.clipSteamAchievements, isTrue);
+    });
+
+    test('round-trip through toJson/fromJson', () {
+      final s = AppSettings(
+        steamId64: '76561197960287930',
+        steamWebApiKey: 'ABCDEF0123456789',
+        clipSteamAchievements: false,
+      );
+      final loaded = AppSettings.fromJson(s.toJson());
+      expect(loaded.steamId64, '76561197960287930');
+      expect(loaded.steamWebApiKey, 'ABCDEF0123456789');
+      expect(loaded.clipSteamAchievements, isFalse);
+    });
+
+    test('round-trip through the settings store', () async {
+      final store = SettingsStore(tmp);
+      await store.save(AppSettings(
+        steamId64: '76561197960287930',
+        steamWebApiKey: 'ABCDEF0123456789',
+      ));
+      final loaded = await store.load();
+      expect(loaded.steamId64, '76561197960287930');
+      expect(loaded.steamWebApiKey, 'ABCDEF0123456789');
+    });
+
+    test(
+        'a settings file predating this feature (absent keys) falls back to '
+        'empty credentials and clipSteamAchievements true', () {
+      final j = AppSettings().toJson()
+        ..remove('steamId64')
+        ..remove('steamWebApiKey')
+        ..remove('clipSteamAchievements');
+      final loaded = AppSettings.fromJson(j);
+      expect(loaded.steamId64, '');
+      expect(loaded.steamWebApiKey, '');
+      expect(loaded.clipSteamAchievements, isTrue);
+    });
   });
 
   test('save creates the directory if missing', () async {

@@ -711,6 +711,11 @@ class ClipCoordinator {
       sizeBytes: size < 0 ? 0 : size,
       sessionAt: _sessionStartedAt[e.gameId],
       killCount: _killsInWindow(e.gameId, start, windowEnd),
+      // A per-instance label (e.g. a Steam achievement's real display
+      // name — see `SteamAchievementWatcher`) when the source supplied
+      // one; null for every event kind that doesn't (the generic
+      // kind-derived badge, `eventBadge`, is all those need).
+      eventLabel: e.meta['label'] as String?,
     );
     library.add(clip);
     await library.save();

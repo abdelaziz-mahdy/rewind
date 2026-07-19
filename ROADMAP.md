@@ -76,7 +76,9 @@ These shape every milestone:
 ## v0.4 — "It's extensible" (more games)
 
 - [ ] Documented integration API + template for adding a game
-- [ ] Second and third game integrations (candidates: any title exposing a local API or log; generic OBS-style scene detection as fallback)
+- [x] Second game integration: Steam achievement auto-clip (any Steam game,
+      via the official Steam Web API — see CHANGELOG.md/docs/COMPLIANCE.md).
+      A third integration is still open.
 - [ ] Optional community-contributed integrations folder
 
 ## v0.5 — "It's shareable"
