@@ -270,6 +270,44 @@ GameRegistry
    ClipCoordinator ──► capture engine (save clip)
 ```
 
+### Adding a game (the `GameDescriptor` recipe)
+
+Task 21 collapsed what used to be ~11 scattered hardcoded-League-id sites
+(match presentation, the directory merge, the hub, Supported Games, icon
+policy, event groups) into one registry: `lib/src/games/game_descriptor.dart`.
+Adding a new game now follows one of two paths:
+
+1. **Process-detection only (the common case — most new games, e.g. Marvel
+   Rivals):** add one `CatalogGame` entry to `popularGamesCatalog`
+   (`lib/src/events/game_catalog.dart`) with its `gameId` (`app:<slug>`),
+   `displayName`, and `processMatch` (the real running-process/exe basename —
+   verify it against the actual binary, not the launcher). **No
+   `GameDescriptor` entry needed** — `descriptorFor` synthesizes a sane
+   default (single merged id, `usesOfficialLogo: true`, no presentation, no
+   event groups, no live feed) straight from the catalog entry. Only add an
+   explicit `GameDescriptor` if this game deviates from that default — e.g. a
+   `usesOfficialLogo: false` override for a publisher with no fan-tool logo
+   carve-off (Marvel Rivals; see docs/COMPLIANCE.md's per-game notes).
+2. **A sanctioned vendor API (rare — League is still the only one):**
+   implement `GameEventSource` and register it (`source_builder.dart`,
+   `game_registry.dart` — see the section above), THEN add a `GameDescriptor`
+   entry with `mergedGameIds` covering both the vendor id and any catalog
+   entry for the same game's client/launcher, `hasLiveFeed: true` +
+   `detailCopy` (the hub's connected/waiting prose), `eventGroups` (the
+   auto-clip taxonomy), and optionally `presentationFactory` for a per-game
+   match drill-down (`match_presentation.dart`).
+
+`gameDescriptors` documents its own "registry holds only deviations from the
+default" contract — read that doc comment before adding an entry.
+
+**Deliberately NOT extracted (YAGNI) as part of Task 21**, despite being
+League-specific today: `PollingEventWatcher`'s base polling loop and the
+per-game stats model (`clip/match_stats.dart`) are written directly against
+League's shape. Generalizing either into a seam now would be speculative —
+there is exactly one vendor-API integration to generalize FROM. Extract them
+when a second sanctioned vendor API actually lands, informed by its real
+constraints instead of guessed ones.
+
 ## Storage-aware clip library
 
 Recording continuously and auto-clipping generates a lot of video, so storage management is a first-class feature, not an afterthought.

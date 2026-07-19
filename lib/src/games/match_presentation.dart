@@ -1,8 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../clip/match_stats.dart';
+import 'game_descriptor.dart';
 import 'league/ddragon.dart';
-import 'league/league_match_presentation.dart';
 
 /// Per-game presentation for the match drill-down (`MatchClipsScreen`): the
 /// summary band, collapsible extras (e.g. League's roster disclosure), and
@@ -35,20 +35,11 @@ abstract class MatchPresentation {
   String? footnote(MatchStats? stats);
 }
 
-/// League's two gameIds — the vendor integration and the catalog's
-/// process-detection entry — see `ui/game_directory.dart`'s doc for why
-/// there are two and how they're merged elsewhere.
-const _leagueVendorId = 'league_of_legends';
-const _leagueCatalogId = 'app:league_of_legends';
-
 /// Resolves the presentation for a game, or null for a game with no
-/// per-game impl (the screen then renders the bare frame). [ddragon] is
-/// threaded straight into the League impl's constructor when the caller has
-/// one wired up (null renders the monogram/blank art fallbacks, same as
-/// today).
-MatchPresentation? matchPresentationFor(String gameId, {DDragon? ddragon}) {
-  if (gameId == _leagueVendorId || gameId == _leagueCatalogId) {
-    return LeagueMatchPresentation(ddragon: ddragon);
-  }
-  return null;
-}
+/// per-game impl (the screen then renders the bare frame) — delegates to the
+/// game's [GameDescriptor] (Task 21's registry) rather than hardcoding
+/// League's ids here. [ddragon] is threaded straight into the League impl's
+/// constructor when the caller has one wired up (null renders the
+/// monogram/blank art fallbacks, same as today).
+MatchPresentation? matchPresentationFor(String gameId, {DDragon? ddragon}) =>
+    descriptorFor(gameId).presentationFactory(ddragon: ddragon);

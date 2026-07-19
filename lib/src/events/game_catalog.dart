@@ -1,3 +1,5 @@
+import '../games/game_descriptor.dart' show gameDescriptors;
+
 /// A well-known game Rewind can offer auto-detection for out of the box,
 /// via generic OS process-list matching (see `ProcessWatcherSource`) rather
 /// than a per-game vendor API integration.
@@ -71,10 +73,18 @@ const List<CatalogGame> popularGamesCatalog = [
     displayName: 'Dota 2',
     processMatch: 'dota2',
   ),
+  // Windows-only, permanently: Vanguard (Riot's kernel-level anti-cheat)
+  // blocks VM/CrossOver capture paths outright, so there is no macOS
+  // detection story for this title the way there is for Wine-friendly
+  // games. Riot's developer policy also restricts real-time VALORANT match
+  // data (see developer.riotgames.com/docs/valorant) — the general Riot
+  // policy disclaimer in docs/COMPLIANCE.md covers this — so, unlike
+  // League, this stays process-detection-only forever, not "until a vendor
+  // API lands."
   CatalogGame(
     gameId: 'app:valorant',
     displayName: 'VALORANT',
-    processMatch: 'VALORANT',
+    processMatch: 'VALORANT-Win64-Shipping',
   ),
   CatalogGame(
     gameId: 'app:fortnite',
@@ -130,6 +140,19 @@ const List<CatalogGame> popularGamesCatalog = [
     displayName: 'Genshin Impact',
     processMatch: 'GenshinImpact',
   ),
+  // No sanctioned real-time source exists (research verdict 2026-07-19, see
+  // docs/COMPLIANCE.md): no public match/event API, and Rivals' own logs are
+  // encrypted — so, like VALORANT, this is process-detection only. Matches
+  // the game binary itself, NOT `MarvelRivals_Launcher.exe` (the launcher
+  // runs outside matches and would false-report "playing"). Works natively
+  // on Windows and, unlike VALORANT, on macOS via CrossOver — NetEase ships
+  // no kernel-level anti-cheat that blocks Wine the way Vanguard does.
+  CatalogGame(
+    gameId: 'app:marvel_rivals',
+    displayName: 'Marvel Rivals',
+    processMatch: 'Marvel-Win64-Shipping',
+    countsAsPlaying: true,
+  ),
 ];
 
 /// User-created display names (from `GameConfig.displayName` — apps picked
@@ -150,9 +173,14 @@ void registerCustomDisplayNames(Map<String, String> names) {
 /// the user (status strip, clip rows, the filter rail, per-game settings).
 /// Resolution order: a [popularGamesCatalog] hit (covers process-detected
 /// `app:<slug>` ids) first, then the null/`'desktop'` sentinel, then a
-/// [registerCustomDisplayNames] entry, then generic title-casing on
-/// underscores — with a small known-name map fixing cases naive
-/// title-casing gets wrong (the lowercase "of" in League of Legends).
+/// [registerCustomDisplayNames] entry, then a registered
+/// `games/game_descriptor.dart` entry (covers a vendor id with no catalog
+/// counterpart, e.g. League's `league_of_legends` — a "known-name map" of
+/// one before Task 21's registry), then generic title-casing on underscores.
+///
+/// Deliberately scans [gameDescriptors] directly rather than calling
+/// `descriptorFor` (which falls back to *this* function for an unregistered
+/// id's display name) — that would recurse.
 String displayNameFor(String? gameId) {
   if (gameId == null || gameId == 'desktop') return 'Desktop';
   for (final game in popularGamesCatalog) {
@@ -160,12 +188,18 @@ String displayNameFor(String? gameId) {
   }
   final custom = _customDisplayNames[gameId];
   if (custom != null) return custom;
-  const known = {'league_of_legends': 'League of Legends'};
-  final name = known[gameId];
-  if (name != null) return name;
-  return gameId
-      .split('_')
-      .where((word) => word.isNotEmpty)
-      .map((word) => word[0].toUpperCase() + word.substring(1))
-      .join(' ');
+  for (final d in gameDescriptors) {
+    if (d.mergedGameIds.contains(gameId)) return d.displayName;
+  }
+  return titleCaseGameId(gameId);
 }
+
+/// Generic underscore-to-title-case fallback ("my_cool_game" -> "My Cool
+/// Game") — the last resort in [displayNameFor], and reused by
+/// `GameDescriptor.descriptorFor` for a fully unrecognized id's synthesized
+/// default display name (so neither call site duplicates this logic).
+String titleCaseGameId(String gameId) => gameId
+    .split('_')
+    .where((word) => word.isNotEmpty)
+    .map((word) => word[0].toUpperCase() + word.substring(1))
+    .join(' ');

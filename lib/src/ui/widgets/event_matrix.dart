@@ -1,53 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../events/game_event.dart';
+import '../../games/game_descriptor.dart' show EventGroupSpec, descriptorFor;
 import '../game_directory.dart';
 import '../theme.dart';
 import 'clip_tile.dart' show eventBadge;
 
-/// League's `enabledEvents` matrix groups (§3.4): `manual` is excluded (the
-/// hotkey always saves, regardless of this config) and `other` has no group
-/// (it's a generic fallback no source currently emits for League). Shared by
-/// [GameHubScreen]'s capture-settings disclosure and each MY GAMES per-game
-/// settings page (`settings_screen.dart`) — one grouping, drawn once.
-const List<GameEventKind> combatEvents = [
-  GameEventKind.kill,
-  GameEventKind.doubleKill,
-  GameEventKind.tripleKill,
-  GameEventKind.quadraKill,
-  GameEventKind.pentaKill,
-  GameEventKind.ace,
-];
-const List<GameEventKind> objectiveEvents = [
-  GameEventKind.dragonKill,
-  GameEventKind.dragonSteal,
-  GameEventKind.baronKill,
-  GameEventKind.baronSteal,
-  GameEventKind.turretKill,
-  GameEventKind.inhibitorKill,
-];
-const List<GameEventKind> matchEvents = [
-  GameEventKind.victory,
-  GameEventKind.defeat,
-];
-
-/// One labeled event group: [combatEvents]/[objectiveEvents]/[matchEvents].
-typedef EventGroupSpec = ({String label, List<GameEventKind> kinds});
-
-/// The event groups a game's auto-clip UI should offer. Only League's vendor
-/// integration ever emits `GameEvent`s (see `docs/COMPLIANCE.md` —
-/// process-watched catalog games have no sanctioned event API), so every
-/// other game gets no groups at all — callers hide the whole event matrix
-/// when this returns empty rather than show an auto-clip picker with
-/// nothing to pick.
+/// The event groups a game's auto-clip UI should offer — read straight off
+/// the game's [GameDescriptor.eventGroups] (Task 21) rather than gating on
+/// [DetectionMethod.liveClientApi] here: only League's vendor integration
+/// ever emits `GameEvent`s today (see `docs/COMPLIANCE.md` — process-watched
+/// catalog games have no sanctioned event API), so every other game's
+/// descriptor still returns no groups — but the decision now lives with the
+/// game, not this gate. Callers hide the whole event matrix when this
+/// returns empty rather than show an auto-clip picker with nothing to pick.
 List<EventGroupSpec> eventGroupsFor(GameEntry entry) =>
-    entry.detection.contains(DetectionMethod.liveClientApi)
-        ? const [
-            (label: 'COMBAT', kinds: combatEvents),
-            (label: 'OBJECTIVES', kinds: objectiveEvents),
-            (label: 'MATCH', kinds: matchEvents),
-          ]
-        : const [];
+    descriptorFor(entry.gameId).eventGroups();
 
 /// One group's micro-label header + a wrapping row of [EventToggleChip]s.
 class EventGroup extends StatelessWidget {

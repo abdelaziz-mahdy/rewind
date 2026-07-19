@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/games/game_descriptor.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_directory.dart';
@@ -233,5 +234,45 @@ void main() {
     );
 
     expect(byId(entries, 'league_of_legends').iconPath, isNull);
+  });
+
+  test(
+      'the League merge is driven by the descriptor registry, not a '
+      'hardcoded id pair (Task 21)', () {
+    final descriptor = descriptorFor('league_of_legends');
+    final settings = AppSettings();
+    settings.setConfig(GameConfig(gameId: 'league_of_legends'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {'app:league_of_legends'},
+    );
+
+    // Same expectations the pre-existing merge test above asserts, tied
+    // explicitly to the descriptor so a future edit to it can't silently
+    // diverge from this row.
+    final league = byId(entries, descriptor.primaryGameId);
+    expect(descriptor.mergedGameIds,
+        {'league_of_legends', 'app:league_of_legends'});
+    expect(descriptor.hasLiveFeed, isTrue);
+    expect(league.detection,
+        {DetectionMethod.liveClientApi, DetectionMethod.processWatch});
+    expect(league.active, isTrue);
+  });
+
+  test(
+      'Marvel Rivals never surfaces an iconPath (Marvel/Disney IP caution — '
+      'usesOfficialLogo false, like League)', () {
+    final settings = AppSettings();
+    settings.setConfig(GameConfig(
+        gameId: 'app:marvel_rivals',
+        iconPath: '/Applications/Marvel Rivals.app/icon.icns'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {},
+    );
+
+    expect(byId(entries, 'app:marvel_rivals').iconPath, isNull);
   });
 }
