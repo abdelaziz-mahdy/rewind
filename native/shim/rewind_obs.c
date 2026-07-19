@@ -154,6 +154,23 @@ obs_encoder_t *g_aenc      = NULL;
 obs_output_t  *g_replay    = NULL;
 int             g_seconds  = 30;
 
+/* Internal scene wrapping g_capture on channel 0 — see rw_attach_capture()'s
+ * doc comment below for why this exists (channel-0 sources on an obs_view
+ * draw with no scale-to-fit at all, so once the canvas can be smaller than
+ * the source's native captured size, a bare obs_set_output_source(0,
+ * g_capture) would crop instead of scale). g_capture_scene is created lazily
+ * on first attach and lives for the rest of the process; g_capture_item is
+ * its one-and-only sceneitem, replaced (not mutated) every time the platform
+ * backend swaps which source is being captured. */
+static obs_scene_t     *g_capture_scene = NULL;
+static obs_sceneitem_t *g_capture_item  = NULL;
+
+/* Canvas size the capture scene item's bounds are stretched to fill — set
+ * once in rewind_obs_init() right after out_w/out_h are computed (see the
+ * obs_video_info setup below), read by every rw_attach_capture() call for
+ * the lifetime of the pipeline (fixed until a fresh init). */
+static uint32_t g_canvas_w = 0, g_canvas_h = 0;
+
 /* Manual-recording output (see rewind_start_recording). Created lazily on
  * first use, shares g_venc/g_aenc with g_replay, and is reused across
  * subsequent start/stop cycles rather than recreated each time. */
@@ -360,6 +377,86 @@ static void rw_apply_mic_prefs(obs_source_t *mic) {
     }
 }
 
+/* Attaches `capture` (the platform's current g_capture, or NULL to detach)
+ * as the sole item of an internal scene kept permanently on channel 0.
+ *
+ * WHY A SCENE AT ALL: a source placed directly on an obs_view channel (the
+ * pre-task-19 design — obs_set_output_source(0, g_capture)) draws with NO
+ * scale-to-fit. obs_view_render()/render_main_texture() (libobs/obs-view.c,
+ * libobs/obs-video.c) apply no transform whatsoever before calling
+ * obs_source_video_render(); a capture source builds its draw quad from its
+ * own native captured pixel size (e.g. mac-capture's
+ * dc->frame.size in mac-display-capture.m) regardless of the canvas size.
+ * So once base_width/base_height can be smaller than the source's native
+ * size (see this task's change to the obs_video_info below), a bare
+ * channel-0 attach would CROP the frame to the canvas's top-left corner,
+ * not scale it down. A scene item has its own draw_transform/bounds and can
+ * be told to fill a smaller canvas properly (verified by reading
+ * libobs/obs-scene.c's render_item/update_item_transform).
+ *
+ * WHY scale_filter STAYS OBS_SCALE_DISABLE (the default — do not "improve"
+ * this to BICUBIC/LANCZOS): obs-scene.c's render_item() only takes the
+ * multi-tap kernel path when item_texture_enabled() is true for the item,
+ * which happens for any non-DISABLE scale_filter. That forces libobs to
+ * first render the source into an intermediate `item_render` texture sized
+ * via calc_cx/calc_cy — which only subtracts crop, i.e. the texture is
+ * allocated at the source's FULL NATIVE RESOLUTION — and only then runs the
+ * multi-tap downscale from that intermediate texture onto the canvas. That
+ * reintroduces exactly the full-native-resolution render this task exists
+ * to eliminate (see CHANGELOG), canceling the perf win. Leaving
+ * scale_filter DISABLE instead draws the source straight into the (already
+ * small) canvas viewport in one pass, geometrically scaled via the item's
+ * draw_transform and sampled with the source's own filter (bilinear, no
+ * mipmaps) — a single cheap pass, no intermediate texture. Accepted
+ * tradeoff: bilinear minification instead of a genuine multi-tap bicubic
+ * downscale; mild at the ~1.8x reduction ratios g_max_height typically
+ * produces in practice.
+ *
+ * Bounds are OBS_BOUNDS_STRETCH sized to g_canvas_w/g_canvas_h (== out_w/
+ * out_h, the canvas — see rewind_obs_init). When the display is uncapped,
+ * g_canvas_w/h equal the source's own native size, so STRETCH is an
+ * identity scale (harmless no-op), matching the "nothing changes when
+ * g_max_height doesn't cap" requirement.
+ */
+void rw_attach_capture(obs_source_t *capture) {
+    if (!g_capture_scene) {
+        g_capture_scene = obs_scene_create("rewind-capture-scene");
+        if (!g_capture_scene) return;
+        obs_set_output_source(0, obs_scene_get_source(g_capture_scene));
+    }
+    if (g_capture_item) {
+        obs_sceneitem_remove(g_capture_item);
+        g_capture_item = NULL;
+    }
+    if (!capture) return;
+
+    g_capture_item = obs_scene_add(g_capture_scene, capture);
+    if (!g_capture_item) return;
+    obs_sceneitem_set_bounds_type(g_capture_item, OBS_BOUNDS_STRETCH);
+    struct vec2 bounds = { (float)g_canvas_w, (float)g_canvas_h };
+    obs_sceneitem_set_bounds(g_capture_item, &bounds);
+    /* scale_filter left at its OBS_SCALE_DISABLE default — see doc comment
+     * above; do not set it to BICUBIC/LANCZOS/AREA. */
+}
+
+/* Tears down the capture scene entirely: detaches channel 0, drops the
+ * sceneitem (releasing the scene's own ref on whatever g_capture currently
+ * is), and releases the scene handle itself. Mirrors — and must run before —
+ * the existing obs_source_release(g_capture) teardown at both call sites
+ * (rewind_obs_init's failure cleanup and rewind_obs_shutdown), since g_capture
+ * and the scene item hold independent refs on the same source (obs_scene_add
+ * takes its own ref; it does not adopt the caller's). */
+static void rw_release_capture_scene(void) {
+    obs_set_output_source(0, NULL);
+    if (!g_capture_scene) return;
+    if (g_capture_item) {
+        obs_sceneitem_remove(g_capture_item);
+        g_capture_item = NULL;
+    }
+    obs_scene_release(g_capture_scene);
+    g_capture_scene = NULL;
+}
+
 int rewind_obs_init(const char *out_dir, int seconds) {
     if (g_initialized) return 0;
     g_seconds = seconds > 0 ? seconds : 30;
@@ -413,27 +510,57 @@ int rewind_obs_init(const char *out_dir, int seconds) {
     }
 
     /* Output resolution: source unless g_max_height caps it, in which case
-     * scale down preserving aspect ratio (round width to an even number —
-     * H.264 chroma subsampling requires even dimensions). */
+     * scale down preserving aspect ratio. Width is rounded down to a
+     * multiple of 4, not just 2: obs_reset_video() (libobs/obs.c) always
+     * masks ovi->output_width with 0xFFFFFFFC ("align to multiple-of-two and
+     * SSE alignment sizes") internally, unconditionally, regardless of what
+     * we pass — but it does NOT mask ovi->base_width. Rounding out_w to a
+     * multiple of 4 here ourselves means base_width (unmasked) and the
+     * output_width libobs actually ends up using (masked) come out
+     * identical, so base==output below is a genuine exact 1:1 with no
+     * residual scale — round to just an even number and the two would
+     * silently drift apart by up to 2px post-mask (verified live: a
+     * 3024-wide source capped to 1080h computed out_w=1662 when rounded to
+     * even, but libobs's own "video settings reset" log then showed output
+     * resolution 1660x1080 — a 2px mismatch against base_width=1662). */
     uint32_t out_w = width, out_h = height;
     if (g_max_height > 0 && height > (uint32_t)g_max_height) {
         out_h = (uint32_t)g_max_height;
         out_w = (uint32_t)((double)width * out_h / height + 0.5);
-        out_w &= ~1u;
-        if (out_w == 0) out_w = 2;
+        out_w &= ~3u;
+        if (out_w == 0) out_w = 4;
     }
     int fps = g_fps > 0 ? g_fps : 60;
+
+    /* base_width/height (the canvas) == output_width/height, not the
+     * source's native size: every frame at `fps` gets rendered onto the
+     * canvas once per frame (render_main_texture), so a canvas sized to the
+     * full Retina-native display when the output is capped smaller wastes
+     * GPU bandwidth/thermal headroom rendering ~out_h/height² more pixels
+     * than the encoder will ever see — pure per-frame waste competing with
+     * whatever game is running, since the encoder was already hardware
+     * (VideoToolbox H.264). Rendering the canvas AT output resolution
+     * eliminates that full-res render target entirely; the canvas->output
+     * stage (render_output_texture, still governed by scale_type below)
+     * becomes a 1:1 no-op copy when base==output. The capture SOURCE keeps
+     * delivering native-resolution frames unchanged (SCK/monitor/window
+     * capture config is untouched — see rw_attach_capture()'s doc comment
+     * for how the resulting source-bigger-than-canvas case is now scaled to
+     * fit rather than cropped). When g_max_height doesn't cap (out_w/out_h
+     * == width/height already), this is a no-op, same as before. */
+    g_canvas_w = out_w;
+    g_canvas_h = out_h;
 
     struct obs_video_info ovi = {
         .graphics_module = graphics_module,
         .fps_num = (uint32_t)fps, .fps_den = 1,
-        .base_width = width, .base_height = height,
+        .base_width = out_w, .base_height = out_h,
         .output_width = out_w, .output_height = out_h,
         .output_format = VIDEO_FORMAT_NV12,
         .colorspace = VIDEO_CS_709, .range = VIDEO_RANGE_PARTIAL,
         .adapter = 0, .gpu_conversion = true, .scale_type = OBS_SCALE_BICUBIC,
     };
-    blog(LOG_INFO, "rewind: capture %ux%u @%dfps (source %ux%u)",
+    blog(LOG_INFO, "rewind: capture %ux%u @%dfps (canvas == output, source %ux%u)",
          out_w, out_h, fps, width, height);
     if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) { set_error("obs_reset_video failed"); goto cleanup; }
 
@@ -501,8 +628,8 @@ cleanup:
         obs_source_release(g_sysaudio);
         g_sysaudio = NULL;
     }
+    rw_release_capture_scene();
     if (g_capture) {
-        obs_set_output_source(0, NULL);
         obs_source_release(g_capture);
         g_capture = NULL;
     }
@@ -721,7 +848,7 @@ int rewind_obs_shutdown(void) {
     obs_source_release(g_mic);      g_mic = NULL;
     obs_set_output_source(1, NULL);
     obs_source_release(g_sysaudio); g_sysaudio = NULL;
-    obs_set_output_source(0, NULL);
+    rw_release_capture_scene();
     obs_source_release(g_capture);  g_capture = NULL;
     rw_plat_reset_capture_state();
     obs_shutdown();

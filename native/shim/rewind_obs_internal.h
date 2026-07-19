@@ -119,6 +119,19 @@ void json_escape_append(const char *in, char *out, size_t out_size);
  * candidate check is delegated to rw_plat_sdk_dir_candidate() below. */
 int find_obs_sdk_dir(char *out, size_t out_size);
 
+/* Attaches `capture` (a platform backend's current g_capture, or NULL to
+ * detach) as the sole item of an internal scene kept on channel 0, scaled to
+ * fill the canvas (see rw_attach_capture()'s doc comment in rewind_obs.c for
+ * why a scene is needed at all — a bare channel-0 source draws with no
+ * scale-to-fit, cropping instead of scaling once the canvas can be smaller
+ * than the source's native size). Every platform backend's
+ * obs_set_output_source(0, ...) call site (both the initial attach and any
+ * later re-attach when the backend recreates g_capture on a capture-kind
+ * switch) goes through this instead of touching channel 0 directly — the
+ * scene mechanics stay entirely in rewind_obs.c, so backend files carry no
+ * scene-specific logic. */
+void rw_attach_capture(obs_source_t *capture);
+
 /* ---- platform backend interface ------------------------------------------
  *
  * One implementation of every function below lives in each

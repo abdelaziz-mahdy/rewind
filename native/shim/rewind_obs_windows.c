@@ -486,7 +486,7 @@ static void rebuild_video_capture(void) {
 
     if (!g_capture || g_win_capture_kind != want_kind) {
         if (g_capture) {
-            obs_set_output_source(0, NULL);
+            rw_attach_capture(NULL);
             obs_source_release(g_capture);
             g_capture = NULL;
         }
@@ -509,7 +509,7 @@ static void rebuild_video_capture(void) {
         }
         obs_data_release(cs);
         if (g_capture) {
-            obs_set_output_source(0, g_capture);
+            rw_attach_capture(g_capture);
             g_win_capture_kind = want_kind;
         } else {
             g_win_capture_kind = WIN_CAPTURE_NONE;
