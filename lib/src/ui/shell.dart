@@ -117,6 +117,13 @@ class Shell extends StatefulWidget {
   /// "not configured" line instead of a live one.
   final ValueListenable<String?>? Function()? steamStatus;
 
+  /// Seeds the Shell's starting destination -- used by onboarding's "Set up
+  /// Steam achievements" shortcut, which finishes onboarding straight into
+  /// `SettingsDestination(initialTab: 'Steam')` instead of the usual
+  /// AllClipsDestination default. Null (every other launch path) keeps
+  /// today's behavior.
+  final ShellDestination? initialDestination;
+
   const Shell({
     required this.coordinator,
     required this.library,
@@ -138,6 +145,7 @@ class Shell extends StatefulWidget {
     this.thumbnails,
     this.ddragon,
     this.steamStatus,
+    this.initialDestination,
     super.key,
   });
 
@@ -146,7 +154,8 @@ class Shell extends StatefulWidget {
 }
 
 class _ShellState extends State<Shell> {
-  ShellDestination _destination = const AllClipsDestination();
+  late ShellDestination _destination =
+      widget.initialDestination ?? const AllClipsDestination();
 
   /// The destination showing right before Settings was opened — where the
   /// full-page Settings screen's ✕ button returns to. Updated only on the
@@ -262,7 +271,8 @@ class _ShellState extends State<Shell> {
           onSettingsChanged: widget.onSettingsChanged,
           onOpenGame: (gameId) => _select(GameDestination(gameId)),
         ),
-      SettingsDestination(initialGameId: final gameId) => SettingsScreen(
+      SettingsDestination(initialGameId: final gameId, initialTab: final tab) =>
+        SettingsScreen(
           key: const ValueKey('settingsScreen'),
           settings: widget.coordinator.settings,
           onChanged: widget.onSettingsChanged,
@@ -275,6 +285,7 @@ class _ShellState extends State<Shell> {
           onCleanUpStorage: widget.onCleanUpStorage,
           onClose: _closeSettings,
           initialGameId: gameId,
+          initialTab: tab,
           // Same derivation as the rail (`nav_rail.dart`'s `_buildRail`) so
           // the MY GAMES sidebar section never disagrees with it on naming,
           // icons, or ordering.

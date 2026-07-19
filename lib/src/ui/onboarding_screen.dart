@@ -76,6 +76,13 @@ class OnboardingScreen extends StatefulWidget {
   /// optional "we can see <game> running" line. Null omits that line.
   final List<AppInfo> Function()? listApps;
 
+  /// The "Controls & games" step's secondary "Set up Steam achievements"
+  /// button -- finishes onboarding (same as [onDone]) and then opens
+  /// Settings directly on the Steam tab, since the API key it needs
+  /// requires a web visit that doesn't belong mid-flow. Null hides the
+  /// button (e.g. existing callers/tests that don't wire it).
+  final VoidCallback? onSetUpSteam;
+
   const OnboardingScreen({
     required this.settings,
     required this.onChanged,
@@ -86,6 +93,7 @@ class OnboardingScreen extends StatefulWidget {
     this.captureError,
     this.onRelaunch,
     this.listApps,
+    this.onSetUpSteam,
     super.key,
   });
 
@@ -258,9 +266,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'Start / stop a full recording: ${_s.recordHotkey}.\n\n'
           'Rewind auto-detects popular games — League clips your kills '
           'automatically. Pick what to capture from the source menu at '
-          'the bottom-left.'
+          'the bottom-left.\n\n'
+          'Any Steam game: unlocking an achievement saves a clip labeled '
+          'with its name.'
           '${matched == null ? '' : '\n\nWe can see $matched running — its '
               'highlights will clip automatically.'}',
+      control: widget.onSetUpSteam == null
+          ? null
+          : TextButton(
+              key: const ValueKey('steamSetupButton'),
+              onPressed: widget.onSetUpSteam,
+              child: const Text('Set up Steam achievements'),
+            ),
     );
   }
 

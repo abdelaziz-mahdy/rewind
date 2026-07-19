@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/events/steam_account_locator.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/audio_input_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
@@ -1359,6 +1360,203 @@ void main() {
       await openPage(t, 'Steam');
       expect(find.textContaining('Game details'), findsWidgets);
     });
+
+    group('SteamID auto-detect', () {
+      testWidgets(
+          'prefills an empty SteamID field from the injected locator, '
+          'showing the detected account as a helper line', (t) async {
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: AppSettings(),
+          onChanged: (_) async {},
+          displays: const [],
+          steamAccountLocator: () async => const [
+            SteamAccountEntry(
+              steamId64: '76561197960287930',
+              personaName: 'Detected Guy',
+              mostRecent: true,
+            ),
+          ],
+        )));
+
+        await openPage(t, 'Steam');
+        await t.pump();
+        await t.pump();
+
+        expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
+              .controller!
+              .text,
+          '76561197960287930',
+        );
+        expect(
+            find.text('Detected Steam account: Detected Guy'), findsOneWidget);
+      });
+
+      testWidgets('never overwrites a non-empty saved SteamID', (t) async {
+        final settings = AppSettings(steamId64: '11111111111111111');
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: settings,
+          onChanged: (_) async {},
+          displays: const [],
+          steamAccountLocator: () async => const [
+            SteamAccountEntry(
+              steamId64: '76561197960287930',
+              personaName: 'Someone Else',
+              mostRecent: true,
+            ),
+          ],
+        )));
+
+        await openPage(t, 'Steam');
+        await t.pump();
+        await t.pump();
+
+        expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
+              .controller!
+              .text,
+          '11111111111111111',
+        );
+        expect(find.textContaining('Detected Steam account'), findsNothing);
+      });
+
+      testWidgets(
+          'an ambiguous multi-account scan offers a choice instead of '
+          'guessing', (t) async {
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: AppSettings(),
+          onChanged: (_) async {},
+          displays: const [],
+          steamAccountLocator: () async => const [
+            SteamAccountEntry(
+              steamId64: '11111111111111111',
+              personaName: 'Player One',
+              mostRecent: false,
+            ),
+            SteamAccountEntry(
+              steamId64: '22222222222222222',
+              personaName: 'Player Two',
+              mostRecent: false,
+            ),
+          ],
+        )));
+
+        await openPage(t, 'Steam');
+        await t.pump();
+        await t.pump();
+
+        expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
+              .controller!
+              .text,
+          isEmpty,
+        );
+        final choiceOne =
+            find.byKey(const ValueKey('steamAccountChoice:11111111111111111'));
+        final choiceTwo =
+            find.byKey(const ValueKey('steamAccountChoice:22222222222222222'));
+        expect(choiceOne, findsOneWidget);
+        expect(choiceTwo, findsOneWidget);
+
+        await t.tap(choiceOne);
+        await t.pump();
+
+        expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
+              .controller!
+              .text,
+          '11111111111111111',
+        );
+        expect(find.text('Detected Steam account: Player One'), findsOneWidget);
+      });
+
+      testWidgets('the "Detect" button re-runs the scan on demand', (t) async {
+        var calls = 0;
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: AppSettings(),
+          onChanged: (_) async {},
+          displays: const [],
+          steamAccountLocator: () async {
+            calls++;
+            return const [];
+          },
+        )));
+
+        await openPage(t, 'Steam');
+        await t.pump();
+        await t.pump();
+        expect(calls, 1); // the automatic scan on first Steam-tab visit
+
+        await t.tap(find.byKey(const ValueKey('steamDetectButton')));
+        await t.pump();
+        await t.pump();
+        expect(calls, 2);
+      });
+    });
+
+    group('status line: "Almost there"', () {
+      testWidgets(
+          'shows once an id is set (typed or detected) but the API key is '
+          'still empty', (t) async {
+        final settings = AppSettings(steamId64: '76561197960287930');
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: settings,
+          onChanged: (_) async {},
+          displays: const [],
+        )));
+
+        await openPage(t, 'Steam');
+        expect(
+          find.text('Almost there — paste your free API key (button above)'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('does not show once the API key is also set', (t) async {
+        final settings = AppSettings(
+          steamId64: '76561197960287930',
+          steamWebApiKey: 'AKEY',
+        );
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: settings,
+          onChanged: (_) async {},
+          displays: const [],
+        )));
+
+        await openPage(t, 'Steam');
+        expect(
+          find.text('Almost there — paste your free API key (button above)'),
+          findsNothing,
+        );
+      });
+
+      testWidgets('reacts live to typing an id with no key yet', (t) async {
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: AppSettings(),
+          onChanged: (_) async {},
+          displays: const [],
+        )));
+
+        await openPage(t, 'Steam');
+        expect(
+          find.text('Almost there — paste your free API key (button above)'),
+          findsNothing,
+        );
+
+        await t.enterText(
+            find.byKey(const ValueKey('steamIdField')), '76561197960287930');
+        await t.pump();
+
+        expect(
+          find.text('Almost there — paste your free API key (button above)'),
+          findsOneWidget,
+        );
+      });
+    });
   });
 
   testWidgets('the default buffer offers 15 s, same as a per-game override',
@@ -1431,6 +1629,30 @@ void main() {
 
       expect(find.text('Instant replay'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
+    });
+
+    testWidgets('initialTab opens directly on that GENERAL page', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Steam',
+      )));
+
+      expect(find.byKey(const ValueKey('steamIdField')), findsOneWidget);
+      expect(find.text('Instant replay'), findsNothing);
+    });
+
+    testWidgets('an unrecognized initialTab falls back to the default Capture',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'NoSuchTab',
+      )));
+
+      expect(find.text('Instant replay'), findsOneWidget);
     });
 
     testWidgets('switching pages shows that page and hides the previous one',
