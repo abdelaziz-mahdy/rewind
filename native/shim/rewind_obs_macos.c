@@ -622,7 +622,7 @@ int rw_plat_init_capture_source(void) {
     if (!g_capture) {
         return fail("screen_capture source failed (Screen Recording permission not granted?)");
     }
-    obs_set_output_source(0, g_capture);
+    rw_attach_capture(g_capture);
     return 0;
 }
 

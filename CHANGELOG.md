@@ -109,6 +109,27 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **Performance: in-game capture overhead reduced — canvas now renders at
+  output resolution.** On a Retina display with a quality cap (the default),
+  the render canvas previously stayed at the display's full native pixel
+  size (e.g. 3024×1964) even though the encoder only ever saw the smaller
+  capped output (e.g. 1660×1080) — every frame at 60fps was rendered onto a
+  ~3.3x-larger-than-needed target, then bicubic-downscaled, then encoded,
+  wasting GPU bandwidth that competes with whatever game is running. The
+  canvas is now sized to the output resolution directly, eliminating that
+  full-resolution render pass; the encoder was already hardware
+  (VideoToolbox H.264), so this closes the remaining per-frame waste. The
+  capture source itself is unchanged (still captures at native Retina
+  pixels); it's now routed through a minimal internal scene so it scales
+  down to fit the smaller canvas instead of being drawn 1:1 (a bare
+  channel-0 source has no scale-to-fit at all — it would otherwise crop to
+  the canvas's top-left corner). No visible change when the display isn't
+  capped (native resolution already equals output). Uncapped/no-op cases
+  aside, downscaling now happens via a single bilinear pass instead of the
+  previous multi-tap bicubic — a deliberate tradeoff to actually realize the
+  performance win (see `rw_attach_capture()`'s comment in
+  `native/shim/rewind_obs.c` for why); mild at the reduction ratios a
+  quality cap typically produces.
 - **"Only record while playing" is now ON by default** (was off): fresh
   installs, and existing settings files with no stored value, now pause the
   replay buffer at the desktop and resume it automatically the moment a game
