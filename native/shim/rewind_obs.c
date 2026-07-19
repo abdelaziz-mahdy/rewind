@@ -408,7 +408,10 @@ static void rw_attach_mic_leveling(obs_source_t *mic) {
     obs_data_set_double(cs, "threshold", -18.0);
     obs_data_set_int(cs, "attack_time", 6);
     obs_data_set_int(cs, "release_time", 60);
-    obs_data_set_double(cs, "output_gain", 6.0);
+    /* No makeup gain: with any boost here the mic sits above the game mix
+     * regardless of the user's mic slider (measured +6 dB pushed clips to
+     * 0.1 dBFS true peak). The chain only tames peaks; the slider sets level. */
+    obs_data_set_double(cs, "output_gain", 0.0);
     g_mic_compressor = obs_source_create_private("compressor_filter", "rewind-mic-compressor", cs);
     obs_data_release(cs);
     if (g_mic_compressor) {
