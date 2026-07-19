@@ -1614,8 +1614,8 @@ void main() {
       await h.registry.tickNow();
       await Future<void>.delayed(Duration.zero);
 
-      // 15 attempts * 5 ms plus generous margin for the loop to exhaust.
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      // 60 attempts * 5 ms plus generous margin for the loop to exhaust.
+      await Future<void>.delayed(const Duration(milliseconds: 700));
       expect(h.engine.captureAppCalls, isEmpty);
 
       h.engine.apps = const [clientApp, gameApp];
