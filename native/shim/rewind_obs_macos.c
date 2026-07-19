@@ -27,10 +27,17 @@
 #include <mach-o/dyld.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreAudio/CoreAudio.h> /* audio-input (microphone) enumeration */
+#include <IOKit/IOKitLib.h> /* GPU device utilization (rw_plat_gpu_util_pct) */
 #include <libproc.h>
 #include <strings.h> /* strcasecmp */
 #include <string.h>
 #include <stdio.h>
+
+/* Objective-C runtime C API (NOT Objective-C syntax — see
+ * rw_plat_thermal_state's doc comment below for why) for
+ * NSProcessInfo.thermalState. */
+#include <objc/message.h>
+#include <objc/runtime.h>
 
 /* ---- SDK / module path discovery -------------------------------------- */
 
@@ -859,6 +866,118 @@ void rw_plat_on_capture_window_changed(void) {
 /* macOS keeps no capture-source state machine of its own (unlike Windows'
  * g_win_capture_kind) — nothing to reset. */
 void rw_plat_reset_capture_state(void) {
+}
+
+/* ---- perf telemetry (macOS): GPU utilization + thermal state -----------
+ *
+ * Both readings back rewind_perf_stats_json's obs_render_avg_ms-adjacent
+ * fields (see rewind_obs.h) — deliberately independent of g_initialized:
+ * they describe the MACHINE's state, not this app's capture pipeline, so
+ * they're worth sampling even at idle (a hot machine from something else
+ * entirely is still useful context for a "Rewind causes lag" report).
+ */
+
+/* Cached IOAccelerator service handle — looked up once per process (the
+ * registry entry for the machine's GPU accelerator doesn't change at
+ * runtime) and never released: rewind_perf_stats_json is polled every ~10s
+ * for the app's whole lifetime (see PerfMonitor), so re-matching +
+ * releasing an IOKit service on every single call would be wasted registry
+ * traffic for no benefit. Lives for the process's lifetime, same as e.g.
+ * g_capture_scene. g_gpu_accel_lookup_done distinguishes "not looked up
+ * yet" from "looked up, found nothing" (IO_OBJECT_NULL is a valid failure
+ * result, not a sentinel meaning "try again"). */
+static io_service_t g_gpu_accel_service = IO_OBJECT_NULL;
+static int g_gpu_accel_lookup_done = 0;
+
+static io_service_t gpu_accelerator_service(void) {
+    if (g_gpu_accel_lookup_done) return g_gpu_accel_service;
+    g_gpu_accel_lookup_done = 1;
+
+    CFMutableDictionaryRef matching = IOServiceMatching("IOAccelerator");
+    if (!matching) return IO_OBJECT_NULL;
+
+    io_iterator_t iter = IO_OBJECT_NULL;
+    /* kIOMainPortDefault: the modern (macOS 12+) name for what
+     * kIOMasterPortDefault used to be — this task targets current macOS, so
+     * no need for the deprecated alias. IOServiceMatching's returned
+     * dictionary is consumed (released) by IOServiceGetMatchingServices
+     * itself, matching-dictionary-getter convention throughout IOKit. */
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter) != KERN_SUCCESS)
+        return IO_OBJECT_NULL;
+
+    /* First match is enough: Apple Silicon has exactly one IOAccelerator;
+     * an Intel Mac with integrated+discrete GPUs would have two, and this
+     * task's telemetry wants one number, not a per-GPU breakdown. */
+    g_gpu_accel_service = IOIteratorNext(iter);
+    IOObjectRelease(iter);
+    return g_gpu_accel_service;
+}
+
+/* Reads "Device Utilization %" from the cached IOAccelerator service's
+ * "PerformanceStatistics" dictionary. Verified live against an Apple
+ * Silicon M2 Pro via `ioreg -r -c IOAccelerator -d 2`:
+ *   "PerformanceStatistics" = {..., "Device Utilization %"=35, ...}
+ * i.e. the property is nested inside PerformanceStatistics, NOT a top-level
+ * key on the service itself — per this task's brief, that nesting can
+ * differ on Intel/AMD dGPU hardware this wasn't validated against; -1 is
+ * returned rather than guessing if the key isn't found where expected. */
+int rw_plat_gpu_util_pct(void) {
+    io_service_t service = gpu_accelerator_service();
+    if (service == IO_OBJECT_NULL) return -1;
+
+    CFTypeRef stats_ref = IORegistryEntryCreateCFProperty(
+        service, CFSTR("PerformanceStatistics"), kCFAllocatorDefault, 0);
+    if (!stats_ref) return -1;
+    if (CFGetTypeID(stats_ref) != CFDictionaryGetTypeID()) {
+        CFRelease(stats_ref);
+        return -1;
+    }
+    CFDictionaryRef stats = (CFDictionaryRef)stats_ref;
+
+    int pct = -1;
+    CFNumberRef util = (CFNumberRef)CFDictionaryGetValue(stats, CFSTR("Device Utilization %"));
+    if (util && CFGetTypeID(util) == CFNumberGetTypeID()) {
+        int64_t v = 0;
+        if (CFNumberGetValue(util, kCFNumberSInt64Type, &v)) {
+            /* Clamp rather than trust the registry blindly — this value
+             * feeds straight into a JSONL field a human reads. */
+            pct = v < 0 ? 0 : (v > 100 ? 100 : (int)v);
+        }
+    }
+    CFRelease(stats_ref);
+    return pct;
+}
+
+/* NSProcessInfo.thermalState via the Objective-C runtime's plain C API
+ * (objc_msgSend/objc_getClass/sel_registerName) rather than Objective-C
+ * message syntax: this shim's entire macOS backend is (and per CLAUDE.md's
+ * "no C++ in the shim" rule, and hook/build.dart's CBuilder only compiling
+ * .c sources, must stay) a single C11 translation unit — Objective-C
+ * syntax would need this file (or a new one) compiled as Objective-C,
+ * which the build hook doesn't do. objc_msgSend is C-callable and needs
+ * only libobjc + the target framework (Foundation) linked, both added in
+ * hook/build.dart's macOS flags. Safe for these two calls specifically:
+ * both `processInfo` (id) and `thermalState` (NSInteger) are
+ * register-sized return values, so no struct-return ABI hazard exists
+ * (the well-known pitfall with objc_msgSend needing objc_msgSend_stret for
+ * struct returns doesn't apply here).
+ * NSProcessInfoThermalState (Foundation/NSProcessInfo.h) is NSInteger-typed
+ * 0 nominal / 1 fair / 2 serious / 3 critical — exactly this task's target
+ * 0..3 range, no translation needed. Returns -1 if NSProcessInfo can't be
+ * resolved or the result is outside that range (defensive against a future
+ * OS adding a value this shim doesn't know about). */
+int rw_plat_thermal_state(void) {
+    id process_info_class = (id)objc_getClass("NSProcessInfo");
+    if (!process_info_class) return -1;
+
+    id process_info = ((id (*)(id, SEL))objc_msgSend)(
+        process_info_class, sel_registerName("processInfo"));
+    if (!process_info) return -1;
+
+    long state = ((long (*)(id, SEL))objc_msgSend)(
+        process_info, sel_registerName("thermalState"));
+    if (state < 0 || state > 3) return -1;
+    return (int)state;
 }
 
 #endif /* defined(REWIND_USE_LIBOBS) && defined(__APPLE__) */

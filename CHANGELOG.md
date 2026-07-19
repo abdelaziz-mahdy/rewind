@@ -42,6 +42,12 @@ All notable changes to Rewind are documented here. Format based on
   diagnosis; a compact human summary also goes to the normal log, only at
   visible (info) level when something looks wrong (a new lagged/skipped
   frame, or CPU over 50%) so a healthy session doesn't spam it.
+- **Perf telemetry: render time, GPU utilization, thermal state**: the
+  perf JSONL now also carries `obs_render_avg_ms` (libobs's per-frame
+  compositor cost — the direct way to see a render-pipeline change),
+  `gpu_util_pct`, and `thermal_state` (both macOS-only via IOKit/
+  NSProcessInfo, -1 elsewhere); the human summary escalates to visible
+  (info) level on thermal throttling (serious/critical) too.
 - **Onboarding that proves it works**: the Screen Recording step is now
   live — it knows whether permission is granted, fires the macOS system
   prompt directly ("Grant Screen Recording"), flips to a checkmark the
