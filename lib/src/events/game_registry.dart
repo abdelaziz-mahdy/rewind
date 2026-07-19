@@ -91,7 +91,7 @@ class GameRegistry {
   /// activation-driven, unchanged). Most sources only ever emit after
   /// [_tick] calls their [GameEventSource.start] anyway, so this changes
   /// nothing for them; it exists for a source whose activation model is
-  /// entirely its own (e.g. `SteamAchievementWatcher`, whose
+  /// entirely its own (e.g. `SteamStatsWatcher`/`SteamAchievementWatcher`, whose
   /// [GameEventSource.isGameRunning] always answers false — it drives no
   /// `activeGameIds`/capture-switch/buffer-policy signal at all — so this
   /// tick's activation branch would otherwise never wire its events up).

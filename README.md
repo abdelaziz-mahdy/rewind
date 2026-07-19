@@ -42,7 +42,7 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 
 - **Instant replay, no manual start.** The last 15–60 s are buffered automatically while you play — save with a hotkey or a button. (The buffer pauses at the desktop by default to save CPU; flip that off in Settings for always-on buffering.)
 - **Games clip themselves.** League of Legends auto-clips your kills/aces from the Live Client API — only *your* plays — and tracks each match's full **K/D/A, creep score, ward score, champion + skin, item build, and teammates'/opponents' champions and names**.
-- **Steam achievements clip themselves — any Steam game.** Add your Steam ID + a Web API key once, and a new achievement unlock auto-saves a clip labeled with its real name, in whatever Steam game you're playing.
+- **Steam achievements clip themselves — any Steam game, no key needed.** Detected straight from Steam's own local files the moment you unlock one — a new achievement auto-saves a clip labeled with its real name, in whatever Steam game you're playing.
 - **Auto-detect & follow.** Popular games are detected on launch; capture follows the game's window. Any app (including CrossOver/Wine games) can be added — the left rail shows each game's real app icon.
 - **A library built around games.** Each game gets a hub; clips group into **match cards** (with champion art) you can drill into for the full stat line and item build.
 - **You're in control.** Framerate/resolution, audio source (none / game-only / all apps) + mic, storage limits with auto-cleanup, a custom recordings folder, and rebindable hotkeys.
@@ -87,7 +87,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 - Capture a **specific display or application**, switchable from the main screen
 - **In-app playback** (media_kit) and event-type badges on every clip
 - **Automatic event-based clipping** — League of Legends via the local Live Client Data API (kills, multikills, aces, objectives) — *lands in v0.2; the UI slot is already built*
-- **Steam achievement auto-clip, for any Steam game** — polls the official Steam Web API for a new achievement unlock and saves a clip labeled with its real name; needs a one-time Steam ID + Web API key in Settings → Steam
+- **Steam achievement auto-clip, for any Steam game, keyless** — watches Steam's own local stats-cache files for a new achievement unlock and saves a clip labeled with its real name; no key, no network, no setup beyond flipping the toggle in Settings → Steam (an optional, currently-inert Web API key field still exists there for possible future enrichment)
 - **Per-match League tracker**: live K/D/A, creep score, and ward score (polled from the Live Client Data API), champion portrait + skin name and final item build (Data Dragon art), and each teammate's/opponent's champion **and in-game name**, shown on every match card and its detail screen
 - **Real game icons in the rail** — read from each game's installed app bundle at runtime, no bundled artwork (League keeps its monogram: its app icon is Riot's official logo, which Riot's asset policy excludes even though champion/item art is explicitly permitted)
 - Hardware-accelerated encoding (Apple VideoToolbox on macOS; NVENC → AMF → Quick Sync → x264 fallback ladder on Windows, untested on hardware)
@@ -98,7 +98,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 | Game | Method | Status |
 |------|--------|--------|
 | League of Legends | Live Client Data API (`127.0.0.1:2999`) — official, read-only, anti-cheat safe | Planned (v0.2) |
-| Any Steam game | Official Steam Web API (`api.steampowered.com`) — achievement unlocks | Shipped |
+| Any Steam game | Local read-only stats-cache files Steam's own client writes (`appcache/stats/`) — achievement unlocks, no key/network needed | Shipped |
 | VALORANT | Manual hotkey capture only, permanently — **Windows-only** (Vanguard blocks all VM/CrossOver capture paths), and Riot's developer policy restricts real-time match data | Planned (v0.1) |
 | Marvel Rivals | Manual hotkey capture only — no sanctioned event source (no public API, encrypted logs); Windows native, **macOS via CrossOver** | Planned (v0.1) |
 | Any game (incl. MECCHA CHAMELEON & other mech/action titles) | Manual hotkey capture — always safe | Planned (v0.1) |

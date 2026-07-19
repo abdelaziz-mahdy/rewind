@@ -155,9 +155,10 @@ void main() {
     expect(onboardingActive.value, isFalse);
     expect(settings.onboardingComplete, isTrue);
     expect(find.text('Never miss a play'), findsNothing);
-    // Settings opened directly on the Steam tab -- its fields are visible
-    // without any extra navigation.
-    expect(find.byKey(const ValueKey('steamIdField')), findsOneWidget);
+    // Settings opened directly on the Steam tab -- its primary controls are
+    // visible without any extra navigation (the SteamID/API key fields sit
+    // under a collapsed "Advanced" disclosure now, see settings_screen.dart).
+    expect(find.byKey(const ValueKey('steamClipToggle')), findsOneWidget);
   });
 
   testWidgets('an already-onboarded install never flips onboardingActive true',

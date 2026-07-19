@@ -7,24 +7,28 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
-- **Steam achievement auto-clip, for any Steam game**: add a Steam ID and a
-  Steam Web API key once (Settings → Steam), and a new achievement unlock
-  in whatever Steam game you're playing auto-saves a clip labeled with the
-  achievement's real name. Uses only the official Steam Web API
-  (`GetPlayerSummaries`, `GetPlayerAchievements`, `GetSchemaForGame`,
-  `ResolveVanityURL`) — no game-specific integration needed, unlike League.
-  Requires the Steam profile's "Game details" privacy setting to be Public;
-  the Settings page's live status line reports exactly what's happening
-  (watching, waiting for a game, a bad key, a private profile, or a
-  connectivity hiccup). Credentials are stored locally in `settings.json`
-  only. See docs/COMPLIANCE.md. Onboarding's "Controls & games" step now
-  pitches the feature in one line with a "Set up Steam achievements"
-  shortcut that finishes onboarding straight into the Steam tab (the API
-  key still needs a web visit, so credential fields stay out of onboarding
-  itself); the Steam tab also auto-detects the SteamID from Steam's own
-  local `loginusers.vdf` (native install and CrossOver bottles on macOS,
-  the standard install path on Windows) so most users never have to hunt
-  for it.
+- **Steam achievement auto-clip, for any Steam game — keyless**: no Steam ID,
+  no Web API key, no setup beyond the toggle in Settings → Steam (on by
+  default). Detects unlocks by watching the local, read-only stats-cache
+  files Steam's own client already writes to disk seconds after every
+  unlock (`appcache/stats/UserGameStats_<accountId3>_<appid>.bin` for the
+  unlock itself, the sibling `UserGameStatsSchema_<appid>.bin` for the
+  achievement's real display name) — faster than polling a web API, and
+  works offline. Every Steam install on the machine is watched at once:
+  native Steam and every independent CrossOver bottle, each with however
+  many accounts have logged into it, discovered from that install's own
+  `config/loginusers.vdf` (the same file Task 23's onboarding auto-detect
+  already reads). The achievement clip is labeled with its real name via a
+  small tolerant binary-VDF parser written for this feature (no code copied
+  from existing Steam-achievement tools — see docs/COMPLIANCE.md's Steam
+  entry for the full reasoning, including the hard rule that Rewind must
+  never WRITE to any file under a Steam install). The Settings page's live
+  status line reports what's happening ("Watching (N Steam accounts)", "No
+  Steam installation found", or idle while the toggle is off). The earlier
+  Web API design (Steam ID + Web API key fields) is retired as the trigger
+  path but kept, now optional and clearly labeled as adding nothing today,
+  under a collapsed "Advanced" disclosure — reserved for possible future
+  enrichment.
 - **Marvel Rivals** added to the game catalog — process-detection only (no
   sanctioned real-time source exists: no public match/event API, and the
   game's own logs are encrypted). Works on Windows natively and on macOS via

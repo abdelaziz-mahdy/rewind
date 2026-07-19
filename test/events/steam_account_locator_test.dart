@@ -194,4 +194,176 @@ void main() {
       expect(readCalls, 0);
     });
   });
+
+  group('accountId3FromSteamId64', () {
+    test('subtracts the fixed id64->id3 offset', () {
+      expect(accountId3FromSteamId64('76561197960287930'), 22202);
+    });
+
+    test('non-numeric input returns null', () {
+      expect(accountId3FromSteamId64('someVanityName'), isNull);
+      expect(accountId3FromSteamId64(''), isNull);
+    });
+
+    test('an id64 below the offset (would be a negative id3) returns null', () {
+      expect(accountId3FromSteamId64('1'), isNull);
+    });
+  });
+
+  group('locateSteamTrees', () {
+    test('macOS: finds the native tree with its account id3s', () async {
+      final result = await locateSteamTrees(
+        homeDir: '/Users/tester',
+        isMacOS: true,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async {
+          if (path ==
+              '/Users/tester/Library/Application Support/Steam/config/'
+                  'loginusers.vdf') {
+            return '"76561197960287930"{"PersonaName""Native User"'
+                '"MostRecent""1"}';
+          }
+          return null;
+        },
+      );
+      expect(result, hasLength(1));
+      expect(result.single.rootPath,
+          '/Users/tester/Library/Application Support/Steam');
+      expect(result.single.accountId3s, [22202]);
+    });
+
+    test(
+        'macOS: native AND every CrossOver bottle are watched simultaneously '
+        '-- not first-match-wins', () async {
+      final result = await locateSteamTrees(
+        homeDir: '/Users/tester',
+        isMacOS: true,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async {
+          if (path.contains('CrossOver')) {
+            return '"76561198012345678"{"PersonaName""Bottle User"'
+                '"MostRecent""1"}';
+          }
+          if (path ==
+              '/Users/tester/Library/Application Support/Steam/config/'
+                  'loginusers.vdf') {
+            return '"76561197960287930"{"PersonaName""Native User"'
+                '"MostRecent""1"}';
+          }
+          return null;
+        },
+        listCrossOverBottleSteamRoots: () => [
+          '/Users/tester/Library/Application Support/CrossOver/Bottles/'
+              'Steam/drive_c/Program Files (x86)/Steam',
+        ],
+      );
+      expect(result, hasLength(2));
+      expect(result.map((t) => t.rootPath), [
+        '/Users/tester/Library/Application Support/Steam',
+        '/Users/tester/Library/Application Support/CrossOver/Bottles/Steam/'
+            'drive_c/Program Files (x86)/Steam',
+      ]);
+    });
+
+    test('windows: reads the fixed Program Files path', () async {
+      final result = await locateSteamTrees(
+        homeDir: r'C:\Users\tester',
+        isMacOS: false,
+        isWindows: true,
+        isLinux: false,
+        readFile: (path) async {
+          expect(path, r'C:\Program Files (x86)\Steam\config\loginusers.vdf');
+          return '"76561197960287930"{"PersonaName""Windows User"'
+              '"MostRecent""1"}';
+        },
+      );
+      expect(result, hasLength(1));
+      expect(result.single.rootPath, r'C:\Program Files (x86)\Steam');
+    });
+
+    test('linux: checks both ~/.steam/steam and ~/.local/share/Steam',
+        () async {
+      final reads = <String>[];
+      final result = await locateSteamTrees(
+        homeDir: '/home/tester',
+        isMacOS: false,
+        isWindows: false,
+        isLinux: true,
+        readFile: (path) async {
+          reads.add(path);
+          if (path ==
+              '/home/tester/.local/share/Steam/config/'
+                  'loginusers.vdf') {
+            return '"76561197960287930"{"PersonaName""Linux User"'
+                '"MostRecent""1"}';
+          }
+          return null;
+        },
+      );
+      expect(reads, [
+        '/home/tester/.steam/steam/config/loginusers.vdf',
+        '/home/tester/.local/share/Steam/config/loginusers.vdf',
+      ]);
+      expect(result, hasLength(1));
+      expect(result.single.rootPath, '/home/tester/.local/share/Steam');
+    });
+
+    test(
+        'a tree with no loginusers.vdf (never logged in) contributes '
+        'nothing -- empty/missing dirs are normal, not an error', () async {
+      final result = await locateSteamTrees(
+        homeDir: '/Users/tester',
+        isMacOS: true,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async => null,
+      );
+      expect(result, isEmpty);
+    });
+
+    test(
+        'a tree whose loginusers.vdf has no parseable 17-digit accounts '
+        'contributes nothing', () async {
+      final result = await locateSteamTrees(
+        homeDir: '/Users/tester',
+        isMacOS: true,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async => 'not a vdf file at all',
+      );
+      expect(result, isEmpty);
+    });
+
+    test('multiple accounts logged into the same tree all surface', () async {
+      final result = await locateSteamTrees(
+        homeDir: '/Users/tester',
+        isMacOS: true,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async => '"76561197960287930"'
+            '{"PersonaName""A""MostRecent""0"}'
+            '"76561198012345678"{"PersonaName""B""MostRecent""1"}',
+      );
+      expect(result, hasLength(1));
+      expect(result.single.accountId3s, containsAll([22202, 52079950]));
+    });
+
+    test('an unsupported platform yields no trees at all', () async {
+      var readCalls = 0;
+      final result = await locateSteamTrees(
+        homeDir: '/home/tester',
+        isMacOS: false,
+        isWindows: false,
+        isLinux: false,
+        readFile: (path) async {
+          readCalls++;
+          return null;
+        },
+      );
+      expect(result, isEmpty);
+      expect(readCalls, 0);
+    });
+  });
 }

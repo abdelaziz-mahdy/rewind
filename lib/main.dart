@@ -19,7 +19,7 @@ import 'src/coordinator/clip_coordinator.dart';
 import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
-import 'src/events/steam_achievement_watcher.dart';
+import 'src/events/steam_stats_watcher.dart';
 import 'src/games/league/ddragon.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/file_log.dart';
@@ -221,32 +221,32 @@ Future<void> main() async {
     // actually open a clip list.
   )..start();
 
-  // SteamAchievementWatcher never "activates" through GameRegistry's normal
-  // tick (see its isGameRunning doc), so nothing else ever calls its
-  // start() — and it has no reference to `coordinator` at construction time
+  // SteamStatsWatcher never "activates" through GameRegistry's normal tick
+  // (see its isGameRunning doc), so nothing else ever calls its start() —
+  // and it has no reference to `coordinator` at construction time
   // (buildSources runs before the coordinator exists) to resolve the
-  // currently-active game for attribution. Both are wired here, and this
-  // same helper re-runs after every settings change (see
-  // onSettingsChanged below) so a Steam source ADDED mid-session (first-
-  // time credential entry — see source_builder.dart's doc) gets started
-  // immediately too, with no restart needed. start() is idempotent (mirrors
-  // LeagueEventWatcher's `_timer ??=`), so re-calling it on an
-  // already-running watcher is harmless.
+  // currently-active game for attribution. Both are wired here. Unlike the
+  // credential-gated watcher this replaces, `source_builder.dart` now
+  // constructs it UNCONDITIONALLY, so this only ever needs to run once at
+  // startup — no "credentials added mid-session" case to re-run it for —
+  // but it's still idempotent (start() itself no-ops on an
+  // already-running watcher) so calling it again would be harmless if that
+  // ever changes.
   void wireSteamWatchers() {
     for (final s
-        in coordinator.registry.sources.whereType<SteamAchievementWatcher>()) {
+        in coordinator.registry.sources.whereType<SteamStatsWatcher>()) {
       s.resolveGameId = () => coordinator.activeGame.value;
       unawaited(s.start());
     }
   }
 
   wireSteamWatchers();
-  // The Steam status line in Settings — null until a watcher exists (no
-  // credentials configured yet); `RewindApp`/`Shell` re-read this getter
-  // each time Settings builds, so it picks up a newly-created watcher (via
-  // `onSettingsChanged` below) without any extra plumbing.
+  // The Steam status line in Settings — reflects whatever the (always-
+  // present) watcher's own discovery/toggle state currently is; see
+  // `SteamStatsWatcher`'s doc for its status strings. `RewindApp`/`Shell`
+  // re-read this getter each time Settings builds.
   ValueNotifier<String?>? steamStatus() => coordinator.registry.sources
-      .whereType<SteamAchievementWatcher>()
+      .whereType<SteamStatsWatcher>()
       .firstOrNull
       ?.status;
 
@@ -491,9 +491,10 @@ Future<void> main() async {
       // its detection watcher NOW — the registry adopts unseen gameIds and
       // the next supervision tick starts them. No restart needed.
       coordinator.registry.addNewSources(buildSources(s));
-      // Steam credentials entered for the first time this session add a
-      // brand-new SteamAchievementWatcher above — GameRegistry's tick never
-      // starts it (see wireSteamWatchers' doc), so re-run it explicitly.
+      // addNewSources dedupes by gameId, so this never creates a second
+      // 'steam' source — re-running wireSteamWatchers here is a no-op
+      // (start() is idempotent) kept only for symmetry with the other
+      // settings-driven re-wiring above/below.
       wireSteamWatchers();
       // Tightened Storage limits apply immediately, not at the next save.
       storage.policy = RetentionPolicy.fromSettings(s);
