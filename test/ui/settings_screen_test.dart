@@ -39,7 +39,7 @@ Future<void> openAdvanced(WidgetTester t) async {
   await t.pumpAndSettle();
 }
 
-/// Opens the Steam page's own "› Advanced (optional web API)" disclosure --
+/// Opens the Steam page's own "› Advanced — optional web API" disclosure --
 /// the SteamID/API key fields (and everything under them) only exist in the
 /// widget tree once this has run.
 Future<void> openSteamAdvanced(WidgetTester t) async {
@@ -1174,8 +1174,9 @@ void main() {
     }
 
     testWidgets(
-        'the toggle and status line are visible without opening the '
-        'Advanced disclosure', (t) async {
+        'the toggle, status line, and detected-account line are visible '
+        'without opening the Advanced disclosure — no bare fields in the '
+        'primary area', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1185,9 +1186,27 @@ void main() {
       await openPage(t, 'Steam');
       expect(find.byKey(const ValueKey('steamClipToggle')), findsOneWidget);
       expect(find.byKey(const ValueKey('steamStatusLine')), findsOneWidget);
+      expect(find.byKey(const ValueKey('steamAccountLine')), findsOneWidget);
+      expect(find.byKey(const ValueKey('steamDetectButton')), findsOneWidget);
       expect(find.byKey(const ValueKey('steamIdField')), findsNothing,
           reason: 'moved under the collapsed Advanced disclosure');
       expect(find.byKey(const ValueKey('steamApiKeyField')), findsNothing);
+    });
+
+    testWidgets(
+        'the three sections are titled Achievement clips / Steam '
+        'account / Advanced — optional web API', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      await openPage(t, 'Steam');
+      expect(find.text('Achievement clips'), findsOneWidget);
+      expect(find.text('Steam account'), findsOneWidget);
+      expect(
+          find.textContaining('Advanced — optional web API'), findsOneWidget);
     });
 
     testWidgets(
@@ -1218,6 +1237,27 @@ void main() {
             .text,
         'ABCDEF0123456789',
       );
+    });
+
+    testWidgets(
+        'the SteamID field explains itself even when nothing was detected',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        steamAccountLocator: () async => const [],
+      )));
+
+      await openPage(t, 'Steam');
+      await t.pump();
+      await t.pump();
+      await openSteamAdvanced(t);
+
+      expect(
+          find.textContaining('Your 17-digit Steam ID — or paste your '
+              'profile URL. Detect usually fills this for you.'),
+          findsOneWidget);
     });
 
     testWidgets('the API key field is obscured', (t) async {
@@ -1353,7 +1393,9 @@ void main() {
     testWidgets(
         'with a watcher wired, the status line reflects its live status '
         'notifier', (t) async {
-      final status = ValueNotifier<String?>('Watching (1 Steam account)');
+      final status = ValueNotifier<String?>(
+          'Watching — achievements will clip automatically (1 Steam '
+          'account)');
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1362,11 +1404,18 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
-      expect(find.text('Watching (1 Steam account)'), findsOneWidget);
+      expect(
+          find.text('Watching — achievements will clip automatically (1 '
+              'Steam account)'),
+          findsOneWidget);
 
-      status.value = 'No Steam installation found';
+      status.value = 'No Steam installation found — install Steam and sign '
+          'in to enable this.';
       await t.pump();
-      expect(find.text('No Steam installation found'), findsOneWidget);
+      expect(
+          find.text('No Steam installation found — install Steam and sign '
+              'in to enable this.'),
+          findsOneWidget);
     });
 
     testWidgets('a null status value falls back to an idle message', (t) async {
@@ -1383,8 +1432,10 @@ void main() {
       expect(find.textContaining('Idle'), findsOneWidget);
     });
 
-    testWidgets('the privacy hint mentions Game details must be Public',
-        (t) async {
+    testWidgets(
+        'the "Game details must be Public" privacy note is a Web-API-only '
+        'requirement -- absent from the primary area, only shown inside '
+        'Advanced', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1392,12 +1443,15 @@ void main() {
       )));
 
       await openPage(t, 'Steam');
+      expect(find.textContaining('Game details'), findsNothing);
+
+      await openSteamAdvanced(t);
       expect(find.textContaining('Game details'), findsWidgets);
     });
 
     testWidgets(
-        'the Advanced disclosure explains the API key is optional and '
-        'adds nothing today', (t) async {
+        'the Advanced disclosure opens with the optionality sentence, '
+        'sentence case and no hype', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -1406,15 +1460,26 @@ void main() {
 
       await openPage(t, 'Steam');
       expect(
-          find.textContaining('Advanced (optional web API)'), findsOneWidget);
+          find.textContaining('Advanced — optional web API'), findsOneWidget);
       await openSteamAdvanced(t);
-      expect(find.textContaining('adds nothing today'), findsOneWidget);
+      expect(
+          find.textContaining(
+              'Optional — achievement clipping works without any of this.'),
+          findsOneWidget);
     });
 
     group('SteamID auto-detect', () {
+      // The detected-account line and Detect button now live in the
+      // PRIMARY "Steam account" section (maintainer layout review,
+      // 2026-07-19) -- these tests deliberately don't open Advanced except
+      // where a test specifically wants to confirm the underlying field's
+      // controller was filled too (opening Advanced while the line is also
+      // showing would make `find.text(...)` match twice, since the same
+      // detected-account text can appear in both places).
       testWidgets(
           'prefills an empty SteamID field from the injected locator, '
-          'showing the detected account as a helper line', (t) async {
+          'showing the detected account as the primary account line',
+          (t) async {
         await t.pumpWidget(_app(SettingsScreen(
           settings: AppSettings(),
           onChanged: (_) async {},
@@ -1431,8 +1496,14 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
-        await openSteamAdvanced(t);
 
+        expect(
+            find.text('Detected Steam account: Detected Guy'), findsOneWidget);
+
+        // The underlying field (Advanced) was filled too, even though it's
+        // never been opened -- the controller is owned by State, not by
+        // the field's mount state.
+        await openSteamAdvanced(t);
         expect(
           t
               .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
@@ -1440,8 +1511,6 @@ void main() {
               .text,
           '76561197960287930',
         );
-        expect(
-            find.text('Detected Steam account: Detected Guy'), findsOneWidget);
       });
 
       testWidgets('never overwrites a non-empty saved SteamID', (t) async {
@@ -1462,8 +1531,14 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
-        await openSteamAdvanced(t);
 
+        expect(find.textContaining('Detected Steam account'), findsNothing);
+        // A Steam ID is already saved -- the primary line acknowledges that
+        // neutrally rather than claiming a (bogus) fresh detection.
+        expect(find.text('A Steam ID is saved for the optional web API.'),
+            findsOneWidget);
+
+        await openSteamAdvanced(t);
         expect(
           t
               .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
@@ -1471,12 +1546,32 @@ void main() {
               .text,
           '11111111111111111',
         );
-        expect(find.textContaining('Detected Steam account'), findsNothing);
+      });
+
+      testWidgets(
+          'nothing detected and nothing saved: a short explanation, not '
+          'bare fields', (t) async {
+        await t.pumpWidget(_app(SettingsScreen(
+          settings: AppSettings(),
+          onChanged: (_) async {},
+          displays: const [],
+          steamAccountLocator: () async => const [],
+        )));
+
+        await openPage(t, 'Steam');
+        await t.pump();
+        await t.pump();
+
+        expect(
+            find.text('Rewind can look up your Steam account automatically.'),
+            findsOneWidget);
+        expect(find.byKey(const ValueKey('steamDetectButton')), findsOneWidget);
+        expect(find.byKey(const ValueKey('steamIdField')), findsNothing);
       });
 
       testWidgets(
           'an ambiguous multi-account scan offers a choice instead of '
-          'guessing', (t) async {
+          'guessing, in the primary area', (t) async {
         await t.pumpWidget(_app(SettingsScreen(
           settings: AppSettings(),
           onChanged: (_) async {},
@@ -1498,15 +1593,7 @@ void main() {
         await openPage(t, 'Steam');
         await t.pump();
         await t.pump();
-        await openSteamAdvanced(t);
 
-        expect(
-          t
-              .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
-              .controller!
-              .text,
-          isEmpty,
-        );
         final choiceOne =
             find.byKey(const ValueKey('steamAccountChoice:11111111111111111'));
         final choiceTwo =
@@ -1517,6 +1604,9 @@ void main() {
         await t.tap(choiceOne);
         await t.pump();
 
+        expect(find.text('Detected Steam account: Player One'), findsOneWidget);
+
+        await openSteamAdvanced(t);
         expect(
           t
               .widget<TextField>(find.byKey(const ValueKey('steamIdField')))
@@ -1524,7 +1614,6 @@ void main() {
               .text,
           '11111111111111111',
         );
-        expect(find.text('Detected Steam account: Player One'), findsOneWidget);
       });
 
       testWidgets('the "Detect" button re-runs the scan on demand', (t) async {
@@ -1543,7 +1632,6 @@ void main() {
         await t.pump();
         await t.pump();
         expect(calls, 1); // the automatic scan on first Steam-tab visit
-        await openSteamAdvanced(t);
 
         await t.tap(find.byKey(const ValueKey('steamDetectButton')));
         await t.pump();

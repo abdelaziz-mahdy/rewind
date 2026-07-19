@@ -196,8 +196,10 @@ class SteamStatsWatcher implements GameEventSource {
 
   Future<void> _doWatchTick() async {
     if (_trees.isEmpty) {
-      status.value =
-          settings.clipSteamAchievements ? 'No Steam installation found' : null;
+      status.value = settings.clipSteamAchievements
+          ? 'No Steam installation found — install Steam and sign in to '
+              'enable this.'
+          : null;
       return;
     }
 
@@ -224,7 +226,8 @@ class SteamStatsWatcher implements GameEventSource {
     }
 
     status.value = settings.clipSteamAchievements
-        ? 'Watching ($accountCount Steam account${accountCount == 1 ? '' : 's'})'
+        ? 'Watching — achievements will clip automatically '
+            '($accountCount Steam account${accountCount == 1 ? '' : 's'})'
         : null;
   }
 

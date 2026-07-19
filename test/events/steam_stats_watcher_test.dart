@@ -170,14 +170,18 @@ void main() {
     test('finds a fake tree layout via the injected locator', () async {
       await watcher.runDiscoveryNow();
       await watcher.runWatchNow();
-      expect(watcher.status.value, 'Watching (1 Steam account)');
+      expect(watcher.status.value,
+          'Watching — achievements will clip automatically (1 Steam account)');
     });
 
     test('no trees found: "No Steam installation found"', () async {
       trees = const [];
       await watcher.runDiscoveryNow();
       await watcher.runWatchNow();
-      expect(watcher.status.value, 'No Steam installation found');
+      expect(
+          watcher.status.value,
+          'No Steam installation found — install Steam and sign in to '
+          'enable this.');
       expect(emitted, isEmpty);
     });
 
@@ -189,7 +193,8 @@ void main() {
       ];
       await watcher.runDiscoveryNow();
       await watcher.runWatchNow();
-      expect(watcher.status.value, 'Watching (2 Steam accounts)');
+      expect(watcher.status.value,
+          'Watching — achievements will clip automatically (2 Steam accounts)');
     });
   });
 
@@ -206,7 +211,8 @@ void main() {
 
       expect(emitted, isEmpty,
           reason: 'first poll of a file only SEEDS -- the 44 MB lesson');
-      expect(watcher.status.value, 'Watching (1 Steam account)');
+      expect(watcher.status.value,
+          'Watching — achievements will clip automatically (1 Steam account)');
     });
 
     test('an unchanged mtime on a later tick is never re-parsed', () async {
@@ -311,7 +317,8 @@ void main() {
       await watcher.runWatchNow();
       // Still reports watching (the known account), but the stray file's
       // "unlock" was never even seeded, let alone emitted.
-      expect(watcher.status.value, 'Watching (1 Steam account)');
+      expect(watcher.status.value,
+          'Watching — achievements will clip automatically (1 Steam account)');
       expect(emitted, isEmpty);
     });
   });
