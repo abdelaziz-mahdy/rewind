@@ -22,13 +22,17 @@ All notable changes to Rewind are documented here. Format based on
   small tolerant binary-VDF parser written for this feature (no code copied
   from existing Steam-achievement tools — see docs/COMPLIANCE.md's Steam
   entry for the full reasoning, including the hard rule that Rewind must
-  never WRITE to any file under a Steam install). The Settings page's live
-  status line reports what's happening ("Watching (N Steam accounts)", "No
-  Steam installation found", or idle while the toggle is off). The earlier
-  Web API design (Steam ID + Web API key fields) is retired as the trigger
-  path but kept, now optional and clearly labeled as adding nothing today,
-  under a collapsed "Advanced" disclosure — reserved for possible future
-  enrichment.
+  never WRITE to any file under a Steam install). Settings → Steam is now
+  three sections: "Achievement clips" (the toggle + a plain-language live
+  status line — "Watching — achievements will clip automatically", "No
+  Steam installation found…", or idle while the toggle is off), "Steam
+  account" (the local-detection line + a Detect refresh button, no bare
+  fields), and a collapsed "Advanced — optional web API" disclosure holding
+  the earlier Web API design (Steam ID + Web API key fields), retired as
+  the trigger path but kept and clearly labeled optional — reserved for
+  possible future enrichment. The "Game details must be Public" privacy
+  note moved into that disclosure too, since it's a Web-API-only
+  requirement that local detection doesn't need.
 - **Marvel Rivals** added to the game catalog — process-detection only (no
   sanctioned real-time source exists: no public match/event API, and the
   game's own logs are encrypted). Works on Windows natively and on macOS via
