@@ -18,6 +18,10 @@ class RewindObsEngine implements CaptureEngine {
   @override
   bool stopBuffer() => _obs.stopBuffer() == 0;
   @override
+  bool suspendCapture() => _obs.captureSuspend() == 0;
+  @override
+  bool resumeCapture() => _obs.captureResume() == 0;
+  @override
   bool setBufferSeconds(int seconds) => _obs.setBufferSeconds(seconds) == 0;
   @override
   String? saveClip(String outDir) => _obs.saveClip(outDir);

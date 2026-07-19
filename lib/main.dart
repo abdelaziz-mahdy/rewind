@@ -27,6 +27,7 @@ import 'src/log/log.dart';
 import 'src/log/perf_monitor.dart';
 import 'src/obs/app_info.dart';
 import 'src/obs/audio_input_info.dart';
+import 'src/obs/buffer_transition.dart';
 import 'src/obs/capture_engine.dart';
 import 'src/obs/display_info.dart';
 import 'src/obs/rewind_obs_engine.dart';
@@ -382,12 +383,11 @@ Future<void> main() async {
       manualOverride: manualOverride,
     );
     if (desired != bufferActive.value) {
-      if (desired) {
-        bufferActive.value = engine?.startBuffer() ?? false;
-      } else {
-        engine?.stopBuffer();
-        bufferActive.value = false;
-      }
+      // See buffer_transition.dart's doc: suspends/resumes the capture
+      // session around the buffer stop/start so a paused buffer holds no
+      // live capture source (screen-recording indicator, DRM-blanked video,
+      // idle GPU/CPU cost — see CHANGELOG).
+      bufferActive.value = applyBufferTransition(engine, desired: desired);
     }
     bufferAutoPaused.value = isAutoPaused(
       captureOnlyInGame: effectiveCaptureOnlyInGame,

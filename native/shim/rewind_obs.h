@@ -31,6 +31,36 @@ const char *rewind_save_clip(const char *out_dir);
 /* Stop the replay buffer. Returns 0 on success. */
 int rewind_stop_buffer(void);
 
+/* Suspends the capture session: detaches and releases the underlying
+ * screen/window capture source (the platform's current capture source —
+ * display, app, or window, whichever is targeted), while keeping every
+ * stored target preference (display uuid / app bundle id / window id) so
+ * rewind_capture_resume() can recreate the identical source afterward. On
+ * macOS this is what actually stops the ScreenCaptureKit stream (releasing
+ * the mac-capture source runs its destroy callback, which stops the SCStream
+ * — see native/shim/rewind_obs.c's rewind_capture_suspend doc for the
+ * vendored-source citation), which is what clears the macOS screen-recording
+ * indicator, lets DRM-protected video (Netflix, Crave, etc.) resume playing
+ * while Rewind idles, and drops the idle GPU/CPU cost the live-but-hidden
+ * source was still paying. Meant to be called right after the replay buffer
+ * is stopped (auto-pause OR a manual tray pause) — capturing with nothing
+ * consuming the frames serves no purpose.
+ * Idempotent: suspending an already-suspended (or not-yet-initialized)
+ * pipeline is a no-op. No-op in stub mode. Returns 0 on success. */
+int rewind_capture_suspend(void);
+
+/* Reverses rewind_capture_suspend(): recreates the capture source from the
+ * remembered display/app/window preference — the SAME platform rebuild path
+ * rewind_obs_init() itself uses to create it the first time — and
+ * re-attaches it. Meant to be called BEFORE rewind_start_buffer() whenever
+ * the buffer is about to resume, so the buffer never starts against a
+ * torn-down source. rewind_start_recording() also calls this implicitly
+ * when the capture session is currently suspended (a manual recording with
+ * no capture source would record nothing).
+ * Idempotent: resuming an already-live (or not-yet-initialized) pipeline is
+ * a no-op. No-op in stub mode. Returns 0 on success. */
+int rewind_capture_resume(void);
+
 /* Begin a manual, continuous recording session into `out_dir`, independent
  * of the rolling replay buffer (which keeps running unaffected). Writes to
  * "<out_dir>/rewind-rec-<timestamp>.mp4", mirroring the replay buffer's own

@@ -315,6 +315,15 @@ All notable changes to Rewind are documented here. Format based on
   but the cursor over a black canvas. Capture now re-aims at the actual game
   process the moment a match goes live, retrying for a few seconds if the
   game app's window hasn't enumerated yet (e.g. during the loading screen).
+- **DRM apps (Netflix, Crave, etc.) showed black video while Rewind idled**:
+  pausing the replay buffer ("Only record while playing", or a manual tray
+  pause) stopped the buffer output but left the underlying screen-capture
+  source live — macOS still saw an active ScreenCaptureKit session, which is
+  exactly what DRM playback blanks its video against, and kept the
+  screen-recording indicator lit for no reason. Pausing now releases the
+  capture source entirely and recreates it on resume, so a paused Rewind
+  holds no capture session at all — DRM video plays normally, the indicator
+  clears, and idle GPU/CPU cost drops further.
 
 ## [0.1.0] - 2026-07-16
 

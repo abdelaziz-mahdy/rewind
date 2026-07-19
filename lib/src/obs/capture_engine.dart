@@ -20,6 +20,28 @@ abstract class CaptureEngine {
   /// Stop the replay buffer. Returns false on failure.
   bool stopBuffer();
 
+  /// Suspends the capture session: tears down the underlying screen/window
+  /// capture source (releasing it — not merely hiding it) while remembering
+  /// every stored target preference (display/app/window), so [resumeCapture]
+  /// recreates the identical source. On macOS this is what actually stops
+  /// the ScreenCaptureKit stream — see `rewind_capture_suspend` in
+  /// `native/shim/rewind_obs.h` — clearing the OS screen-recording indicator
+  /// and letting DRM-protected video play again while Rewind idles. Meant to
+  /// be called right after [stopBuffer] on every buffer-stop (auto-pause OR
+  /// a manual tray pause) — see `main.dart`'s `applyBufferPolicy`. Idempotent
+  /// (suspending an already-suspended session is a no-op); a no-op backend
+  /// no-op too (dev/stub mode). Returns false on failure.
+  bool suspendCapture();
+
+  /// Reverses [suspendCapture]: recreates the capture source from the
+  /// remembered display/app/window preference and re-attaches it. Meant to
+  /// be called BEFORE [startBuffer] whenever the buffer is about to resume —
+  /// starting the buffer against a torn-down source would begin recording a
+  /// black/empty replay. [startRecording] also resumes implicitly if the
+  /// session is currently suspended. Idempotent (resuming an already-live
+  /// session is a no-op). Returns false on failure.
+  bool resumeCapture();
+
   /// Change the replay-buffer length while running. Returns false on
   /// failure.
   bool setBufferSeconds(int seconds);
