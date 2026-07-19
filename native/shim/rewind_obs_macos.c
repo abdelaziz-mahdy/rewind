@@ -383,6 +383,27 @@ static int is_windows_exe_name(const char *name) {
  * match, and the Dart side treats "" as "keep capturing the display".
  * Returns 0 on success, non-zero (with set_error) if enumeration fails or
  * `json_out` is too small to hold the result. */
+/* True when `r` (global CG window coordinates, as reported by
+ * CGWindowListCopyWindowInfo) covers essentially all of some display — the
+ * signature shape of a fullscreen-exclusive game window. >=90% area overlap
+ * rather than exact equality: some games letterbox or overhang by a few
+ * pixels, and a window parked on a non-active Space still reports its
+ * display-relative frame. */
+static int rw_rect_covers_a_display(CGRect r) {
+    CGDirectDisplayID ids[8];
+    uint32_t n = 0;
+    if (CGGetActiveDisplayList(8, ids, &n) != kCGErrorSuccess) return 0;
+    for (uint32_t i = 0; i < n; i++) {
+        CGRect d = CGDisplayBounds(ids[i]);
+        double display_area = d.size.width * d.size.height;
+        if (display_area <= 0) continue;
+        CGRect inter = CGRectIntersection(r, d);
+        double covered = inter.size.width * inter.size.height;
+        if (covered / display_area >= 0.9) return 1;
+    }
+    return 0;
+}
+
 int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
     if (!json_out || json_cap <= 0) return fail("invalid buffer");
 
@@ -431,16 +452,24 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         /* Only normal windows of a real size. Menu-bar extras, the Dock,
          * Control Center, Notification Center etc. live on non-zero window
          * layers (or as tiny status windows) and are capture-picker noise,
-         * not capturable applications. */
-        CFNumberRef layer_num = (CFNumberRef)CFDictionaryGetValue(entry, kCGWindowLayer);
-        int layer = 0;
-        if (!layer_num || !CFNumberGetValue(layer_num, kCFNumberIntType, &layer) || layer != 0)
-            continue;
+         * not capturable applications. EXCEPTION: a fullscreen-EXCLUSIVE
+         * game window also sits on an elevated layer — filtering all
+         * non-zero layers made a mid-match League window invisible to the
+         * auto-switch hunt for 67 s straight (2026-07-19 19:42, app cold
+         * start mid-match: capture fell back to the hidden client and
+         * recorded black until the match ended and the window dropped back
+         * to layer 0). A display-covering window is a capturable app
+         * whatever its layer; the picker noise above never covers a display. */
         CFDictionaryRef bounds_dict = (CFDictionaryRef)CFDictionaryGetValue(entry, kCGWindowBounds);
         CGRect bounds = CGRectZero;
         if (!bounds_dict || !CGRectMakeWithDictionaryRepresentation(bounds_dict, &bounds) ||
             bounds.size.width < 64 || bounds.size.height < 64)
             continue;
+        CFNumberRef layer_num = (CFNumberRef)CFDictionaryGetValue(entry, kCGWindowLayer);
+        int layer = 0;
+        if (!layer_num || !CFNumberGetValue(layer_num, kCFNumberIntType, &layer))
+            continue;
+        if (layer != 0 && !rw_rect_covers_a_display(bounds)) continue;
 
         /* The owner name decides the route: Wine exes never resolve through
          * the bundle walk (proc_pidpath fails / winetemp stub), so it must
