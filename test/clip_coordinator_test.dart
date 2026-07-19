@@ -1606,22 +1606,50 @@ void main() {
     });
 
     test(
-        'the retry loop gives up after the max attempts — a later match is '
-        'never picked up', () async {
+        'the retry loop never gives up while the game stays active — a '
+        'window appearing far past any counted budget is still picked up',
+        () async {
       final h = buildHarness(interval: const Duration(milliseconds: 5));
       h.engine.apps = const [clientApp]; // never matches
       h.source.running = true;
       await h.registry.tickNow();
       await Future<void>.delayed(Duration.zero);
 
-      // 60 attempts * 5 ms plus generous margin for the loop to exhaust.
+      // Far more than the old 15/60-attempt budgets would have tolerated
+      // (a real League Arena loading screen outlived the 30 s budget and
+      // the whole next match recorded black — the hunt is now bounded by
+      // deactivation, which the following test pins, not by a count).
       await Future<void>.delayed(const Duration(milliseconds: 700));
-      expect(h.engine.captureAppCalls, isEmpty);
+      expect(h.engine.captureAppCalls, isEmpty,
+          reason: 'still hunting, nothing matched yet');
 
       h.engine.apps = const [clientApp, gameApp];
       await Future<void>.delayed(const Duration(milliseconds: 60));
-      expect(h.engine.captureAppCalls, isEmpty,
-          reason: 'the retry loop already gave up');
+      expect(h.engine.captureAppCalls, isNotEmpty,
+          reason: 'the late-appearing on-screen game app is captured');
+    });
+
+    test(
+        'an on-screen match with a real window id is captured as a WINDOW '
+        '(display-agnostic), not via app capture', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 5));
+      const windowedGameApp = AppInfo(
+        bundleId: gameBundleId,
+        name: 'LeagueofLegends',
+        pid: 7002,
+        onScreen: true,
+        windowId: 4242,
+      );
+      h.engine.apps = const [clientApp, windowedGameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.engine.captureWindowCalls, [4242],
+          reason: 'SCK app capture anchors to one display and records '
+              'black for a fullscreen game on any other display — the '
+              'on-screen window is the display-agnostic target');
+      expect(h.engine.captureAppCalls, isEmpty);
     });
   });
 

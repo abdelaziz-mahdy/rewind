@@ -104,17 +104,6 @@ class ClipCoordinator {
   /// replaces (cancels) an older retry rather than stacking two loops.
   final Map<String, Timer> _autoSwitchRetryTimers = {};
 
-  /// Attempt cap for [_autoSwitchCaptureFor]'s retry loop: after this many
-  /// attempts with no window match, it gives up and logs once rather than
-  /// retrying forever.
-  // 60 × the 2 s default interval = a 2-minute hunt. 15 (30 s) was too
-  // short in the field: a League Arena LOADING SCREEN outlived it (live,
-  // 2026-07-19 19:18 — the loop gave up before the game window ever
-  // enumerated, capture stayed on the hidden client, and the whole next
-  // match recorded black). No real loading screen outlasts 2 minutes;
-  // deactivation still cancels the hunt the moment the game exits.
-  static const _autoSwitchMaxAttempts = 60;
-
   /// How long [_indexClip] waits for a save-reported file to appear on disk
   /// before dropping it (the mux helper can lag the shim's path report
   /// under load). Tests that deliberately report paths with no file (stub
@@ -301,10 +290,11 @@ class ClipCoordinator {
   /// or the game has no [GameActivity.processMatch] (some sources have
   /// nothing meaningful to match a window against). When no
   /// currently-capturable app matches yet — e.g. a vendor watcher (League)
-  /// activates during the loading screen, slightly before ScreenCaptureKit
-  /// enumerates the game app's window — retries the same attempt every
-  /// [autoSwitchRetryInterval] up to [_autoSwitchMaxAttempts] times (see
-  /// [_tryAutoSwitch]) before giving up with one warning log. A fresh
+  /// activates during the loading screen, before ScreenCaptureKit
+  /// enumerates the game app's window — retries every
+  /// [autoSwitchRetryInterval] for as long as the game stays active: the
+  /// hunt is bounded by the game's own lifecycle (deactivation cancels it),
+  /// not by a counted budget (see the comment in [_tryAutoSwitch]). A fresh
   /// activation of the same game cancels any retry already in flight for it
   /// (a later activation replaces an older one, never stacks).
   void _autoSwitchCaptureFor(GameActivity a) {
@@ -361,13 +351,19 @@ class ClipCoordinator {
       }
     }
     if (match == null) {
-      if (attempt >= _autoSwitchMaxAttempts) {
-        talker.warning('Auto-switch: giving up on ${a.displayName} after '
-            '$attempt attempt(s) — no window ever matched');
-        return;
+      // No cap: the hunt is bounded by the GAME's own lifecycle, not a
+      // count — deactivation (and dispose, and a fresh activation) already
+      // cancels the timer. Counted budgets kept losing to reality: 15
+      // attempts (30 s) died inside a League Arena loading screen
+      // (2026-07-19 19:18, whole next match recorded black), and any
+      // bigger number is the same guess with better luck. A no-match poll
+      // is one window enumeration every couple of seconds — nothing.
+      // Log the first miss and then every 15th, so a long hunt is visible
+      // without spamming.
+      if (attempt == 1 || attempt % 15 == 0) {
+        talker.info('Auto-switch: no running window matched ${a.displayName} '
+            'yet (attempt $attempt, retrying until the game exits)');
       }
-      talker.info('Auto-switch: no running window matched ${a.displayName} '
-          'yet (attempt $attempt/$_autoSwitchMaxAttempts)');
       _autoSwitchRetryTimers[a.gameId] = Timer(autoSwitchRetryInterval, () {
         _autoSwitchRetryTimers.remove(a.gameId);
         _tryAutoSwitch(a, attempt: attempt + 1);
