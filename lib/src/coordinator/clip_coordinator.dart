@@ -9,6 +9,7 @@ import '../clip/match_stats.dart';
 import '../clip/storage_manager.dart';
 import '../events/game_event.dart';
 import '../events/game_registry.dart';
+import '../games/game_descriptor.dart' show descriptorFor;
 import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/capture_engine.dart';
@@ -301,6 +302,23 @@ class ClipCoordinator {
   /// activation of the same game cancels any retry already in flight for it
   /// (a later activation replaces an older one, never stacks).
   void _autoSwitchCaptureFor(GameActivity a) {
+    // A launcher/client-only activation (countsAsPlaying false) must never
+    // STEAL the capture target from its own game's match-live binding.
+    // Normally the client activates first and the vendor watcher re-aims
+    // second, so ordering hides this — but an app (re)start MID-MATCH races
+    // both activations in the same tick, and the client won by 80 ms in a
+    // live match (2026-07-19 19:14), stomping the game window with the
+    // hidden client app and recording black again. The reverse direction
+    // (vendor re-aim overriding the client's earlier switch) stays allowed —
+    // that's the Task 15 fix working as designed.
+    if (!a.countsAsPlaying) {
+      final holder = _autoSwitchedGameId;
+      if (holder != null &&
+          holder != a.gameId &&
+          descriptorFor(a.gameId).mergedGameIds.contains(holder)) {
+        return;
+      }
+    }
     _cancelAutoSwitchRetry(a.gameId);
     _tryAutoSwitch(a, attempt: 1);
   }
