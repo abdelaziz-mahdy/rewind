@@ -107,7 +107,13 @@ class ClipCoordinator {
   /// Attempt cap for [_autoSwitchCaptureFor]'s retry loop: after this many
   /// attempts with no window match, it gives up and logs once rather than
   /// retrying forever.
-  static const _autoSwitchMaxAttempts = 15;
+  // 60 × the 2 s default interval = a 2-minute hunt. 15 (30 s) was too
+  // short in the field: a League Arena LOADING SCREEN outlived it (live,
+  // 2026-07-19 19:18 — the loop gave up before the game window ever
+  // enumerated, capture stayed on the hidden client, and the whole next
+  // match recorded black). No real loading screen outlasts 2 minutes;
+  // deactivation still cancels the hunt the moment the game exits.
+  static const _autoSwitchMaxAttempts = 60;
 
   /// How long [_indexClip] waits for a save-reported file to appear on disk
   /// before dropping it (the mux helper can lag the shim's path report
