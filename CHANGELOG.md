@@ -24,8 +24,7 @@ All notable changes to Rewind are documented here. Format based on
   itself); the Steam tab also auto-detects the SteamID from Steam's own
   local `loginusers.vdf` (native install and CrossOver bottles on macOS,
   the standard install path on Windows) so most users never have to hunt
-  for it — the API key paste is the only manual step left, and the status
-  line says so ("Almost there…") once the id is set.
+  for it.
 - **Marvel Rivals** added to the game catalog — process-detection only (no
   sanctioned real-time source exists: no public match/event API, and the
   game's own logs are encrypted). Works on Windows natively and on macOS via
