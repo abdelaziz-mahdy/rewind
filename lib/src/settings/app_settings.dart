@@ -163,6 +163,12 @@ class AppSettings {
   /// local discovery finds a Steam install with a logged-in account).
   bool clipSteamAchievements;
 
+  /// Whether MANUAL save/record actions play a short confirmation sound
+  /// (see `ClipSounds`, `ClipCoordinator.sounds`) — success/failure on a
+  /// hotkey save, start/stop on a manual recording. Auto-clipped events
+  /// never sound regardless of this setting. Default ON.
+  bool playFeedbackSounds;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
@@ -191,6 +197,7 @@ class AppSettings {
     this.steamId64 = '',
     this.steamWebApiKey = '',
     this.clipSteamAchievements = true,
+    this.playFeedbackSounds = true,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -243,6 +250,7 @@ class AppSettings {
         'steamId64': steamId64,
         'steamWebApiKey': steamWebApiKey,
         'clipSteamAchievements': clipSteamAchievements,
+        'playFeedbackSounds': playFeedbackSounds,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -279,6 +287,9 @@ class AppSettings {
         steamId64: j['steamId64'] as String? ?? '',
         steamWebApiKey: j['steamWebApiKey'] as String? ?? '',
         clipSteamAchievements: j['clipSteamAchievements'] as bool? ?? true,
+        // Absent key (a settings file predating this feature) falls back to
+        // ON — the same default as a fresh install.
+        playFeedbackSounds: j['playFeedbackSounds'] as bool? ?? true,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

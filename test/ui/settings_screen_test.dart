@@ -489,6 +489,50 @@ void main() {
     });
   });
 
+  group('Sound on save', () {
+    testWidgets('defaults on and toggling writes playFeedbackSounds',
+        (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('feedbackSoundsSwitch')))
+              .value,
+          isTrue);
+
+      await t.tap(find.byKey(const ValueKey('feedbackSoundsSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(calls.last.playFeedbackSounds, isFalse);
+      expect(
+          t
+              .widget<Switch>(
+                  find.byKey(const ValueKey('feedbackSoundsSwitch')))
+              .value,
+          isFalse);
+    });
+
+    testWidgets('shows the manual-only hint', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(
+          find.text('Plays a short sound when a manual save succeeds or '
+              'fails, and when recording starts or stops.'),
+          findsOneWidget);
+    });
+  });
+
   testWidgets(
       'the MY GAMES section is not built yet — per-game settings still '
       'live in each game\'s hub', (t) async {

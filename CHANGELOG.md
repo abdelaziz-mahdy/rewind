@@ -7,6 +7,19 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Audible feedback for manual saves and recording**: a short confirmation
+  sound plays when the save hotkey (or `.save-now`) succeeds or fails, and
+  when the record hotkey (or `.record-toggle`) starts/stops a manual
+  recording — so pressing the save key mid-game finally tells you whether it
+  worked, without alt-tabbing to check. Auto-clipped events (kills,
+  achievements, etc.) deliberately stay silent — a chime for a save you
+  didn't trigger would just be noise mid-fight. On macOS this reuses stock
+  `/System/Library/Sounds` system sounds via `afplay` (zero bundled assets);
+  Windows/Linux are no-ops for now (`ClipSounds`'s doc has the future
+  recipes). Gated by a new "Sound on save" toggle in Settings → Capture →
+  Instant replay, on by default. A coalesced burst of save-hotkey presses
+  (see the 2026-07-18 coalescing fix) still plays exactly one sound, for the
+  save that actually happened.
 - **Steam achievement auto-clip, for any Steam game — keyless**: no Steam ID,
   no Web API key, no setup beyond the toggle in Settings → Steam (on by
   default). Detects unlocks by watching the local, read-only stats-cache
