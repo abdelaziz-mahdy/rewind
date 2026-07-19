@@ -261,6 +261,50 @@ void main() {
   });
 
   test(
+      'a GameConfig.displayName override wins on the entry, beating the '
+      'catalog name (Task 28)', () {
+    final settings = AppSettings();
+    settings
+        .setConfig(GameConfig(gameId: 'app:cs2', displayName: 'CS2 ranked'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {},
+    );
+
+    expect(byId(entries, 'app:cs2').displayName, 'CS2 ranked');
+  });
+
+  test(
+      'a blank/whitespace-only GameConfig.displayName is treated as no '
+      'override', () {
+    final settings = AppSettings();
+    settings.setConfig(GameConfig(gameId: 'app:cs2', displayName: '   '));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {},
+    );
+
+    expect(byId(entries, 'app:cs2').displayName, 'Counter-Strike 2');
+  });
+
+  test(
+      'a descriptor-registered game (League) ignores a stray '
+      'GameConfig.displayName override — not renameable in v1', () {
+    final settings = AppSettings();
+    settings.setConfig(
+        GameConfig(gameId: 'league_of_legends', displayName: 'Bogus rename'));
+    final entries = buildGameDirectory(
+      settings: settings,
+      clips: [],
+      activeIds: {'app:league_of_legends'},
+    );
+
+    expect(byId(entries, 'league_of_legends').displayName, 'League of Legends');
+  });
+
+  test(
       'Marvel Rivals never surfaces an iconPath (Marvel/Disney IP caution — '
       'usesOfficialLogo false, like League)', () {
     final settings = AppSettings();

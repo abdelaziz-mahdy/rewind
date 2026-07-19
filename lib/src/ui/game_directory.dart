@@ -138,6 +138,25 @@ List<GameEntry> buildGameDirectory({
   return [...entries, desktop];
 }
 
+/// Task 28's rename precedence, resolved straight from [configById] rather
+/// than through `displayNameFor`'s `registerCustomDisplayNames` side-channel
+/// (which `main.dart` only refreshes asynchronously, in its `onChanged`
+/// callback) — so a just-committed rename is reflected the instant
+/// [buildGameDirectory] is next called (e.g. when Settings closes), and this
+/// stays unit-testable without a `registerCustomDisplayNames` call first.
+/// Same precedence either way: a non-empty [GameConfig.displayName]
+/// override, when [isGameRenameable], beats the catalog/descriptor/
+/// title-case fallback [displayNameFor] itself falls through to.
+String _resolveDisplayName(String gameId, Map<String, GameConfig> configById) {
+  final override = configById[gameId]?.displayName;
+  if (override != null &&
+      override.trim().isNotEmpty &&
+      isGameRenameable(gameId)) {
+    return override;
+  }
+  return displayNameFor(gameId);
+}
+
 Set<DetectionMethod> _detectionFor(
   String gameId,
   Map<String, CatalogGame> catalogById,
@@ -240,7 +259,7 @@ GameEntry _buildEntry({
   }
   return GameEntry(
     gameId: gameId,
-    displayName: displayNameFor(gameId),
+    displayName: _resolveDisplayName(gameId, configById),
     detection: detection,
     processMatch: processMatch,
     active: matchIds.any(activeIds.contains),
