@@ -13,6 +13,9 @@ enum GameEventKind {
   pentaKill,
   ace,
   death, // the player died — never auto-clipped, but counted for match K/D
+  // A Steam achievement unlock (see `SteamAchievementWatcher`) — rare and
+  // always worth keeping, so it ranks just below `ace` (see [clipPriority]).
+  achievement,
   // Objectives (League-style, but reusable)
   dragonKill,
   dragonSteal,
@@ -44,6 +47,7 @@ int clipPriority(GameEventKind kind) => switch (kind) {
       GameEventKind.pentaKill => 100,
       GameEventKind.quadraKill => 90,
       GameEventKind.ace => 85,
+      GameEventKind.achievement => 84,
       GameEventKind.tripleKill => 80,
       GameEventKind.doubleKill => 70,
       GameEventKind.baronSteal => 65,

@@ -138,6 +138,26 @@ class AppSettings {
   /// this setting feeds into, alongside the tray's manual Pause/Resume.
   bool captureOnlyInGame;
 
+  /// The user's Steam id64 (17-digit numeric), or a vanity name/profile URL
+  /// normalized down to its trailing segment at save time (see
+  /// `SettingsScreen`'s SteamID field) — `SteamAchievementWatcher` resolves
+  /// a non-numeric value via `ISteamUser/ResolveVanityURL` itself. Empty
+  /// string (the default) means "not configured"; alongside
+  /// [steamWebApiKey], both must be non-empty for the watcher to run.
+  String steamId64;
+
+  /// A Steam Web API key (steamcommunity.com/dev/apikey). Stored locally in
+  /// settings.json only — never sent anywhere but api.steampowered.com as a
+  /// query param, per that API's own auth scheme. Empty string (the
+  /// default) means "not configured".
+  String steamWebApiKey;
+
+  /// Whether a new Steam achievement unlock should auto-clip. Default TRUE,
+  /// but inert until both [steamId64] and [steamWebApiKey] are set — there's
+  /// nothing to watch without credentials, so a default-on toggle can't spam
+  /// anyone.
+  bool clipSteamAchievements;
+
   final Map<String, GameConfig> _perGame;
 
   AppSettings({
@@ -163,6 +183,9 @@ class AppSettings {
     this.onboardingComplete = false,
     this.clipsDirPath,
     this.captureOnlyInGame = true,
+    this.steamId64 = '',
+    this.steamWebApiKey = '',
+    this.clipSteamAchievements = true,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -212,6 +235,9 @@ class AppSettings {
         'onboardingComplete': onboardingComplete,
         'clipsDirPath': clipsDirPath,
         'captureOnlyInGame': captureOnlyInGame,
+        'steamId64': steamId64,
+        'steamWebApiKey': steamWebApiKey,
+        'clipSteamAchievements': clipSteamAchievements,
         'perGame': _perGame.map((k, v) => MapEntry(k, v.toJson())),
       };
 
@@ -245,6 +271,9 @@ class AppSettings {
         // the 2026-07-18 default flip) falls back to ON — the same default
         // as a fresh install.
         captureOnlyInGame: j['captureOnlyInGame'] as bool? ?? true,
+        steamId64: j['steamId64'] as String? ?? '',
+        steamWebApiKey: j['steamWebApiKey'] as String? ?? '',
+        clipSteamAchievements: j['clipSteamAchievements'] as bool? ?? true,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

@@ -7,6 +7,17 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Steam achievement auto-clip, for any Steam game**: add a Steam ID and a
+  Steam Web API key once (Settings → Steam), and a new achievement unlock
+  in whatever Steam game you're playing auto-saves a clip labeled with the
+  achievement's real name. Uses only the official Steam Web API
+  (`GetPlayerSummaries`, `GetPlayerAchievements`, `GetSchemaForGame`,
+  `ResolveVanityURL`) — no game-specific integration needed, unlike League.
+  Requires the Steam profile's "Game details" privacy setting to be Public;
+  the Settings page's live status line reports exactly what's happening
+  (watching, waiting for a game, a bad key, a private profile, or a
+  connectivity hiccup). Credentials are stored locally in `settings.json`
+  only. See docs/COMPLIANCE.md.
 - **Marvel Rivals** added to the game catalog — process-detection only (no
   sanctioned real-time source exists: no public match/event API, and the
   game's own logs are encrypted). Works on Windows natively and on macOS via

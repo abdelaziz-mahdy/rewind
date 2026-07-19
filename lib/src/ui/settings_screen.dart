@@ -1,4 +1,5 @@
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -115,6 +116,12 @@ class SettingsScreen extends StatefulWidget {
   /// back to Capture) if it doesn't match any [gameEntries] entry.
   final String? initialGameId;
 
+  /// The live `SteamAchievementWatcher.status` notifier, for the Steam
+  /// page's status line. Null when no watcher exists yet (no Steam
+  /// credentials configured — see `source_builder.dart`) — the page then
+  /// shows a static "not configured" line instead of a live status.
+  final ValueListenable<String?>? steamStatus;
+
   const SettingsScreen({
     required this.settings,
     required this.onChanged,
@@ -128,6 +135,7 @@ class SettingsScreen extends StatefulWidget {
     this.onClose,
     this.gameEntries = const [],
     this.initialGameId,
+    this.steamStatus,
     super.key,
   });
 
@@ -138,7 +146,7 @@ class SettingsScreen extends StatefulWidget {
 /// The sidebar's GENERAL section ids — also the `settingsTab:<id>` key
 /// suffix, kept as "Hotkey" (singular) even though its label is "Hotkeys" to
 /// minimize churn against the pre-redesign key.
-enum _SettingsPage { capture, hotkey, storage, about }
+enum _SettingsPage { capture, hotkey, storage, steam, about }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late int _bufferSeconds;
@@ -148,6 +156,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _maxAgeController;
   late final FocusNode _maxStorageFocus;
   late final FocusNode _maxAgeFocus;
+  late final TextEditingController _steamIdController;
+  late final TextEditingController _steamApiKeyController;
+  late final FocusNode _steamIdFocus;
+  late final FocusNode _steamApiKeyFocus;
 
   /// The current GENERAL page, or null while a MY GAMES page
   /// ([_selectedGameId]) is showing — exactly one of the two is non-null at
@@ -204,6 +216,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..addListener(() {
         if (!_maxAgeFocus.hasFocus) _commitMaxAge();
       });
+    _steamIdController = TextEditingController(text: widget.settings.steamId64);
+    _steamApiKeyController =
+        TextEditingController(text: widget.settings.steamWebApiKey);
+    _steamIdFocus = FocusNode()
+      ..addListener(() {
+        if (!_steamIdFocus.hasFocus) _commitSteamId();
+      });
+    _steamApiKeyFocus = FocusNode()
+      ..addListener(() {
+        if (!_steamApiKeyFocus.hasFocus) _commitSteamApiKey();
+      });
     final initial = widget.initialGameId;
     if (initial != null && widget.gameEntries.any((e) => e.gameId == initial)) {
       _selectedGeneralPage = null;
@@ -233,11 +256,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // screen counts as "moving out of the field", not as discarding it.
     _commitMaxStorage();
     _commitMaxAge();
+    _commitSteamId();
+    _commitSteamApiKey();
     _maxStorageFocus.dispose();
     _maxAgeFocus.dispose();
+    _steamIdFocus.dispose();
+    _steamApiKeyFocus.dispose();
     _customBufferController.dispose();
     _maxStorageController.dispose();
     _maxAgeController.dispose();
+    _steamIdController.dispose();
+    _steamApiKeyController.dispose();
     super.dispose();
   }
 
@@ -307,6 +336,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _maxAgeController,
       widget.settings.maxClipAgeDays,
       (days) => widget.settings.maxClipAgeDays = days);
+
+  /// Commits the SteamID field on blur, normalizing a pasted profile URL
+  /// down to its trailing id/vanity segment first (a bare id64 or vanity
+  /// name passes through unchanged) — see [_normalizeSteamIdInput]. Actual
+  /// vanity->id64 RESOLUTION (a network call) is `SteamAchievementWatcher`'s
+  /// job, not the UI's; this only strips the URL wrapper.
+  void _commitSteamId() {
+    final normalized = _normalizeSteamIdInput(_steamIdController.text);
+    if (_steamIdController.text != normalized) {
+      _steamIdController.text = normalized;
+    }
+    if (normalized == widget.settings.steamId64) return;
+    widget.settings.steamId64 = normalized;
+    widget.onChanged(widget.settings);
+  }
+
+  void _commitSteamApiKey() {
+    final trimmed = _steamApiKeyController.text.trim();
+    if (trimmed == widget.settings.steamWebApiKey) return;
+    widget.settings.steamWebApiKey = trimmed;
+    widget.onChanged(widget.settings);
+  }
+
+  void _handleClipSteamAchievementsChanged(bool value) {
+    widget.settings.clipSteamAchievements = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
 
   Future<void> _pickClipsDir() async {
     final path = await getDirectoryPath();
@@ -591,6 +648,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _SettingsPage.capture => _capturePage(context),
       _SettingsPage.hotkey => _hotkeysPage(context),
       _SettingsPage.storage => _storagePage(context),
+      _SettingsPage.steam => _steamPage(context),
       _SettingsPage.about => _aboutPage(context),
     };
   }
@@ -1095,6 +1153,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
   }
 
+  /// The generic "any Steam game" achievement auto-clip integration (see
+  /// `SteamAchievementWatcher`/docs/COMPLIANCE.md): SteamID + API key
+  /// credentials, the auto-clip toggle, and a live status line reflecting
+  /// what the watcher is currently doing.
+  Widget _steamPage(BuildContext context) {
+    return _settingsPage(
+      context,
+      'Steam',
+      description: 'Auto-clip achievement unlocks in any Steam game you play.',
+      [
+        _TextFieldRow(
+          label: 'Steam ID',
+          field: SizedBox(
+            width: 320,
+            child: TextField(
+              key: const ValueKey('steamIdField'),
+              controller: _steamIdController,
+              focusNode: _steamIdFocus,
+              decoration: const InputDecoration(
+                hintText: 'Profile URL, vanity name, or SteamID64',
+              ),
+              onSubmitted: (_) => _steamIdFocus.unfocus(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _TextFieldRow(
+          label: 'Steam Web API key',
+          field: SizedBox(
+            width: 320,
+            child: TextField(
+              key: const ValueKey('steamApiKeyField'),
+              controller: _steamApiKeyController,
+              focusNode: _steamApiKeyFocus,
+              obscureText: true,
+              decoration: const InputDecoration(hintText: 'API key'),
+              onSubmitted: (_) => _steamApiKeyFocus.unfocus(),
+            ),
+          ),
+          footnote:
+              'Stored locally on this Mac — never sent anywhere but Steam\'s '
+              'own api.steampowered.com.',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey('steamGetApiKeyButton'),
+            onPressed: () => openUrl('https://steamcommunity.com/dev/apikey'),
+            child: const Text('Get a key'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _ToggleRow(
+          label: 'Auto-clip achievements',
+          hint: 'A new achievement unlock saves a clip labeled with its '
+              'real name — works for any Steam game.',
+          value: widget.settings.clipSteamAchievements,
+          onChanged: _handleClipSteamAchievementsChanged,
+          switchKey: const ValueKey('steamClipToggle'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Your Steam profile needs Game details set to Public: Steam → '
+          'Privacy → Game details.',
+          style: Theme.of(context).textTheme.bodyMuted,
+        ),
+        const SizedBox(height: 16),
+        if (widget.steamStatus case final status?)
+          ListenableBuilder(
+            listenable: status,
+            builder: (context, _) => Text(
+              status.value ?? 'Idle — waiting for the next check.',
+              key: const ValueKey('steamStatusLine'),
+              style: Theme.of(context).textTheme.bodyMuted,
+            ),
+          )
+        else
+          Text(
+            'Add your Steam ID and API key above to start watching.',
+            key: const ValueKey('steamStatusLine'),
+            style: Theme.of(context).textTheme.bodyMuted,
+          ),
+      ],
+    );
+  }
+
   /// About is prose + buttons + the legal disclaimer, not label→control
   /// pairs, so it deliberately doesn't use the field-row grammar — a normal
   /// column, same shape as before the redesign.
@@ -1154,6 +1298,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static String _displayLabel(int index, DisplayInfo d) =>
       'Display ${index + 1} — ${d.width}×${d.height}'
       '${d.isMain ? ' (Main)' : ''}';
+}
+
+/// Strips a pasted Steam profile URL down to its trailing id64/vanity
+/// segment (`steamcommunity.com/id/<vanity>` or `.../profiles/<id64>`,
+/// trailing slash tolerated) — a bare id64 or vanity name passes through
+/// unchanged. Pure string handling only; resolving a vanity name to a real
+/// id64 is a network call `SteamAchievementWatcher` makes itself on first
+/// poll, not this UI's job.
+String _normalizeSteamIdInput(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return trimmed;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null || !uri.host.toLowerCase().contains('steamcommunity.com')) {
+    return trimmed;
+  }
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segments.isEmpty) return trimmed;
+  return segments.last;
 }
 
 /// Wraps a page's content in its own scroll view, CENTERED in the pane and
@@ -1249,6 +1411,12 @@ class _SettingsSidebar extends StatelessWidget {
       'settingsTab:Storage',
       'Storage',
       Icons.folder_outlined
+    ),
+    (
+      _SettingsPage.steam,
+      'settingsTab:Steam',
+      'Steam',
+      Icons.emoji_events_outlined
     ),
     (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outline),
   ];

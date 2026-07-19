@@ -50,7 +50,11 @@ class GameRegistry {
             [
               LeagueEventWatcher(),
               // Register additional GameEventSource implementations here.
-            ];
+            ] {
+    for (final s in _sources) {
+      _mergeEventsOf(s);
+    }
+  }
 
   Stream<GameEvent> get events => _merged.stream;
   Stream<GameActivity> get activity => _activity.stream;
@@ -74,9 +78,27 @@ class GameRegistry {
   void addNewSources(Iterable<GameEventSource> candidates) {
     final have = {for (final s in _sources) s.gameId};
     for (final c in candidates) {
-      if (have.add(c.gameId)) _sources.add(c);
+      if (have.add(c.gameId)) {
+        _sources.add(c);
+        _mergeEventsOf(c);
+      }
     }
   }
+
+  /// Subscribes [s]'s [GameEventSource.events] into [_merged] the moment
+  /// it's registered — NOT gated on [GameEventSource.isGameRunning] ever
+  /// reporting true, unlike [start]/[stop]/[_active] below (those stay
+  /// activation-driven, unchanged). Most sources only ever emit after
+  /// [_tick] calls their [GameEventSource.start] anyway, so this changes
+  /// nothing for them; it exists for a source whose activation model is
+  /// entirely its own (e.g. `SteamAchievementWatcher`, whose
+  /// [GameEventSource.isGameRunning] always answers false — it drives no
+  /// `activeGameIds`/capture-switch/buffer-policy signal at all — so this
+  /// tick's activation branch would otherwise never wire its events up).
+  /// Called exactly once per source (constructor + [addNewSources]); doing
+  /// it again in [_tick]'s activation branch would double-subscribe and
+  /// double-emit every event for every OTHER source.
+  void _mergeEventsOf(GameEventSource s) => s.events().listen(_merged.add);
 
   Future<void> _tick() async {
     for (final s in _sources) {
@@ -84,7 +106,6 @@ class GameRegistry {
       if (running && !_active.contains(s.gameId)) {
         _active.add(s.gameId);
         await s.start();
-        s.events().listen(_merged.add);
         _activity.add(GameActivity(
           s.gameId,
           s.displayName,

@@ -66,6 +66,14 @@ class GameConfig {
               GameEventKind.quadraKill,
               GameEventKind.pentaKill,
               GameEventKind.ace,
+              // Steam achievements are gated by their OWN global toggle
+              // (`AppSettings.clipSteamAchievements`) before
+              // `SteamAchievementWatcher` ever emits one — this default just
+              // makes sure the event PASSES this per-game gate once it
+              // arrives, including for a game with no config row yet (e.g.
+              // the `steam:<appid>` fallback for an unrecognized Steam
+              // title), without the coordinator special-casing Steam at all.
+              GameEventKind.achievement,
             };
 
   Map<String, dynamic> toJson() => {

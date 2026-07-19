@@ -56,6 +56,11 @@ Color eventColor(BuildContext context, GameEventKind kind) {
     case GameEventKind.pentaKill:
     case GameEventKind.ace:
       return _rotateAccent(scheme.primary, 32); // amber
+    case GameEventKind.achievement:
+      // A distinct gold arm — close enough to combat's amber to read as
+      // "also a highlight", far enough (32 -> 48) to tell an achievement
+      // badge apart from a kill badge at a glance.
+      return _rotateAccent(scheme.primary, 48); // gold
     case GameEventKind.dragonKill:
     case GameEventKind.dragonSteal:
     case GameEventKind.baronKill:
@@ -278,6 +283,15 @@ class _ClipTileState extends State<ClipTile> {
                               ],
                               Flexible(
                                 child: Text(
+                                  // The badge only ever says the generic
+                                  // "ACHIEVEMENT" (eventBadge's plain kind-
+                                  // casing) — the SPECIFIC unlock name (e.g.
+                                  // "Winner Winner", see
+                                  // `SteamAchievementWatcher`/
+                                  // `Clip.eventLabel`) leads this line
+                                  // instead, same single-row/ellipsis
+                                  // treatment as everything else here.
+                                  '${clip.eventLabel != null ? '${clip.eventLabel} · ' : ''}'
                                   '${relativeAge(clip.createdAt)} · '
                                   '${formatSize(clip.sizeBytes)}'
                                   '${clip.killCount > 0 ? ' · ${clip.killCount} '
