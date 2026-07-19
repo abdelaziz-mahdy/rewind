@@ -38,7 +38,40 @@ trap 'kill $CAFF_PID 2>/dev/null || true' EXIT
 
 pkill -x rewind 2>/dev/null && sleep 1 || true
 mkdir -p "$CLIPS_DIR"
-BEFORE_COUNT=$(ls "$CLIPS_DIR"/*.mp4 2>/dev/null | wc -l | tr -d ' ')
+
+# "Only record while playing" defaults ON (2026-07-18), which pauses the
+# replay buffer whenever no game is detected — including during this test.
+# Without forcing it off, the .save-now leg silently saves nothing (the
+# buffer output stops a few frames after startup) and the recording leg's
+# file used to mask that from the "new clip appeared" check below. Force
+# always-on buffering for the test run and restore the user's settings after.
+SETTINGS="$HOME/Library/Application Support/com.example.rewind/settings.json"
+SETTINGS_BAK=""
+if [[ -f "$SETTINGS" ]]; then
+  SETTINGS_BAK="$(mktemp /tmp/rewind_e2e_settings.XXXXXX)"
+  cp "$SETTINGS" "$SETTINGS_BAK"
+  python3 - "$SETTINGS" <<'PY'
+import json, sys
+p = sys.argv[1]
+s = json.load(open(p))
+s["captureOnlyInGame"] = False
+json.dump(s, open(p, "w"))
+PY
+else
+  mkdir -p "$(dirname "$SETTINGS")"
+  printf '{"captureOnlyInGame": false}' > "$SETTINGS"
+fi
+restore_settings() {
+  if [[ -n "$SETTINGS_BAK" ]]; then cp "$SETTINGS_BAK" "$SETTINGS"; rm -f "$SETTINGS_BAK";
+  else rm -f "$SETTINGS"; fi
+}
+trap 'restore_settings; kill $CAFF_PID 2>/dev/null || true' EXIT
+
+# The replay (.save-now) leg must be judged on NON-recording clips only —
+# rewind-rec-*.mp4 comes from the recording leg and previously satisfied the
+# same *.mp4 glob, letting a dead replay buffer pass the whole test.
+count_replay_clips() { ls "$CLIPS_DIR"/*.mp4 2>/dev/null | grep -cv 'rewind-rec-' || true; }
+BEFORE_COUNT=$(count_replay_clips)
 
 echo "==> Launching $APP (log: $LOG)"
 open --stdout "$LOG" --stderr "$LOG" "$APP"
@@ -76,10 +109,10 @@ if grep -qiE "permission is not granted|check if OBS has necessary screen captur
   fail "Screen Recording permission not effective for this launch (grant it to rewind.app and relaunch)"
 fi
 
-AFTER_COUNT=$(ls "$CLIPS_DIR"/*.mp4 2>/dev/null | wc -l | tr -d ' ')
-[[ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]] || fail "no new clip appeared in $CLIPS_DIR (see $LOG)"
-CLIP=$(ls -t "$CLIPS_DIR"/*.mp4 | head -1)
-echo "==> New clip: $CLIP"
+AFTER_COUNT=$(count_replay_clips)
+[[ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]] || fail "replay-buffer save produced no new clip in $CLIPS_DIR (buffer dead or paused? see $LOG)"
+CLIP=$(ls -t "$CLIPS_DIR"/*.mp4 | grep -v 'rewind-rec-' | head -1)
+echo "==> New replay clip: $CLIP"
 
 if command -v ffprobe >/dev/null 2>&1; then
   DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$CLIP")
