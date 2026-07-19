@@ -174,6 +174,15 @@ class MatchStats {
   /// matches from before this feature (or any match with no combat).
   List<MatchEventStamp> events;
 
+  /// The last moment anything about this match changed (an event landed, a
+  /// stats snapshot differed, match info arrived). What
+  /// [MatchStatsStore.latestFor] ranks by, and what the coordinator's
+  /// restart-resume check compares against: a match whose stats were still
+  /// moving seconds before app launch is a match the app was killed in the
+  /// middle of. Defaults to [startedAt] (also for persisted matches from
+  /// before this field existed — safely "long ago" by the time it matters).
+  DateTime updatedAt;
+
   MatchStats({
     required this.gameId,
     required this.startedAt,
@@ -190,10 +199,12 @@ class MatchStats {
     this.wardScore = 0.0,
     List<MatchItemSlot>? items,
     List<MatchEventStamp>? events,
+    DateTime? updatedAt,
   })  : allies = allies ?? [],
         enemies = enemies ?? [],
         items = items ?? [],
-        events = events ?? [];
+        events = events ?? [],
+        updatedAt = updatedAt ?? startedAt;
 
   Map<String, dynamic> toJson() => {
         'gameId': gameId,
@@ -211,6 +222,7 @@ class MatchStats {
         'wardScore': wardScore,
         'items': items.map((i) => i.toJson()).toList(),
         'events': events.map((e) => e.toJson()).toList(),
+        'updatedAt': updatedAt.toIso8601String(),
       };
 
   /// Backward-compatible with `matches.json` files written before this
@@ -243,6 +255,7 @@ class MatchStats {
             .map((e) =>
                 MatchEventStamp.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
+        updatedAt: DateTime.tryParse(j['updatedAt'] as String? ?? ''),
       );
 }
 
@@ -276,6 +289,18 @@ class MatchStatsStore extends ChangeNotifier {
   MatchStats? statsFor(String gameId, DateTime startedAt) =>
       _byKey[_key(gameId, startedAt)];
 
+  /// The most recently touched match for [gameId] (by [MatchStats.
+  /// updatedAt]), or null if the game has none. Used by the coordinator's
+  /// restart-resume check — see [MatchStats.updatedAt].
+  MatchStats? latestFor(String gameId) {
+    MatchStats? best;
+    for (final m in _byKey.values) {
+      if (m.gameId != gameId) continue;
+      if (best == null || m.updatedAt.isAfter(best.updatedAt)) best = m;
+    }
+    return best;
+  }
+
   MatchStats _ensure(String gameId, DateTime startedAt) => _byKey.putIfAbsent(
         _key(gameId, startedAt),
         () => MatchStats(gameId: gameId, startedAt: startedAt),
@@ -290,6 +315,7 @@ class MatchStatsStore extends ChangeNotifier {
   void recordEvent(
       String gameId, DateTime startedAt, GameEventKind kind, DateTime at) {
     final m = _ensure(gameId, startedAt);
+    m.updatedAt = at;
     if (kind == GameEventKind.kill) {
       m.kills++;
     } else if (kind == GameEventKind.death) {
@@ -327,6 +353,7 @@ class MatchStatsStore extends ChangeNotifier {
     String? skinName,
   }) {
     final m = _ensure(gameId, startedAt);
+    m.updatedAt = DateTime.now();
     if (gameMode != null && gameMode.isNotEmpty) m.gameMode = gameMode;
     if (champion != null && champion.isNotEmpty) m.champion = champion;
     if (allies != null && allies.isNotEmpty) m.allies = allies;
@@ -369,7 +396,10 @@ class MatchStatsStore extends ChangeNotifier {
       m.items = items;
       changed = true;
     }
-    if (changed) _persist();
+    if (changed) {
+      m.updatedAt = DateTime.now();
+      _persist();
+    }
   }
 
   void _persist() {

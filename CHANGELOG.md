@@ -287,6 +287,23 @@ All notable changes to Rewind are documented here. Format based on
   hub view.
 
 ### Fixed
+- **Restarting the app mid-match no longer records black** — a
+  fullscreen-exclusive game window sits on an elevated window layer, and
+  the capture-source enumeration filtered all non-zero layers out, so a
+  cold start mid-match couldn't find the game window at all (capture fell
+  back to the hidden League client and recorded black until the match
+  ended). Display-covering windows now pass the filter whatever their
+  layer.
+- **Restarting the app mid-match no longer splits the match in two** — the
+  match card is keyed by the session stamp, which used to be minted fresh
+  on every activation. The first activation after launch now resumes the
+  previous match session when its stats were still updating within the
+  last 3 minutes (i.e. the restart interrupted it), so clips and K/D keep
+  accumulating on the same card.
+- **Mic auto-leveling no longer boosts the mic** — the compressor carried
+  a fixed +6 dB makeup gain, pushing voice above the game mix regardless
+  of the mic volume slider (clips true-peaked at 0.1 dBFS). The chain now
+  only evens out peaks; the slider alone sets the level.
 - **Storage limits no longer apply per keystroke** — typing "15" into Max
   storage passed through "1", and the immediate retention sweep deleted
   clips at the transient 1 GB limit with no confirmation. Limits now
