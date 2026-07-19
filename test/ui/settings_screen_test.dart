@@ -440,8 +440,7 @@ void main() {
   });
 
   group('Only record while playing', () {
-    testWidgets('defaults off and toggling writes captureOnlyInGame',
-        (t) async {
+    testWidgets('defaults on and toggling writes captureOnlyInGame', (t) async {
       final calls = <AppSettings>[];
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
@@ -453,18 +452,18 @@ void main() {
           t
               .widget<Switch>(find.byKey(const ValueKey('onlyInGameSwitch')))
               .value,
-          isFalse);
+          isTrue);
 
       await t.tap(find.byKey(const ValueKey('onlyInGameSwitch')));
       await t.pump();
 
       expect(calls, isNotEmpty);
-      expect(calls.last.captureOnlyInGame, isTrue);
+      expect(calls.last.captureOnlyInGame, isFalse);
       expect(
           t
               .widget<Switch>(find.byKey(const ValueKey('onlyInGameSwitch')))
               .value,
-          isTrue);
+          isFalse);
     });
 
     testWidgets('shows the CPU/battery hint', (t) async {

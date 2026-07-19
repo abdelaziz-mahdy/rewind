@@ -627,6 +627,16 @@ class _TryItStepView extends StatelessWidget {
                     style: theme.textTheme.display),
                 const SizedBox(height: 14),
                 content,
+                const SizedBox(height: 20),
+                Text(
+                  "After setup, Rewind records only while you're playing — "
+                  "the replay buffer pauses at the desktop to save CPU, and "
+                  "wakes automatically when a game starts (League: when a "
+                  "match starts). For always-on desktop recording, turn off "
+                  '"Only record while playing" in Settings → Capture.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMuted,
+                ),
               ],
             ),
           ),

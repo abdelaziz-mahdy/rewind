@@ -40,7 +40,7 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 
 ## Highlights
 
-- **Instant replay, always on.** The last 15–60 s are always buffered; save with a hotkey or a button.
+- **Instant replay, no manual start.** The last 15–60 s are buffered automatically while you play — save with a hotkey or a button. (The buffer pauses at the desktop by default to save CPU; flip that off in Settings for always-on buffering.)
 - **Games clip themselves.** League of Legends auto-clips your kills/aces from the Live Client API — only *your* plays — and tracks each match's full **K/D/A, creep score, ward score, champion + skin, item build, and teammates'/opponents' champions and names**.
 - **Auto-detect & follow.** Popular games are detected on launch; capture follows the game's window. Any app (including CrossOver/Wine games) can be added — the left rail shows each game's real app icon.
 - **A library built around games.** Each game gets a hub; clips group into **match cards** (with champion art) you can drill into for the full stat line and item build.

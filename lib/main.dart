@@ -300,6 +300,18 @@ Future<void> main() async {
 
   final tray = TrayService();
 
+  // Whether the first-run (or Settings-reopened, first-run-only) onboarding
+  // guide is currently the visible screen. Seeded from the same source
+  // `_RewindAppState._showOnboarding` uses, so the very first
+  // `applyBufferPolicy` call below already accounts for it; flipped back to
+  // false by `_RewindAppState._completeOnboarding` when onboarding finishes
+  // or is skipped. Consulted (NOT threaded into buffer_policy.dart's pure
+  // functions — those stay setting-only) so onboarding's "Try it now" step
+  // can still save a clip at the desktop even though `captureOnlyInGame`
+  // defaults to true: see [applyBufferPolicy]'s `captureOnlyInGame` input
+  // below.
+  final onboardingActive = ValueNotifier<bool>(!settings.onboardingComplete);
+
   // ---- "Only record while playing" (AppSettings.captureOnlyInGame) ----
   //
   // [applyBufferPolicy] is the SINGLE control point every buffer start/stop
@@ -307,7 +319,7 @@ Future<void> main() async {
   // Pause/Resume, and startup all funnel through it so they can't fight or
   // desync. It's re-run on: coordinator.playingGameIds changing (a game
   // transition), the setting changing (onSettingsChanged below), the tray
-  // toggle, and once at startup.
+  // toggle, onboardingActive changing, and once at startup.
   //
   // Reads playingGameIds, NOT activeGameIds: a game whose detection only
   // means "the launcher/client is open" (e.g. League's catalog entry) must
@@ -324,8 +336,13 @@ Future<void> main() async {
   BufferManualOverride manualOverride;
   void applyBufferPolicy() {
     final anyGameActive = coordinator.playingGameIds.value.isNotEmpty;
+    // While onboarding is on screen, behave as if the setting were off —
+    // `settings.captureOnlyInGame` itself is left untouched (it's still
+    // what Settings shows/persists).
+    final effectiveCaptureOnlyInGame =
+        settings.captureOnlyInGame && !onboardingActive.value;
     final desired = desiredBufferActive(
-      captureOnlyInGame: settings.captureOnlyInGame,
+      captureOnlyInGame: effectiveCaptureOnlyInGame,
       anyGameActive: anyGameActive,
       manualOverride: manualOverride,
     );
@@ -338,7 +355,7 @@ Future<void> main() async {
       }
     }
     bufferAutoPaused.value = isAutoPaused(
-      captureOnlyInGame: settings.captureOnlyInGame,
+      captureOnlyInGame: effectiveCaptureOnlyInGame,
       anyGameActive: anyGameActive,
       manualOverride: manualOverride,
     );
@@ -374,6 +391,11 @@ Future<void> main() async {
     manualOverride = clearedOverrideAfterTransition(manualOverride);
     applyBufferPolicy();
   });
+  // Onboarding finishing (or being skipped) is itself a policy input change
+  // — re-run immediately so the deck flips straight to "Waiting for a game"
+  // (no restart needed) instead of waiting for the next unrelated game
+  // transition.
+  onboardingActive.addListener(applyBufferPolicy);
   // Startup pass: seeds the tray's buffer label from the real state (its
   // internal default assumes an active buffer, wrong when capture failed)
   // AND applies the policy's own verdict — e.g. captureOnlyInGame ON with
@@ -405,6 +427,7 @@ Future<void> main() async {
     // source menu opens, so a game launched after Rewind still appears.
     listApps: () => engine?.listCapturableApps() ?? const <AppInfo>[],
     engine: engine,
+    onboardingActive: onboardingActive,
     onRelaunch: () => unawaited(_relaunch()),
     thumbnails: thumbnailCache,
     ddragon: ddragon,
@@ -514,6 +537,14 @@ class RewindApp extends StatefulWidget {
   final CaptureEngine? engine;
   final VoidCallback? onRelaunch;
 
+  /// Mirrors whether first-run onboarding is the visible screen — flipped
+  /// true/false by `_RewindAppState` alongside `_showOnboarding`, and
+  /// consulted by `main()`'s `applyBufferPolicy` so onboarding's "Try it
+  /// now" step can save a clip at the desktop regardless of
+  /// `AppSettings.captureOnlyInGame`. Null (e.g. in widget tests that don't
+  /// care) just skips reporting.
+  final ValueNotifier<bool>? onboardingActive;
+
   const RewindApp({
     required this.coordinator,
     required this.library,
@@ -536,6 +567,7 @@ class RewindApp extends StatefulWidget {
     this.ddragon,
     this.engine,
     this.onRelaunch,
+    this.onboardingActive,
     super.key,
   });
 
@@ -549,6 +581,10 @@ class _RewindAppState extends State<RewindApp> {
   Future<void> _completeOnboarding() async {
     widget.settings.onboardingComplete = true;
     await widget.onSettingsChanged(widget.settings);
+    // Re-arm the buffer policy immediately (see `onboardingActive`'s doc) —
+    // must flip BEFORE setState so main()'s listener sees it even if this
+    // widget is never rebuilt (e.g. already-unmounted in a test harness).
+    widget.onboardingActive?.value = false;
     if (mounted) setState(() => _showOnboarding = false);
   }
 

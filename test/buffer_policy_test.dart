@@ -108,6 +108,55 @@ void main() {
     });
   });
 
+  // main.dart's applyBufferPolicy never passes `settings.captureOnlyInGame`
+  // straight through — it composes `settings.captureOnlyInGame &&
+  // !onboardingActive.value` first (see that file's `onboardingActive` doc)
+  // so onboarding's "Try it now" step still saves a clip at the desktop
+  // under the new default-ON setting. buffer_policy.dart's pure functions
+  // stay setting-only; this group exercises them with that exact
+  // composition to cover the override end to end.
+  group('main.dart\'s onboardingActive override composition', () {
+    test(
+        'onboarding visible: buffer stays on with captureOnlyInGame ON and '
+        'no game active', () {
+      const captureOnlyInGame = true;
+      const onboardingActive = true;
+      const effective = captureOnlyInGame && !onboardingActive;
+      expect(
+          desiredBufferActive(
+              captureOnlyInGame: effective,
+              anyGameActive: false,
+              manualOverride: null),
+          isTrue);
+      expect(
+          isAutoPaused(
+              captureOnlyInGame: effective,
+              anyGameActive: false,
+              manualOverride: null),
+          isFalse);
+    });
+
+    test(
+        'onboarding dismissed: the policy reclaims control and pauses with '
+        'no game active', () {
+      const captureOnlyInGame = true;
+      const onboardingActive = false;
+      const effective = captureOnlyInGame && !onboardingActive;
+      expect(
+          desiredBufferActive(
+              captureOnlyInGame: effective,
+              anyGameActive: false,
+              manualOverride: null),
+          isFalse);
+      expect(
+          isAutoPaused(
+              captureOnlyInGame: effective,
+              anyGameActive: false,
+              manualOverride: null),
+          isTrue); // "Waiting for a game", not "Paused"
+    });
+  });
+
   group('clearedOverrideAfterTransition', () {
     test('a temporary Resume override (true) is cleared on transition', () {
       expect(clearedOverrideAfterTransition(true), isNull);
