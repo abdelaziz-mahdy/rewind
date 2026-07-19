@@ -59,6 +59,27 @@ class FakeCaptureEngine implements CaptureEngine {
     return true;
   }
 
+  /// Mirrors the real shim's g_capture-NULL-ness: true once [suspendCapture]
+  /// has run without a later [resumeCapture] (or [startRecording], which the
+  /// real engine also resumes implicitly through — see its doc). Starts
+  /// false, matching a freshly-[init]ed engine (capture source already
+  /// live).
+  bool captureSuspended = false;
+
+  @override
+  bool suspendCapture() {
+    calls.add('suspendCapture');
+    captureSuspended = true;
+    return true;
+  }
+
+  @override
+  bool resumeCapture() {
+    calls.add('resumeCapture');
+    captureSuspended = false;
+    return true;
+  }
+
   @override
   bool setBufferSeconds(int seconds) {
     calls.add('setBuffer:$seconds');

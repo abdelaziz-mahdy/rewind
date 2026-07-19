@@ -847,11 +847,57 @@ int rewind_stop_buffer(void) {
     return 0;
 }
 
+/* Idempotent by construction: after a successful rewind_obs_init(), g_capture
+ * is always non-NULL until either this function or rewind_obs_shutdown()
+ * clears it (rw_plat_init_capture_source() fails init outright otherwise —
+ * see rewind_obs_init's `goto cleanup` on its non-zero return), so "already
+ * suspended" is exactly "g_capture == NULL" — no separate flag needed.
+ *
+ * mac-capture's screen_capture source tears down its SCStream from its
+ * .destroy callback: sck_video_capture_destroy() (mac-sck-video-capture.m)
+ * calls destroy_screen_stream(), which does
+ * `[sc->disp stopCaptureWithCompletionHandler:...]` — verified against the
+ * vendored source at native/third_party/work/obs-studio/plugins/
+ * mac-capture/mac-sck-video-capture.m. obs_source_release() below drives
+ * that destroy once the scene's own ref (dropped by rw_attach_capture(NULL)
+ * just above it) and this file's ref both reach zero, so releasing
+ * g_capture is what actually stops the stream — not merely detaching it
+ * from the scene. */
+int rewind_capture_suspend(void) {
+    if (!g_initialized || !g_capture) { set_error(""); return 0; }
+    rw_attach_capture(NULL);
+    obs_source_release(g_capture);
+    g_capture = NULL;
+    rw_plat_reset_capture_state();
+    set_error("");
+    return 0;
+}
+
+/* Idempotent by the same g_capture-NULL test as rewind_capture_suspend()
+ * above. rw_plat_init_capture_source() is the exact function
+ * rewind_obs_init() itself calls to create the capture source the first
+ * time, so this recreates it from whatever g_display_uuid/g_app_bundle_id/
+ * g_window_id currently hold — the existing platform rebuild path, not a
+ * parallel one. */
+int rewind_capture_resume(void) {
+    if (!g_initialized || g_capture) { set_error(""); return 0; }
+    return rw_plat_init_capture_source();
+}
+
 int rewind_start_recording(const char *out_dir) {
     if (!g_initialized) return fail("not initialized");
     if (!out_dir || !out_dir[0]) return fail("out_dir is required");
     if (g_recording && obs_output_active(g_recording))
         return fail("recording already in progress");
+
+    /* A manual recording with the capture session suspended (see
+     * rewind_capture_suspend) would record a black/empty source — resume it
+     * implicitly first, the same "resume before recording starts" ordering
+     * applyBufferPolicy already applies to the replay buffer. */
+    if (!g_capture) {
+        int rc = rewind_capture_resume();
+        if (rc != 0) return rc;
+    }
 
     if (!g_recording) {
         /* Created once and reused for every subsequent start/stop cycle
@@ -1267,6 +1313,18 @@ const char *rewind_save_clip(const char *out_dir) {
 int rewind_stop_buffer(void) {
     if (!g_initialized) { set_error("not initialized"); return 1; }
     /* TODO(libobs): obs_output_stop(replay_buffer_output); */
+    return 0;
+}
+
+/* No capture-source concept exists in stub mode (see the file's top-of-file
+ * doc) — both calls are pure no-ops, mirroring every other stub setter. */
+int rewind_capture_suspend(void) {
+    set_error("");
+    return 0;
+}
+
+int rewind_capture_resume(void) {
+    set_error("");
     return 0;
 }
 

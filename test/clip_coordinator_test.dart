@@ -1147,6 +1147,33 @@ void main() {
 
   group('auto-switch capture', () {
     test(
+        'playingGameIds notifies BEFORE auto-switch aims capture — the '
+        'ordering main.dart\'s applyBufferPolicy (buffer/capture resume) and '
+        '_autoSwitchCaptureFor (aim) rely on (Task 27)', () async {
+      // Mirrors main.dart's `coordinator.playingGameIds.addListener(() {...
+      // applyBufferPolicy(); })`, which resumes the capture session BEFORE
+      // the game's activation handler goes on to call _autoSwitchCaptureFor.
+      // playingGameIds is a synchronous ValueNotifier, so this listener
+      // fires exactly where main.dart's real one would — proving the
+      // ordering holds regardless of whichever listener resumes capture.
+      coordinator.playingGameIds.addListener(() {
+        if (coordinator.playingGameIds.value.isNotEmpty) {
+          engine.calls.add('resumeCapture');
+        }
+      });
+
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      final resumeIndex = engine.calls.indexOf('resumeCapture');
+      final aimIndex =
+          engine.calls.indexOf('setCaptureApp:com.rewind.stub.one');
+      expect(resumeIndex, greaterThanOrEqualTo(0));
+      expect(aimIndex, greaterThan(resumeIndex));
+    });
+
+    test(
         'activation with a matching running app switches capture without '
         'persisting the choice', () async {
       gameLister.names = ['stub.one.exe'];

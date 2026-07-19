@@ -17,6 +17,12 @@ external int _startBuffer();
 @Native<Int32 Function()>(symbol: 'rewind_stop_buffer')
 external int _stopBuffer();
 
+@Native<Int32 Function()>(symbol: 'rewind_capture_suspend')
+external int _captureSuspend();
+
+@Native<Int32 Function()>(symbol: 'rewind_capture_resume')
+external int _captureResume();
+
 @Native<Int32 Function(Pointer<Utf8>)>(symbol: 'rewind_start_recording')
 external int _startRecording(Pointer<Utf8> outDir);
 
@@ -130,6 +136,14 @@ class RewindObs {
 
   int startBuffer() => _startBuffer();
   int stopBuffer() => _stopBuffer();
+
+  /// Tears down the capture source, keeping the target preference. See
+  /// `rewind_capture_suspend` in native/shim/rewind_obs.h.
+  int captureSuspend() => _captureSuspend();
+
+  /// Recreates the capture source from the remembered target preference. See
+  /// `rewind_capture_resume` in native/shim/rewind_obs.h.
+  int captureResume() => _captureResume();
 
   /// Starts a manual recording into [outDir]. Returns 0 on success.
   int startRecording(String outDir) {
