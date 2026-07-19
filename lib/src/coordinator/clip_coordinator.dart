@@ -352,11 +352,18 @@ class ClipCoordinator {
     }
     _cancelAutoSwitchRetry(a.gameId);
 
-    // Wine games enumerate with an empty bundle id (no SCK app-capture
-    // target exists — see AppInfo.bundleId) but a real window id: capture
-    // the game's WINDOW. A display shared with Discord etc. must not leak
-    // into game clips.
-    if (match.bundleId.isEmpty && match.windowId != 0) {
+    // Prefer capturing the matched WINDOW whenever it's actually on screen
+    // and has a real window id — window capture is display-agnostic. SCK
+    // APP capture composites the app's windows onto ONE anchor display
+    // (`display_uuid` is always required, see CLAUDE.md), so a fullscreen
+    // game on any other display records black-with-cursor (verified live
+    // 2026-07-19: League match, re-aim bound the right GameClient app, clip
+    // still black). Window capture of fullscreen games is the proven path —
+    // it's what every Wine/CrossOver game (empty bundle id) already uses.
+    // A hidden match (e.g. the League client pre-match, not on screen)
+    // keeps app capture: window-capturing an off-screen window shows
+    // nothing, while app capture at least follows it when it appears.
+    if (match.windowId != 0 && (match.onScreen || match.bundleId.isEmpty)) {
       capture.setCaptureWindow(match.windowId);
     } else {
       capture.setCaptureApp(match.bundleId.isEmpty ? null : match.bundleId);
