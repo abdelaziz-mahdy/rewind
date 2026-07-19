@@ -32,6 +32,7 @@ import 'src/obs/display_info.dart';
 import 'src/obs/rewind_obs_engine.dart';
 import 'src/settings/app_settings.dart';
 import 'src/settings/settings_store.dart';
+import 'src/sound/clip_sounds.dart';
 import 'src/tray/tray_service.dart';
 import 'src/ui/onboarding_screen.dart';
 import 'src/ui/shell.dart';
@@ -213,6 +214,7 @@ Future<void> main() async {
     outDir: clipsDir.path,
     engine: engine,
     matchStats: matchStats,
+    sounds: SystemClipSounds(),
     // Deliberately NO thumbnail generation on save: generating a thumbnail
     // spins up a headless mpv player (real CPU/GPU), and clips are saved
     // WHILE YOU GAME — the worst time to spend that. Thumbnails are made

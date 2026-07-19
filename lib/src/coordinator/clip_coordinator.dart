@@ -13,6 +13,7 @@ import '../log/log.dart';
 import '../obs/app_info.dart';
 import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
+import '../sound/clip_sounds.dart';
 import '../ui/capture_app_match.dart' show usesOfficialLogo;
 
 /// Central brain: listens to auto-detected game activity + game events + the
@@ -25,6 +26,12 @@ class ClipCoordinator {
   final AppSettings settings;
   final CaptureEngine? engine; // null in dev mode (shim not built)
   final String outDir;
+
+  /// Plays short confirmation sounds for MANUAL save/record actions — see
+  /// [ClipSounds]'s doc. Null in tests/dev that don't care about audio;
+  /// gated at play time by [AppSettings.playFeedbackSounds] (see
+  /// [_feedback]), never baked into the seam itself.
+  final ClipSounds? sounds;
 
   /// Fired fire-and-forget after a clip is successfully indexed (see
   /// [_indexClip]) — the coordinator's hook into the thumbnail pipeline.
@@ -135,6 +142,7 @@ class ClipCoordinator {
     this.engine,
     this.onClipIndexed,
     this.matchStats,
+    this.sounds,
     this.indexFileGrace = const Duration(seconds: 5),
     this.fileSettleInterval = const Duration(milliseconds: 250),
     this.burstQuiet,
@@ -475,6 +483,12 @@ class ClipCoordinator {
   }
 
   Future<void> _save(GameEvent e) async {
+    // Only a manual (hotkey/`.save-now`) save sounds — auto-clipped events
+    // never do, see [ClipSounds]'s doc. Hooked here, at the SAVE COMPLETION,
+    // rather than in [onHotkey]'s entry: a coalesced press never reaches
+    // this method at all (it just awaits the in-flight save), so this point
+    // naturally plays exactly once per completed save, coalesced or not.
+    final manual = e.kind == GameEventKind.manual;
     try {
       final capture = engine;
       if (capture == null) return; // dev mode: no capture backend wired up
@@ -486,16 +500,29 @@ class ClipCoordinator {
             : 'Clip save failed';
         _reportSaveError(msg);
         talker.error('Clip save failed: $msg');
+        if (manual) _feedback((s) => s.saveFailed());
         return;
       }
 
       await _indexClip(path, e);
+      if (manual) _feedback((s) => s.saveSucceeded());
     } catch (err, stack) {
       // Auto-clip saves are fire-and-forget from the event stream; a failed
       // save (disk full, index write error) must never crash the app.
       talker.handle(err, stack);
       _reportSaveError(err.toString());
+      if (manual) _feedback((s) => s.saveFailed());
     }
+  }
+
+  /// Plays [play] on [sounds] when both a sound seam is wired up and
+  /// [AppSettings.playFeedbackSounds] is currently on — read live at call
+  /// time (same as every other coordinator setting read), so a mid-session
+  /// toggle takes effect on the very next save/record without needing a
+  /// restart.
+  void _feedback(void Function(ClipSounds) play) {
+    final s = sounds;
+    if (s != null && settings.playFeedbackSounds) play(s);
   }
 
   /// Manual recording entry point: starts a continuous recording session on
@@ -535,6 +562,7 @@ class ClipCoordinator {
         isRecording.value = true;
         recordingStartedAt.value = DateTime.now();
         talker.info('Recording started');
+        _feedback((s) => s.recordingStarted());
       } catch (err, stack) {
         talker.handle(err, stack);
         _reportSaveError(err.toString());
@@ -561,6 +589,10 @@ class ClipCoordinator {
         talker.error('Recording save failed: $msg');
         return;
       }
+      // The manual toggle confirming its state change (stop) is what
+      // sounds — not the indexing that follows, which can lag or fail
+      // independently of the recording having actually stopped.
+      _feedback((s) => s.recordingStopped());
 
       await _indexClip(
           path, GameEvent(gameId: gameId, kind: GameEventKind.recording),

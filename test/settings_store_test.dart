@@ -169,6 +169,29 @@ void main() {
     expect(loaded.autoSwitchCapture, isFalse);
   });
 
+  test(
+      'playFeedbackSounds defaults to true and round-trips through '
+      'toJson/fromJson', () {
+    final s = AppSettings(playFeedbackSounds: false);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.playFeedbackSounds, isFalse);
+    expect(AppSettings().playFeedbackSounds, isTrue);
+  });
+
+  test(
+      'playFeedbackSounds falls back to true on an absent key (settings '
+      'file predating this feature)', () {
+    final j = AppSettings().toJson()..remove('playFeedbackSounds');
+    expect(AppSettings.fromJson(j).playFeedbackSounds, isTrue);
+  });
+
+  test('playFeedbackSounds round-trips through the settings store', () async {
+    final store = SettingsStore(tmp);
+    await store.save(AppSettings(playFeedbackSounds: false));
+    final loaded = await store.load();
+    expect(loaded.playFeedbackSounds, isFalse);
+  });
+
   test('GameConfig.processMatch defaults to null when absent', () {
     final s = AppSettings()..setConfig(GameConfig(gameId: 'g'));
     final loaded = AppSettings.fromJson(s.toJson());

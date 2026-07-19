@@ -13,6 +13,7 @@ import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'fakes/fake_capture_engine.dart';
+import 'fakes/fake_clip_sounds.dart';
 import 'fakes/fake_game_source.dart';
 import 'fakes/fake_process_lister.dart';
 
@@ -1637,6 +1638,90 @@ void main() {
       engine.failSave = false;
       await c.onHotkey();
       expect(library.all, hasLength(1));
+    });
+  });
+
+  group('audible feedback (ClipSounds)', () {
+    late FakeClipSounds sounds;
+
+    ClipCoordinator withSounds({
+      Duration coalesce = Duration.zero,
+      bool playFeedbackSounds = true,
+    }) {
+      sounds = FakeClipSounds();
+      settings.playFeedbackSounds = playFeedbackSounds;
+      return ClipCoordinator(
+        registry: registry,
+        library: library,
+        storage: StorageManager(library),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        fileSettleInterval: const Duration(milliseconds: 5),
+        manualCoalesceWindow: coalesce,
+        sounds: sounds,
+      )..start(supervise: false);
+    }
+
+    test('manual save success plays saveSucceeded exactly once', () async {
+      final c = withSounds();
+      await c.onHotkey();
+      expect(sounds.calls, ['saveSucceeded']);
+    });
+
+    test(
+        'a coalesced burst of presses (the SAVE COMPLETION, not the press) '
+        'still plays exactly one sound', () async {
+      final c = withSounds(coalesce: const Duration(seconds: 3));
+      await Future.wait([c.onHotkey(), c.onHotkey(), c.onHotkey()]);
+      expect(sounds.calls, ['saveSucceeded']);
+    });
+
+    test('manual save failure plays saveFailed (not saveSucceeded)', () async {
+      final c = withSounds();
+      engine.failSave = true;
+      await c.onHotkey();
+      expect(sounds.calls, ['saveFailed']);
+    });
+
+    test('an auto-clip event save plays nothing', () async {
+      final c = withSounds();
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      final saved = Completer<void>();
+      library.addListener(() {
+        if (!saved.isCompleted) saved.complete();
+      });
+      league.emit(GameEventKind.kill);
+      await saved.future;
+
+      expect(sounds.calls, isEmpty);
+      expect(c.activeGame.value, 'league_of_legends'); // sanity: it ran
+    });
+
+    test('playFeedbackSounds off plays nothing for a manual save', () async {
+      final c = withSounds(playFeedbackSounds: false);
+      await c.onHotkey();
+      expect(sounds.calls, isEmpty);
+    });
+
+    test('a manual record start then stop plays each sound once', () async {
+      final c = withSounds();
+      await c.toggleRecording();
+      expect(sounds.calls, ['recordingStarted']);
+
+      await c.toggleRecording();
+      expect(sounds.calls, ['recordingStarted', 'recordingStopped']);
+    });
+
+    test('playFeedbackSounds off plays nothing for a record start/stop',
+        () async {
+      final c = withSounds(playFeedbackSounds: false);
+      await c.toggleRecording();
+      await c.toggleRecording();
+      expect(sounds.calls, isEmpty);
     });
   });
 }

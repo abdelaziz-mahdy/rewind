@@ -647,6 +647,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// Writes [AppSettings.playFeedbackSounds] straight through, same as
+  /// every other field on this screen. The coordinator reads the live
+  /// settings object at play time (see `ClipCoordinator._feedback`), so
+  /// this takes effect on the very next manual save/record — no restart.
+  void _handleFeedbackSoundsChanged(bool value) {
+    widget.settings.playFeedbackSounds = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   void _handleMicrophoneChanged(bool value) {
     widget.settings.captureMicrophone = value;
     // Switching the mic off entirely must also stop any live listen session
@@ -877,6 +887,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: widget.settings.captureOnlyInGame,
               switchKey: const ValueKey('onlyInGameSwitch'),
               onChanged: _handleCaptureOnlyInGameChanged,
+            ),
+            const SizedBox(height: 12),
+            _ToggleRow(
+              label: 'Sound on save',
+              hint: 'Plays a short sound when a manual save succeeds or '
+                  'fails, and when recording starts or stops.',
+              value: widget.settings.playFeedbackSounds,
+              switchKey: const ValueKey('feedbackSoundsSwitch'),
+              onChanged: _handleFeedbackSoundsChanged,
             ),
           ],
         ),
