@@ -249,6 +249,15 @@ void main() {
     expect(done, 1);
   });
 
+  testWidgets('the try-it step teaches the new "only while playing" default',
+      (t) async {
+    await t.pumpWidget(_app(screen()));
+    await nextTo(t, 5); // -> try it
+    expect(find.textContaining("Rewind records only while you're playing"),
+        findsOneWidget);
+    expect(find.textContaining('Only record while playing'), findsOneWidget);
+  });
+
   testWidgets('Skip invokes onDone immediately', (t) async {
     var done = 0;
     await t.pumpWidget(_app(screen(onDone: () => done++)));

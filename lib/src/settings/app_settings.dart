@@ -127,8 +127,13 @@ class AppSettings {
   /// Whether the replay buffer should auto-pause whenever NO game is
   /// detected, and resume the moment one activates — killing the always-on
   /// desktop capture load for users who only ever want game footage.
-  /// Default OFF: always-on buffering (works for anything, including manual
-  /// hotkey saves at the desktop) is the product's default pitch. See
+  /// Default ON as of 2026-07-18 (deliberately flipped from the original
+  /// OFF default): pausing at the desktop is now the product's default
+  /// pitch, not an opt-in — a settings file predating this key gets the
+  /// new behavior too, same as a fresh install, unless the user already
+  /// persisted an explicit `false` by toggling it off. Onboarding's "Try it
+  /// now" step overrides this WHILE VISIBLE (see `main.dart`'s
+  /// `onboardingActive`) so its desktop save still works. See
   /// `main.dart`'s `applyBufferPolicy` — the single buffer-control point
   /// this setting feeds into, alongside the tray's manual Pause/Resume.
   bool captureOnlyInGame;
@@ -157,7 +162,7 @@ class AppSettings {
     this.maxClipAgeDays,
     this.onboardingComplete = false,
     this.clipsDirPath,
-    this.captureOnlyInGame = false,
+    this.captureOnlyInGame = true,
     Map<String, GameConfig>? perGame,
   }) : _perGame = perGame ?? {};
 
@@ -236,9 +241,10 @@ class AppSettings {
         maxClipAgeDays: j['maxClipAgeDays'] as int?,
         onboardingComplete: j['onboardingComplete'] as bool? ?? false,
         clipsDirPath: j['clipsDirPath'] as String?,
-        // Absent key (a settings file predating this feature) falls back to
-        // OFF — the same default as a fresh install.
-        captureOnlyInGame: j['captureOnlyInGame'] as bool? ?? false,
+        // Absent key (a settings file predating this feature, or predating
+        // the 2026-07-18 default flip) falls back to ON — the same default
+        // as a fresh install.
+        captureOnlyInGame: j['captureOnlyInGame'] as bool? ?? true,
         perGame: ((j['perGame'] as Map?) ?? const {}).map(
           (k, v) => MapEntry(k as String,
               GameConfig.fromJson((v as Map).cast<String, dynamic>())),

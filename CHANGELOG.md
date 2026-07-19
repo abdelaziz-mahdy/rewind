@@ -109,6 +109,16 @@ All notable changes to Rewind are documented here. Format based on
   backend alone.
 
 ### Changed
+- **"Only record while playing" is now ON by default** (was off): fresh
+  installs, and existing settings files with no stored value, now pause the
+  replay buffer at the desktop and resume it automatically the moment a game
+  is detected (League: when a match goes live), matching what most players
+  actually want out of the box. Anyone who already toggled it explicitly —
+  on or off — keeps their choice; only the *absent-key* case changed. The
+  "Try it now" step of the getting-started guide keeps the buffer running
+  regardless (its whole point is a desktop save), and now explains the new
+  behavior in a line of copy, pointing at Settings → Capture → "Only record
+  while playing" for anyone who wants always-on desktop recording back.
 - **Match detail screen is now a generic session frame**: the champion/K-D-A
   summary band, roster disclosure, and kills footnote moved behind a new
   per-game `MatchPresentation` seam (`lib/src/games/match_presentation.dart`),
