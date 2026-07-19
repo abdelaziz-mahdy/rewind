@@ -45,6 +45,11 @@ class PerfMonitor {
   int? _lastVoTotalFrames;
   int? _lastVoSkippedFrames;
 
+  /// Human-readable names for the shim's `thermal_state` 0..3 sentinel
+  /// (macOS `NSProcessInfo.thermalState`); index-matched, no entry for -1
+  /// ("unavailable" — never looked up, callers guard with `>= 0` first).
+  static const _thermalStateNames = ['nominal', 'fair', 'serious', 'critical'];
+
   PerfMonitor({
     required CaptureEngine? engine,
     required String? Function() activeGameGetter,
@@ -123,6 +128,14 @@ class PerfMonitor {
     final obsLagged = (stats?['obs_lagged_frames'] as num?)?.toInt() ?? 0;
     final voTotal = (stats?['vo_total_frames'] as num?)?.toInt() ?? 0;
     final voSkipped = (stats?['vo_skipped_frames'] as num?)?.toInt() ?? 0;
+    // The shim reports -1 for all three when unavailable (stub mode, an old
+    // shim build predating these fields, or — gpu_util_pct/thermal_state —
+    // a non-macOS platform); a missing key parses the same way via `??` so
+    // "absent" and "explicit -1" are handled identically below.
+    final obsRenderAvgMs =
+        (stats?['obs_render_avg_ms'] as num?)?.toDouble() ?? -1;
+    final gpuUtilPct = (stats?['gpu_util_pct'] as num?)?.toInt() ?? -1;
+    final thermalState = (stats?['thermal_state'] as num?)?.toInt() ?? -1;
 
     var cpuPct = 0.0;
     var obsTotalDelta = 0;
@@ -162,6 +175,15 @@ class PerfMonitor {
       'vo_total_frames_delta': voTotalDelta,
       'vo_skipped_frames': voSkipped,
       'vo_skipped_frames_delta': voSkippedDelta,
+      // Omitted (not written as null) when the shim reports -1/unavailable
+      // — keeps a healthy-platform JSONL free of a field that would never
+      // carry data there (Windows/Linux gpu_util_pct and thermal_state
+      // today), while still round-tripping cleanly for offline analysis
+      // tools that just check `containsKey`.
+      if (obsRenderAvgMs >= 0)
+        'obs_render_avg_ms': double.parse(obsRenderAvgMs.toStringAsFixed(2)),
+      if (gpuUtilPct >= 0) 'gpu_util_pct': gpuUtilPct,
+      if (thermalState >= 0) 'thermal_state': thermalState,
       'game': game,
     });
     try {
@@ -171,14 +193,26 @@ class PerfMonitor {
       // Never let logging take the app down (mirrors file_log.dart).
     }
 
+    final extras = <String>[
+      if (obsRenderAvgMs >= 0) 'render ${obsRenderAvgMs.toStringAsFixed(2)} ms',
+      if (gpuUtilPct >= 0) 'gpu $gpuUtilPct%',
+      if (thermalState >= 0 && thermalState < _thermalStateNames.length)
+        'thermal ${_thermalStateNames[thermalState]}',
+    ];
     final humanLine = 'perf: cpu ${cpuPct.round()}% · rss ${rssMb.round()} MB '
         '· frames $obsTotal (+$obsTotalDelta) · lagged $obsLagged '
-        '(+$obsLaggedDelta) · skipped $voSkipped · game ${game ?? 'none'}';
+        '(+$obsLaggedDelta) · skipped $voSkipped'
+        '${extras.isEmpty ? '' : ' · ${extras.join(' · ')}'}'
+        ' · game ${game ?? 'none'}';
     // Only escalate to info when there's something worth seeing without
-    // opening the JSONL: a new lag/skip since last sample, or heavy CPU —
-    // otherwise this would log 6x/minute even on a perfectly healthy
-    // session.
-    final notable = obsLaggedDelta != 0 || voSkippedDelta != 0 || cpuPct > 50;
+    // opening the JSONL: a new lag/skip since last sample, heavy CPU, or the
+    // machine is thermally throttling (>= 2/serious) — the exact mechanism
+    // behind "input delay 20 minutes in" reports this field exists to catch.
+    // Otherwise this would log 6x/minute even on a perfectly healthy session.
+    final notable = obsLaggedDelta != 0 ||
+        voSkippedDelta != 0 ||
+        cpuPct > 50 ||
+        thermalState >= 2;
     if (notable) {
       talker.info(humanLine);
     } else {

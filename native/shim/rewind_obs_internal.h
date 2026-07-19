@@ -264,6 +264,26 @@ void rw_plat_on_capture_window_changed(void);
  * path and rewind_obs_shutdown(). */
 void rw_plat_reset_capture_state(void);
 
+/* -- perf telemetry (backs rewind_perf_stats_json's obs_render_avg_ms is
+ * NOT here — obs_get_average_frame_time_ns() is a plain libobs.h call, no
+ * platform seam needed; only the two OS-specific readings below are) -- */
+
+/* GPU device utilization percent (0-100). macOS: IOKit's IOAccelerator
+ * service, "Device Utilization %" from its PerformanceStatistics dict —
+ * see
+ * rewind_obs_macos.c's implementation doc comment for the exact registry
+ * shape (verified live via `ioreg -r -c IOAccelerator -d 2`) and its
+ * service-handle caching. Windows/Linux: always -1 (not implemented). -1 on
+ * any read failure. */
+int rw_plat_gpu_util_pct(void);
+
+/* Thermal pressure state: macOS NSProcessInfo.thermalState, numeric
+ * 0 nominal / 1 fair / 2 serious / 3 critical (see rewind_obs_macos.c's
+ * implementation doc comment for how a C11 translation unit calls this
+ * Cocoa API with no Objective-C syntax). Windows/Linux: always -1 (no
+ * equivalent OS API targeted by this task). */
+int rw_plat_thermal_state(void);
+
 #endif /* REWIND_USE_LIBOBS */
 
 #endif /* REWIND_OBS_INTERNAL_H */

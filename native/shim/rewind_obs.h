@@ -218,11 +218,13 @@ int rewind_preflight_screen_permission(void);
 int rewind_request_screen_permission(void);
 
 /* Compact JSON snapshot of this process's own CPU/memory usage plus
- * libobs's frame-health counters, written into `json_out` (a caller-owned
- * buffer of `json_cap` bytes), e.g.
+ * libobs's frame-health/render-cost counters and OS-level GPU/thermal
+ * readings, written into `json_out` (a caller-owned buffer of `json_cap`
+ * bytes), e.g.
  *   {"cpu_user_s":12.3,"cpu_sys_s":1.2,"rss_bytes":314572800,
  *    "obs_total_frames":5992,"obs_lagged_frames":12,
- *    "vo_total_frames":5992,"vo_skipped_frames":0}
+ *    "vo_total_frames":5992,"vo_skipped_frames":0,
+ *    "obs_render_avg_ms":4.21,"gpu_util_pct":37,"thermal_state":0}
  * cpu_user_s/cpu_sys_s are cumulative seconds of CPU time this process has
  * used (since process start — callers diff two samples for a per-interval
  * rate); rss_bytes is the CURRENT resident set size. The four frame
@@ -231,11 +233,26 @@ int rewind_request_screen_permission(void);
  * obs_get_video()'s video_t — encoder-side) are 0 whenever no capture
  * pipeline exists yet (stub mode, or before rewind_obs_init succeeds):
  * lagged/skipped frames are the signal that capture is straining the
- * machine, so this is meant to be sampled unconditionally and often, and
- * never fails hard — any unavailable piece is reported as 0 rather than
- * failing the call. Returns 0 on success, non-zero only if `json_out`/
- * `json_cap` are invalid or the buffer is too small (see rewind_last_error).
- * Safe to call at any time, before or after rewind_obs_init. */
+ * machine.
+ * obs_render_avg_ms (obs_get_average_frame_time_ns() / 1e6, 2 decimals) is
+ * the compositor's average per-frame render cost — the direct measure of
+ * render-pipeline changes (e.g. canvas resolution), since a GPU-side win
+ * doesn't move cpu_user_s/cpu_sys_s at all; -1 whenever no pipeline exists
+ * (same gate as the frame counters).
+ * gpu_util_pct is GPU device utilization 0-100 (macOS: IOKit's
+ * IOAccelerator "Device Utilization %"); -1 on Windows/Linux (not
+ * implemented) or if the reading fails. Independent of pipeline state —
+ * always attempted.
+ * thermal_state is the OS's thermal-pressure level (macOS:
+ * NSProcessInfo.thermalState) as 0 nominal / 1 fair / 2 serious /
+ * 3 critical; -1 on Windows/Linux (no equivalent API targeted). Also
+ * independent of pipeline state.
+ * This is meant to be sampled unconditionally and often, and never fails
+ * hard — any unavailable piece is reported as 0 or -1 (per field, see
+ * above) rather than failing the call. Returns 0 on success, non-zero only
+ * if `json_out`/`json_cap` are invalid or the buffer is too small (see
+ * rewind_last_error). Safe to call at any time, before or after
+ * rewind_obs_init. */
 int rewind_perf_stats_json(char *json_out, int json_cap);
 
 #ifdef __cplusplus

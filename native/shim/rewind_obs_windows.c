@@ -820,4 +820,20 @@ void rw_plat_reset_capture_state(void) {
     g_win_capture_kind = WIN_CAPTURE_NONE;
 }
 
+/* ---- perf telemetry (Windows): not implemented in this task ------------
+ *
+ * GPU device utilization would need a Windows-specific query (e.g. PDH
+ * counters against "GPU Engine"/"GPU Adapter Memory", or a vendor SDK);
+ * thermal state has no OS-level equivalent to macOS's NSProcessInfo.
+ * thermalState at all. Both out of scope here — always report
+ * "unavailable" rather than a guessed/fake value. See rw_plat_gpu_util_pct/
+ * rw_plat_thermal_state's doc comments in rewind_obs_internal.h. */
+int rw_plat_gpu_util_pct(void) {
+    return -1;
+}
+
+int rw_plat_thermal_state(void) {
+    return -1;
+}
+
 #endif /* defined(REWIND_USE_LIBOBS) && defined(_WIN32) */

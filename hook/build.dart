@@ -125,6 +125,20 @@ void main(List<String> args) async {
           // (AudioObjectGetPropertyData et al.) — not pulled in transitively
           // by ApplicationServices, unlike CoreGraphics/CoreText above.
           '-framework', 'CoreAudio',
+          // IOKit: rw_plat_gpu_util_pct's IOAccelerator "Device Utilization
+          // %" registry read (perf telemetry — see rewind_obs_macos.c).
+          '-framework', 'IOKit',
+          // Foundation + libobjc: rw_plat_thermal_state's
+          // NSProcessInfo.thermalState read, called via the plain
+          // Objective-C runtime C API (objc_msgSend) rather than Objective-C
+          // message syntax — see that function's doc comment in
+          // rewind_obs_macos.c for why (this file stays a C11 translation
+          // unit; CBuilder only compiles .c sources). objc_msgSend itself
+          // lives in libobjc, not Foundation, so both must be linked
+          // explicitly even though only Foundation's NSProcessInfo class is
+          // actually used.
+          '-framework', 'Foundation',
+          '-lobjc',
           // Dev-tree runs (flutter run/build before bundling): resolve
           // straight from the fetched SDK via an absolute rpath.
           '-Wl,-rpath,${obsRoot.path}/lib',

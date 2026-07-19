@@ -1026,6 +1026,7 @@ int rewind_perf_stats_json(char *json_out, int json_cap) {
     /* Frame-health counters only mean anything once the pipeline exists;
      * zero otherwise (matches the doc comment in rewind_obs.h). */
     uint32_t obs_total = 0, obs_lagged = 0, vo_total = 0, vo_skipped = 0;
+    double obs_render_avg_ms = -1.0;
     if (g_initialized) {
         obs_total = obs_get_total_frames();
         obs_lagged = obs_get_lagged_frames();
@@ -1034,13 +1035,31 @@ int rewind_perf_stats_json(char *json_out, int json_cap) {
             vo_total = video_output_get_total_frames(vid);
             vo_skipped = video_output_get_skipped_frames(vid);
         }
+        /* obs_get_average_frame_time_ns() is the compositor's per-frame
+         * render cost — the direct measure of render-pipeline changes (e.g.
+         * canvas-at-output-resolution above), unlike cpu_user_s/cpu_sys_s
+         * which don't move for a GPU-side win. Only meaningful once a video
+         * pipeline exists (same gate as the frame counters above); -1
+         * otherwise, matching gpu_util_pct/thermal_state's "-1 =
+         * unavailable" sentinel below rather than a bare 0 that could be
+         * misread as "zero-cost render". */
+        obs_render_avg_ms = (double)obs_get_average_frame_time_ns() / 1000000.0;
     }
+
+    /* GPU utilization / thermal state are OS readings, independent of
+     * whether the capture pipeline is running — see rw_plat_gpu_util_pct/
+     * rw_plat_thermal_state's doc comments in rewind_obs_internal.h. Both
+     * already return -1 on any platform/failure where they're unavailable. */
+    int gpu_util_pct = rw_plat_gpu_util_pct();
+    int thermal_state = rw_plat_thermal_state();
 
     int n = snprintf(json_out, (size_t)json_cap,
         "{\"cpu_user_s\":%.3f,\"cpu_sys_s\":%.3f,\"rss_bytes\":%lld,"
         "\"obs_total_frames\":%u,\"obs_lagged_frames\":%u,"
-        "\"vo_total_frames\":%u,\"vo_skipped_frames\":%u}",
-        cpu_user_s, cpu_sys_s, rss_bytes, obs_total, obs_lagged, vo_total, vo_skipped);
+        "\"vo_total_frames\":%u,\"vo_skipped_frames\":%u,"
+        "\"obs_render_avg_ms\":%.2f,\"gpu_util_pct\":%d,\"thermal_state\":%d}",
+        cpu_user_s, cpu_sys_s, rss_bytes, obs_total, obs_lagged, vo_total, vo_skipped,
+        obs_render_avg_ms, gpu_util_pct, thermal_state);
     if (n < 0 || n >= json_cap) { set_error("perf stats truncated"); return 1; }
     set_error("");
     return 0;
@@ -1255,8 +1274,12 @@ int rewind_request_screen_permission(void) {
 }
 
 /* CPU/RSS still come from the real OS (perf_process_stats is plain OS
- * process-introspection, no libobs involved) — only the frame-health
- * counters are libobs-specific and so are zeroed here (no pipeline to ask). */
+ * process-introspection, no libobs involved) — the frame-health counters
+ * and obs_render_avg_ms are libobs-specific and so are zeroed/-1 here (no
+ * pipeline to ask); gpu_util_pct/thermal_state are -1 too — the stub build
+ * has no rw_plat_* seam at all (rewind_obs_internal.h, whose extern
+ * declarations back that seam, is only included in REWIND_USE_LIBOBS mode
+ * above), not just an unavailable platform reading. */
 int rewind_perf_stats_json(char *json_out, int json_cap) {
     if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
 
@@ -1267,7 +1290,8 @@ int rewind_perf_stats_json(char *json_out, int json_cap) {
     int n = snprintf(json_out, (size_t)json_cap,
         "{\"cpu_user_s\":%.3f,\"cpu_sys_s\":%.3f,\"rss_bytes\":%lld,"
         "\"obs_total_frames\":0,\"obs_lagged_frames\":0,"
-        "\"vo_total_frames\":0,\"vo_skipped_frames\":0}",
+        "\"vo_total_frames\":0,\"vo_skipped_frames\":0,"
+        "\"obs_render_avg_ms\":-1.00,\"gpu_util_pct\":-1,\"thermal_state\":-1}",
         cpu_user_s, cpu_sys_s, rss_bytes);
     if (n < 0 || n >= json_cap) { set_error("perf stats truncated"); return 1; }
     set_error("");

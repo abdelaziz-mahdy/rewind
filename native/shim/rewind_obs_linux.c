@@ -915,4 +915,23 @@ int rw_plat_create_encoders(void) {
     return 0;
 }
 
+/* ---- perf telemetry (Linux): not implemented in this task ---------------
+ *
+ * GPU device utilization would need a driver-specific query (e.g. sysfs
+ * under /sys/class/drm for Intel/AMD, NVML for NVIDIA — no single portable
+ * API across GPU vendors the way macOS's IOAccelerator is one call for
+ * every GPU); thermal state has no OS-level equivalent to macOS's
+ * NSProcessInfo.thermalState at all (closest analogue, ACPI thermal zones
+ * under /sys/class/thermal, has no single "pressure level" abstraction).
+ * Both out of scope here — always report "unavailable" rather than a
+ * guessed/fake value. See rw_plat_gpu_util_pct/rw_plat_thermal_state's doc
+ * comments in rewind_obs_internal.h. */
+int rw_plat_gpu_util_pct(void) {
+    return -1;
+}
+
+int rw_plat_thermal_state(void) {
+    return -1;
+}
+
 #endif /* defined(REWIND_USE_LIBOBS) && defined(__linux__) */
