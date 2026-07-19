@@ -43,6 +43,44 @@ void main() {
     expect(MatchStatsStore(dir: tmp).statsFor('x', start), isNull);
   });
 
+  test('updatedAt tracks the latest mutation and round-trips through disk',
+      () async {
+    final store = MatchStatsStore(dir: tmp);
+    final eventAt = start.add(const Duration(minutes: 5));
+    store.recordEvent('league_of_legends', start, GameEventKind.kill, eventAt);
+    expect(store.statsFor('league_of_legends', start)!.updatedAt, eventAt);
+
+    await store.save();
+    final reloaded = await MatchStatsStore.load(tmp);
+    expect(reloaded.statsFor('league_of_legends', start)!.updatedAt, eventAt);
+  });
+
+  test('a persisted match without updatedAt (pre-feature) falls back to '
+      'startedAt', () {
+    final m = MatchStats.fromJson({
+      'gameId': 'league_of_legends',
+      'startedAt': start.toIso8601String(),
+    });
+    expect(m.updatedAt, start);
+  });
+
+  test('latestFor picks the most recently updated match of that game only',
+      () {
+    final store = MatchStatsStore(dir: tmp);
+    final earlier = start.subtract(const Duration(hours: 2));
+    // An old match updated long ago, a new match updated just now, and a
+    // different game updated even later — latestFor must pick the middle one.
+    store.recordEvent('league_of_legends', earlier, GameEventKind.kill,
+        earlier.add(const Duration(minutes: 20)));
+    store.recordEvent('league_of_legends', start, GameEventKind.kill,
+        start.add(const Duration(minutes: 9)));
+    store.recordEvent('other_game', start, GameEventKind.kill,
+        start.add(const Duration(minutes: 30)));
+
+    expect(store.latestFor('league_of_legends')!.startedAt, start);
+    expect(store.latestFor('missing_game'), isNull);
+  });
+
   test('notifies listeners on each record (live K/D on cards)', () {
     final store = MatchStatsStore(dir: tmp);
     var n = 0;

@@ -162,6 +162,40 @@ class ClipCoordinator {
   /// any UI that needs to line clips up with `MatchStatsStore`.
   DateTime? sessionStartedAtFor(String gameId) => _sessionStartedAt[gameId];
 
+  /// How recently a game's newest [MatchStats] must have been updated for a
+  /// first-after-launch activation to RESUME that match session instead of
+  /// starting a new one. Restarting the app takes well under a minute; a
+  /// match whose stats went quiet longer ago than this is a match that
+  /// ended, not one the restart interrupted.
+  static const sessionResumeWindow = Duration(minutes: 3);
+
+  /// GameIds whose first activation since app launch has already happened —
+  /// the restart-resume check ([_sessionStampFor]) only ever applies to the
+  /// first one; every later activation is a genuinely new session.
+  final Set<String> _sessionResumeChecked = {};
+
+  /// The session stamp for a fresh activation of [a]: normally now. But on
+  /// the FIRST activation of this game after app launch, if the game's most
+  /// recent persisted match was still being updated moments ago
+  /// ([sessionResumeWindow]), the app itself was restarted mid-match — a
+  /// fresh stamp would split one real match into two cards (observed live
+  /// 2026-07-19 19:42), so the interrupted session's stamp is reused and
+  /// its clips/stats keep accumulating onto the same match.
+  DateTime _sessionStampFor(GameActivity a) {
+    final now = DateTime.now();
+    if (!_sessionResumeChecked.add(a.gameId)) return now;
+    final latest = matchStats?.latestFor(a.gameId);
+    if (latest == null) return now;
+    final sinceUpdate = now.difference(latest.updatedAt);
+    if (sinceUpdate.isNegative || sinceUpdate > sessionResumeWindow) {
+      return now;
+    }
+    talker.info('Resuming ${a.displayName} match session from '
+        '${latest.startedAt.toIso8601String()} (still updating '
+        '${sinceUpdate.inSeconds}s ago — app restarted mid-match)');
+    return latest.startedAt;
+  }
+
   /// Burst debounce for event-triggered saves. A fight is a BURST of
   /// events; saving on the first one both spams the disk (the 2026-07-14
   /// incident) and cuts the clip before the fight ends, while a plain
@@ -206,8 +240,11 @@ class ClipCoordinator {
         }
         // One session per continuous activation: every clip saved until
         // this game deactivates shares this timestamp, which is what lets
-        // the hub group a match's clips together (Clip.sessionAt).
-        _sessionStartedAt[a.gameId] = DateTime.now();
+        // the hub group a match's clips together (Clip.sessionAt) — except
+        // on an app restart mid-match, where the previous session is
+        // resumed instead of splitting the match in two (see
+        // [_sessionStampFor]).
+        _sessionStartedAt[a.gameId] = _sessionStampFor(a);
         talker.info('Detected ${a.displayName} running');
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);

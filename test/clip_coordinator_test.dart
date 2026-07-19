@@ -1068,6 +1068,104 @@ void main() {
       expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
     });
 
+    test(
+        'app restart mid-match resumes the interrupted session instead of '
+        'splitting the match into two cards', () async {
+      final oldStart = DateTime.now().subtract(const Duration(minutes: 10));
+      final statsStore = MatchStatsStore(dir: tmp);
+      // The persisted trace of the interrupted match: started 10 min ago,
+      // still being updated seconds before this (new) app instance came up.
+      statsStore.recordEvent(
+          'league_of_legends', oldStart, GameEventKind.kill, DateTime.now());
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.sessionStartedAtFor('league_of_legends'), oldStart);
+    });
+
+    test(
+        'a previous match that went quiet before the resume window gets a '
+        'fresh session, not a resume', () async {
+      final oldStart = DateTime.now().subtract(const Duration(minutes: 30));
+      final statsStore = MatchStatsStore(dir: tmp);
+      statsStore.recordEvent('league_of_legends', oldStart, GameEventKind.kill,
+          DateTime.now().subtract(const Duration(minutes: 10)));
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      final stamp = c.sessionStartedAtFor('league_of_legends')!;
+      expect(stamp, isNot(oldStart));
+      expect(DateTime.now().difference(stamp).inSeconds, lessThan(5));
+    });
+
+    test(
+        'only the first activation after launch may resume — deactivating '
+        'and re-activating starts a genuinely new session', () async {
+      final oldStart = DateTime.now().subtract(const Duration(minutes: 10));
+      final statsStore = MatchStatsStore(dir: tmp);
+      statsStore.recordEvent(
+          'league_of_legends', oldStart, GameEventKind.kill, DateTime.now());
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.sessionStartedAtFor('league_of_legends'), oldStart);
+
+      localLeague.running = false;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // The stats store still says "updated moments ago" (the resumed
+      // session's own kill), but this is a NEW match, not a restart.
+      expect(c.sessionStartedAtFor('league_of_legends'), isNot(oldStart));
+    });
+
     test('a death never triggers a clip save (not in enabledEvents)', () async {
       final statsStore = MatchStatsStore(dir: tmp);
       final c = ClipCoordinator(
