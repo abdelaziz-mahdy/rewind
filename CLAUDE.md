@@ -76,7 +76,7 @@ rewind/
 - **TCC / Screen Recording keys off the code signature.** The app signs with
   a real Apple Development identity (set in the Xcode project) so grants
   survive rebuilds. Never revert to ad-hoc `-s -`. If permission breaks:
-  `tccutil reset ScreenCapture com.example.rewind`, launch via `open`,
+  `tccutil reset ScreenCapture com.zcreations.rewind`, launch via `open`,
   re-grant once.
 - **Launch context matters:** running the binary from a terminal attributes
   screen capture to the TERMINAL. Always test via

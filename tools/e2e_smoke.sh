@@ -45,7 +45,7 @@ mkdir -p "$CLIPS_DIR"
 # buffer output stops a few frames after startup) and the recording leg's
 # file used to mask that from the "new clip appeared" check below. Force
 # always-on buffering for the test run and restore the user's settings after.
-SETTINGS="$HOME/Library/Application Support/com.example.rewind/settings.json"
+SETTINGS="$HOME/Library/Application Support/com.zcreations.rewind/settings.json"
 SETTINGS_BAK=""
 if [[ -f "$SETTINGS" ]]; then
   SETTINGS_BAK="$(mktemp /tmp/rewind_e2e_settings.XXXXXX)"
