@@ -24,6 +24,11 @@ All notable changes to Rewind are documented here. Format based on
   (`rewind_set_mic_noise_suppression`).
 
 ### Changed
+- **In-app echo guidance**: Settings → Audio now explains, right under the
+  mic controls, that speaker echo can't be removed after the fact and what
+  actually works — headphones, or macOS Voice Isolation (Control Center →
+  Mic Mode) — instead of leaving users to discover there's no echo
+  cancellation the hard way.
 - **UX polish pass**: a broken/missing clip now shows "Couldn't play this
   clip" with the underlying error in the player instead of an indefinite
   black frame with a dead seek bar; manual saves ("Save clip" button /
