@@ -166,8 +166,11 @@ playback and any future headless media_kit use):**
 **Testing gotchas:**
 - Never pipe `flutter test` through `tail`/`grep` when the exit code matters
   — pipes mask failures. Redirect to a file and `echo $?`.
-- `pumpAndSettle` NEVER settles on screens containing the recorder deck (the
-  REC dot animates forever) — use bounded `pump(Duration(...))`.
+- Prefer bounded `pump(Duration(...))` over `pumpAndSettle` on shell/deck
+  screens. (Historical: the REC dot used to animate forever, so settle
+  could never return; the dot is static now — see `_PulseDot`'s doc — but
+  bounded pumps remain the safe default since any timer-driven widget,
+  e.g. the mic-test meter's poll, reintroduces the hang.)
 - `PlayerScreen` cannot be built in widget tests (media_kit needs native
   libmpv); tests assert navigation by route name (`playerScreenRouteName`).
 - Real `dart:io` file work inside `testWidgets` bodies hangs the fake-async
