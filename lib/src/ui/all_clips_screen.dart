@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
+import '../clip/duration_prober.dart';
+import '../clip/match_export.dart';
 import '../clip/match_stats.dart';
 import '../clip/thumbnail_cache.dart';
 import '../events/game_catalog.dart';
@@ -160,6 +162,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
     Navigator.of(context).push(MaterialPageRoute<void>(
       settings: const RouteSettings(name: matchClipsScreenRouteName),
       builder: (_) => MatchClipsScreen(
+        exporter: FfmpegMatchExporter(),
+        prober: FfprobeDurationProber(),
         session: entry.session,
         matchLabel: _sessionLabel(entry.session, stats),
         stats: stats,
