@@ -33,7 +33,9 @@ class GameDestination extends ShellDestination {
   int get hashCode => Object.hash(GameDestination, gameId);
 }
 
-/// The Supported Games catalog (built in T5; a placeholder pane until then).
+/// The Supported Games catalog — the auto-detectable titles, their live
+/// running/in-library/addable state, and the "Running now" add-any-app
+/// section (see `SupportedGamesScreen`).
 class SupportedGamesDestination extends ShellDestination {
   const SupportedGamesDestination();
 
