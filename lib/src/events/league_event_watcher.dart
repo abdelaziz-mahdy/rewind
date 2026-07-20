@@ -425,7 +425,16 @@ class LeagueEventWatcher implements GameEventSource {
             ? const [GameEventKind.inhibitorKill]
             : const [];
       case 'GameEnd':
-        return const [GameEventKind.other];
+        // The match-end event carries the active player's result in
+        // `Result` ("Win"/"Lose"). Map it to victory/defeat so the
+        // coordinator can record the match outcome (never a clip — see
+        // ClipCoordinator's outcome handling); an absent/unknown result
+        // stays a neutral `other` (older clients, spectator, remake).
+        return switch ((map['Result'] as String?)?.toLowerCase()) {
+          'win' => const [GameEventKind.victory],
+          'lose' || 'loss' => const [GameEventKind.defeat],
+          _ => const [GameEventKind.other],
+        };
       default:
         return const [];
     }

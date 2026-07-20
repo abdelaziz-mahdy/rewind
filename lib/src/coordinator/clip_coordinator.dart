@@ -297,6 +297,14 @@ class ClipCoordinator {
         _recordStatsUpdate(e);
         return;
       }
+      // Match end (win/loss) — record the outcome onto the session's
+      // MatchStats for the W/L badge. NOT a return: victory/defeat are also
+      // in the settings event matrix (the "MATCH" group), so if the user
+      // enabled them the normal auto-clip path below still saves the
+      // victory/defeat moment. Outcome is recorded either way.
+      if (e.kind == GameEventKind.victory || e.kind == GameEventKind.defeat) {
+        _recordOutcome(e);
+      }
       // Remembered unconditionally (even when auto-clip is off): kill
       // counts on clips must reflect what HAPPENED, not what triggered a
       // save.
@@ -699,6 +707,15 @@ class ClipCoordinator {
       rawChampionName: e.meta['rawChampionName'] as String?,
       skinName: e.meta['skinName'] as String?,
     );
+  }
+
+  void _recordOutcome(GameEvent e) {
+    final sessionStart = _sessionStartedAt[e.gameId];
+    final stats = matchStats;
+    if (sessionStart == null || stats == null) return;
+    final result =
+        e.kind == GameEventKind.victory ? MatchResult.win : MatchResult.loss;
+    stats.recordOutcome(e.gameId, sessionStart, result);
   }
 
   /// Parses a matchInfo event's `allies`/`enemies` meta (a `List` of

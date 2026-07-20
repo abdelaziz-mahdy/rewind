@@ -7,6 +7,12 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Win/Loss on match cards**: League match cards and the match screen now
+  show a WIN (green) or LOSS (red) badge once the game reports the result
+  at match end (read from the Live Client `GameEnd` event, which Rewind
+  previously discarded). Recorded onto the match's stats and persisted;
+  process-only games and pre-feature matches simply show no badge. The
+  match-end moment also clips if you've enabled the "Match" event group.
 - **Watch the full match in-app**: a match's screen now has a "Watch
   match" action — every clip laid on the REAL match timeline (recorded
   spans bright, unrecorded spans as visible gaps, kills/achievements

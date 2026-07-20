@@ -391,4 +391,35 @@ void main() {
       expect(round, p);
     });
   });
+  test('recordOutcome sets and persists the win/loss, once', () async {
+    final store = MatchStatsStore(dir: tmp);
+    store.recordOutcome('league_of_legends', start, MatchResult.win);
+    expect(store.statsFor('league_of_legends', start)!.result, MatchResult.win);
+
+    // A stray later report must not flip a decided result.
+    store.recordOutcome('league_of_legends', start, MatchResult.loss);
+    expect(store.statsFor('league_of_legends', start)!.result, MatchResult.win);
+
+    await store.save();
+    final reloaded = await MatchStatsStore.load(tmp);
+    expect(reloaded.statsFor('league_of_legends', start)!.result,
+        MatchResult.win);
+  });
+
+  test('a persisted match without result (pre-feature) is null', () {
+    final m = MatchStats.fromJson({
+      'gameId': 'league_of_legends',
+      'startedAt': start.toIso8601String(),
+    });
+    expect(m.result, isNull);
+  });
+
+  test('MatchResult.tryParse handles win/loss/unknown', () {
+    expect(MatchResult.tryParse('win'), MatchResult.win);
+    expect(MatchResult.tryParse('loss'), MatchResult.loss);
+    expect(MatchResult.tryParse('WIN'), MatchResult.win);
+    expect(MatchResult.tryParse(null), isNull);
+    expect(MatchResult.tryParse('draw'), isNull);
+  });
+
 }

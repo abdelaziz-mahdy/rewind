@@ -919,6 +919,42 @@ void main() {
       expect(s.deaths, 1);
     });
 
+    test('a match-end event records the win/loss outcome without clipping',
+        () async {
+      final statsStore = MatchStatsStore(dir: tmp);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      // Victory/defeat are in League's default event matrix, but a match's
+      // clips shouldn't be counted here — disable auto-clip so this asserts
+      // ONLY the outcome recording, independent of the clip path.
+      final settings = AppSettings();
+      settings.setConfig(
+          GameConfig(gameId: 'league_of_legends', autoClip: false));
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: settings,
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+
+      localLeague.running = true;
+      await localRegistry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      final sessionStart = c.sessionStartedAtFor('league_of_legends')!;
+
+      localLeague.emit(GameEventKind.victory);
+      await Future<void>.delayed(Duration.zero);
+
+      final s = statsStore.statsFor('league_of_legends', sessionStart)!;
+      expect(s.result, MatchResult.win);
+      expect(localLib.all, isEmpty); // no clip from a match-end event
+    });
+
     test(
         'every routed event kind (kills, deaths, objectives, aces) is '
         'stamped for the player timeline, not just kill/death', () async {

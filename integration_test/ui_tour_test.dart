@@ -169,6 +169,7 @@ void main() {
       kills: 7,
       deaths: 3,
       assists: 12,
+      result: MatchResult.win,
     );
     await t.pumpWidget(frame(MatchClipsScreen(
       session: session,

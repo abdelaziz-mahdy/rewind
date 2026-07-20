@@ -123,6 +123,20 @@ class MatchEventStamp {
   int get hashCode => Object.hash(kind, at);
 }
 
+/// The final outcome of a match, when the game reports one (League's
+/// `GameEnd` event carries a `Result`). Null until/unless reported —
+/// process-only games and matches from before this feature never have it.
+enum MatchResult {
+  win,
+  loss;
+
+  static MatchResult? tryParse(String? s) => switch (s?.toLowerCase()) {
+        'win' => MatchResult.win,
+        'loss' => MatchResult.loss,
+        _ => null,
+      };
+}
+
 /// Kills and deaths the player accumulated in one match (play session),
 /// keyed by the session's start time — the same [Clip.sessionAt] stamp the
 /// coordinator writes onto that match's clips, so a match card can look up
@@ -183,6 +197,11 @@ class MatchStats {
   /// before this field existed — safely "long ago" by the time it matters).
   DateTime updatedAt;
 
+  /// The match's final win/loss, when the game reported one at match end
+  /// (see [MatchResult]). Null while the match is live, for process-only
+  /// games, and for matches from before this feature.
+  MatchResult? result;
+
   MatchStats({
     required this.gameId,
     required this.startedAt,
@@ -200,6 +219,7 @@ class MatchStats {
     List<MatchItemSlot>? items,
     List<MatchEventStamp>? events,
     DateTime? updatedAt,
+    this.result,
   })  : allies = allies ?? [],
         enemies = enemies ?? [],
         items = items ?? [],
@@ -223,6 +243,7 @@ class MatchStats {
         'items': items.map((i) => i.toJson()).toList(),
         'events': events.map((e) => e.toJson()).toList(),
         'updatedAt': updatedAt.toIso8601String(),
+        'result': result?.name,
       };
 
   /// Backward-compatible with `matches.json` files written before this
@@ -256,6 +277,7 @@ class MatchStats {
                 MatchEventStamp.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
         updatedAt: DateTime.tryParse(j['updatedAt'] as String? ?? ''),
+        result: MatchResult.tryParse(j['result'] as String?),
       );
 }
 
@@ -362,6 +384,18 @@ class MatchStatsStore extends ChangeNotifier {
       m.championKey = rawChampionName;
     }
     if (skinName != null && skinName.isNotEmpty) m.skinName = skinName;
+    _persist();
+  }
+
+  /// Records the match's final win/loss (from the game's match-end event —
+  /// see `LeagueEventWatcher`'s GameEnd handling). Once set it's not
+  /// overwritten: match end fires once, and a stray later report shouldn't
+  /// flip a decided result.
+  void recordOutcome(String gameId, DateTime startedAt, MatchResult result) {
+    final m = _ensure(gameId, startedAt);
+    if (m.result != null) return;
+    m.result = result;
+    m.updatedAt = DateTime.now();
     _persist();
   }
 
