@@ -73,6 +73,15 @@ class ClipCoordinator {
   /// right after a subsequent successful save.
   final ValueNotifier<String?> lastSaveError = ValueNotifier(null);
 
+  /// The clip from the most recent MANUAL save (hotkey / "Save clip"
+  /// button) once it's indexed, for the UI to confirm visibly (a SnackBar —
+  /// see the Shell). Manual only: event auto-saves mid-game would spam
+  /// toasts over gameplay, and their confirmation is the clip appearing in
+  /// the library the user is usually looking at anyway. Set via the same
+  /// null round-trip trick as [lastSaveError] so back-to-back saves both
+  /// notify.
+  final ValueNotifier<Clip?> lastManualSave = ValueNotifier(null);
+
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
 
@@ -817,6 +826,10 @@ class ClipCoordinator {
     await library.save();
     await storage.enforce();
     lastSaveError.value = null;
+    if (e.kind == GameEventKind.manual) {
+      lastManualSave.value = null;
+      lastManualSave.value = clip;
+    }
     talker.info('Clip saved: $path');
 
     // Fire-and-forget: thumbnail generation must never delay or fail a save.

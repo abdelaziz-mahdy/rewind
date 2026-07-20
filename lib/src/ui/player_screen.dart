@@ -82,6 +82,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<double>? _volumeSub;
+  StreamSubscription<String>? _errorSub;
+
+  /// The first playback error mpv reported, or null while playback is
+  /// healthy. A missing/corrupt clip file otherwise plays as an indefinite
+  /// black frame with a dead seek bar — this swaps the video area for an
+  /// explanation and a fallback.
+  String? _playbackError;
 
   @override
   void initState() {
@@ -105,6 +112,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() => _volume = volume);
       if (volume > 0) _previousVolume = volume;
     });
+    _errorSub = _player.stream.error.listen((message) {
+      // First error wins — mpv often follows one root failure with a
+      // cascade of secondary messages, and the first names the real cause.
+      if (mounted && _playbackError == null) {
+        setState(() => _playbackError = message);
+      }
+    });
     _player.open(Media(widget.clip.path));
   }
 
@@ -114,6 +128,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _positionSub?.cancel();
     _durationSub?.cancel();
     _volumeSub?.cancel();
+    _errorSub?.cancel();
     _focusNode.dispose();
     // Fire-and-forget: Player.dispose() is async (it tears down the native
     // player) but State.dispose() must be synchronous.
@@ -157,15 +172,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _Header(clip: widget.clip),
             Expanded(
               child: Center(
-                child: Video(
-                  controller: _controller,
-                  // media_kit's own control overlay would render alongside
-                  // ours otherwise (maintainer: "both render, ours win") —
-                  // NoVideoControls is media_kit_video's documented way to
-                  // opt out of it entirely (it's literally `null` under the
-                  // hood, not a special-cased builder).
-                  controls: NoVideoControls,
-                ),
+                child: _playbackError != null
+                    ? _PlaybackErrorPanel(
+                        message: _playbackError!,
+                        clip: widget.clip,
+                      )
+                    : Video(
+                        controller: _controller,
+                        // media_kit's own control overlay would render
+                        // alongside ours otherwise (maintainer: "both
+                        // render, ours win") — NoVideoControls is
+                        // media_kit_video's documented way to opt out of it
+                        // entirely (it's literally `null` under the hood,
+                        // not a special-cased builder).
+                        controls: NoVideoControls,
+                      ),
               ),
             ),
             _Controls(
@@ -299,6 +320,40 @@ class _Controls extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Shown in place of the video when mpv reports a playback error (missing,
+/// moved, or corrupt clip file): names the problem instead of the previous
+/// behavior — an indefinite black frame with a dead seek bar and no message.
+class _PlaybackErrorPanel extends StatelessWidget {
+  final String message;
+  final Clip clip;
+
+  const _PlaybackErrorPanel({required this.message, required this.clip});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.broken_image_outlined, size: 48, color: tokens.textMuted),
+        const SizedBox(height: 16),
+        Text("Couldn't play this clip", style: textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Text(
+          'The file may have been moved, deleted, or damaged.',
+          style: textTheme.bodyMuted,
+        ),
+        const SizedBox(height: 4),
+        // The raw mpv line, for a bug report — muted so it reads as detail,
+        // not the headline.
+        SelectableText(message,
+            style: textTheme.bodyMuted, textAlign: TextAlign.center),
+      ],
     );
   }
 }

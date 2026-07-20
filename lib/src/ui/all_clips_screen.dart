@@ -270,10 +270,28 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
               onSelected: (k) => setState(() => _filterKind = k),
             ),
             Expanded(
+              // Clips exist but the active event filter matches none of
+              // them — that's "nothing matches", not "library empty", so
+              // the first-run guidance ("press the hotkey…") would be
+              // wrong and the fix is one click away: clear the filter.
               child: clips.isEmpty
-                  ? _EmptyLibrary(
-                      hotkeyLabel: widget.hotkeyLabel,
-                      onOpenClipsFolder: widget.onOpenClipsFolder,
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'No clips match this filter',
+                            style: Theme.of(context).textTheme.bodyMuted,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            key: const ValueKey('clearFilterButton'),
+                            onPressed: () =>
+                                setState(() => _filterKind = null),
+                            child: const Text('Clear filter'),
+                          ),
+                        ],
+                      ),
                     )
                   : ListView(
                       key: const ValueKey('clipsList'),

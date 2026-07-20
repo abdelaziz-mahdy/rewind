@@ -266,6 +266,30 @@ void main() {
     expect(library.all.single.event, GameEventKind.manual);
   });
 
+  test('a manual save notifies lastManualSave with the indexed clip', () async {
+    expect(coordinator.lastManualSave.value, isNull);
+    await coordinator.onHotkey();
+    expect(coordinator.lastManualSave.value, isNotNull);
+    expect(coordinator.lastManualSave.value!.event, GameEventKind.manual);
+  });
+
+  test('an event save does NOT notify lastManualSave — no toast spam mid-game',
+      () async {
+    league.running = true;
+    await registry.tickNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final saved = Completer<void>();
+    library.addListener(() {
+      if (!saved.isCompleted) saved.complete();
+    });
+    league.emit(GameEventKind.kill);
+    await saved.future;
+
+    expect(library.all, hasLength(1));
+    expect(coordinator.lastManualSave.value, isNull);
+  });
+
   test('failed save adds nothing to the library', () async {
     engine.failSave = true;
     await coordinator.onHotkey();

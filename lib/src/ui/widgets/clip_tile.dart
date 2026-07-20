@@ -319,9 +319,13 @@ class _ClipTileState extends State<ClipTile> {
   Future<void> _onAction(BuildContext context, _ClipAction action) async {
     switch (action) {
       case _ClipAction.openDefault:
-        await _open(widget.clip.path);
+        if (!await _open(widget.clip.path) && context.mounted) {
+          _showOpenFailed(context);
+        }
       case _ClipAction.reveal:
-        await _reveal(widget.clip.path);
+        if (!await _reveal(widget.clip.path) && context.mounted) {
+          _showOpenFailed(context);
+        }
       case _ClipAction.protect:
         // Protected clips are exempt from StorageManager's auto-cleanup
         // (max-storage / max-age pruning) — the ShadowPlay-style "keep this
@@ -341,7 +345,13 @@ class _ClipTileState extends State<ClipTile> {
                 onPressed: () => Navigator.pop(context, false),
                 child: const Text('Cancel'),
               ),
-              TextButton(
+              // Destructive action reads as destructive — identical plain
+              // buttons invited misclicks on a permanent file delete.
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Delete'),
               ),
@@ -360,30 +370,52 @@ class _ClipTileState extends State<ClipTile> {
     ));
   }
 
-  static Future<void> _open(String path) async {
+  /// A menu item that silently does nothing reads as broken — failures
+  /// (missing file, no OS handler) get one small toast instead.
+  static void _showOpenFailed(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      behavior: SnackBarBehavior.floating,
+      content: Text("Couldn't open this file — it may have been moved or "
+          'deleted.'),
+    ));
+  }
+
+  static Future<bool> _open(String path) async {
     try {
       if (Platform.isMacOS) {
-        await Process.run('open', [path]);
+        final r = await Process.run('open', [path]);
+        return r.exitCode == 0;
       } else if (Platform.isWindows) {
         // `start` is a cmd.exe built-in, not an executable; a quoted first
         // arg is taken as the window title, so pass an empty title first.
+        // No exit-code gate: cmd/start exit codes don't reliably reflect
+        // whether a handler opened (explorer famously returns 1 on
+        // success), so Windows stays launch-and-hope with only the
+        // exception path reporting failure.
         await Process.run('cmd', ['/c', 'start', '', path]);
+        return true;
       }
+      return true;
     } catch (_) {
-      // Best-effort: no OS handler available is not fatal.
+      return false;
     }
   }
 
-  static Future<void> _reveal(String path) async {
+  static Future<bool> _reveal(String path) async {
     try {
       if (Platform.isMacOS) {
-        await Process.run('open', ['-R', path]);
+        final r = await Process.run('open', ['-R', path]);
+        return r.exitCode == 0;
       } else if (Platform.isWindows) {
         // Documented form: "/select," joined with the path as ONE argument.
+        // Same no-exit-code-gate rationale as _open: explorer returns 1
+        // even when the window opens fine.
         await Process.run('explorer', ['/select,$path']);
+        return true;
       }
+      return true;
     } catch (_) {
-      // Best-effort: no OS handler available is not fatal.
+      return false;
     }
   }
 }
