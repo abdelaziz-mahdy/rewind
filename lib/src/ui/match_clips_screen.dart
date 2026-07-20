@@ -68,35 +68,47 @@ class MatchClipsScreen extends StatelessWidget {
     final extras = s != null ? presentation?.buildExtras(context, s) : null;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(matchLabel),
-        actions: [
-          if (prober != null && session.clips.isNotEmpty)
-            IconButton(
-              key: const ValueKey('watchMatchButton'),
-              icon: const Icon(Icons.play_circle_outline),
-              tooltip: 'Watch match — all clips on the real timeline',
-              onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute<void>(
-                  settings: const RouteSettings(
-                      name: matchTimelineScreenRouteName),
-                  builder: (_) => MatchTimelineScreen(
-                    session: session,
-                    matchLabel: matchLabel,
-                    stats: stats,
-                    prober: prober!,
-                  ),
-                ));
-              },
-            ),
-          if (exporter != null && exporter!.isSupported)
-            _ExportMatchButton(
-                session: session, library: library, exporter: exporter!),
-        ],
-      ),
+      appBar: AppBar(title: Text(matchLabel)),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
+          // The match's headline actions live IN the content column, first
+          // thing under the app bar — as app-bar icons they sat top-right,
+          // outside where the eye actually lands on this screen
+          // (maintainer: "far away from user vision").
+          if ((prober != null && session.clips.isNotEmpty) ||
+              (exporter != null && exporter!.isSupported))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: Row(
+                children: [
+                  if (prober != null && session.clips.isNotEmpty)
+                    FilledButton.icon(
+                      key: const ValueKey('watchMatchButton'),
+                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      label: const Text('Watch match'),
+                      onPressed: () {
+                        Navigator.of(context).push(MaterialPageRoute<void>(
+                          settings: const RouteSettings(
+                              name: matchTimelineScreenRouteName),
+                          builder: (_) => MatchTimelineScreen(
+                            session: session,
+                            matchLabel: matchLabel,
+                            stats: stats,
+                            prober: prober!,
+                          ),
+                        ));
+                      },
+                    ),
+                  const SizedBox(width: 12),
+                  if (exporter != null && exporter!.isSupported)
+                    _ExportMatchButton(
+                        session: session,
+                        library: library,
+                        exporter: exporter!),
+                ],
+              ),
+            ),
           if (summary != null)
             Padding(
               key: const ValueKey('matchSummary'),
@@ -205,22 +217,17 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
 
   @override
   Widget build(BuildContext context) {
-    return _exporting
-        ? const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          )
-        : IconButton(
-            key: const ValueKey('exportMatchButton'),
-            icon: const Icon(Icons.movie_outlined),
-            tooltip: 'Export full match as one video',
-            onPressed: _export,
-          );
+    return OutlinedButton.icon(
+      key: const ValueKey('exportMatchButton'),
+      icon: _exporting
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.movie_outlined, size: 18),
+      label: Text(_exporting ? 'Exporting…' : 'Export as one video'),
+      onPressed: _exporting ? null : _export,
+    );
   }
 }
