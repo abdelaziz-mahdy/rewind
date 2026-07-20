@@ -391,10 +391,19 @@ class LeagueEventWatcher implements GameEventSource {
             GameEventKind.death,
         ];
       case 'Multikill':
-        // TODO: read KillStreak for exact tier (triple/quadra/penta).
-        return _isActivePlayer(map['KillerName'] as String?)
-            ? const [GameEventKind.doubleKill]
-            : const [];
+        if (!_isActivePlayer(map['KillerName'] as String?)) return const [];
+        // The Multikill event carries the streak tier in `KillStreak`
+        // (2=double … 5=penta), and League fires a fresh Multikill event at
+        // EACH tier as the streak grows — so mapping the value to its exact
+        // kind is what distinguishes a penta from a double. An unknown/
+        // missing value falls back to the lowest multikill rather than
+        // dropping the highlight entirely.
+        return switch ((map['KillStreak'] as num?)?.toInt()) {
+          5 => const [GameEventKind.pentaKill],
+          4 => const [GameEventKind.quadraKill],
+          3 => const [GameEventKind.tripleKill],
+          _ => const [GameEventKind.doubleKill],
+        };
       case 'Ace':
         return _isActivePlayer(map['Acer'] as String?)
             ? const [GameEventKind.ace]
