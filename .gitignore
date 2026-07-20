@@ -36,3 +36,6 @@ native/third_party/
 
 # Packaged release artifacts (DMG / installer)
 dist/
+
+# Integration-test UI tour output (regenerable)
+screenshots/
