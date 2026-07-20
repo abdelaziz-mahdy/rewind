@@ -326,6 +326,22 @@ rest — you never touch them.
 
 - **Dart:** `dart format .` and `flutter analyze` must pass. Lints in `analysis_options.yaml`.
 - **C:** C11, no C++ in the shim (keeps FFI binding simple).
+- **Cross-platform is non-negotiable:** a feature that needs native support
+  ships for **macOS AND Windows at minimum** (Linux too when the underlying
+  primitive exists there). Prefer shared C in the shim — cross-platform by
+  construction — over per-platform channel handlers; a feature that only
+  works on one OS gets a graceful, visible fallback on the others, never a
+  dead or missing affordance.
+- **Platform channels use [pigeon](https://pub.dev/packages/pigeon):** if a
+  Dart↔host-platform channel is ever unavoidable, define it as a pigeon
+  schema (`pigeons/*.dart`) and generate the Dart + Swift + C++ sides.
+  Hand-rolled `MethodChannel` string-and-map marshalling is where null
+  safety silently dies — don't write it.
+- **C bindings use [ffigen](https://pub.dev/packages/ffigen):** new FFI
+  surface is generated from `native/shim/rewind_obs.h`, not hand-written.
+  (The existing hand-written `lib/src/obs/rewind_obs_ffi.dart` predates
+  this rule; migrating it to ffigen is planned — don't grow it further by
+  hand.)
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`. These drive changelog/release notes.
 - **Docs:** update relevant docs in the same PR as the behavior change (see CLAUDE.md → "Maintaining docs").
 
