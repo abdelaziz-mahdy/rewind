@@ -89,6 +89,12 @@ All notable changes to Rewind are documented here. Format based on
   instead of the first-run empty state.
 
 ### Fixed
+- **Concurrent settings saves could wipe settings.json**: every save
+  shared one `settings.json.tmp` scratch file, so two overlapping saves
+  (e.g. rapid Settings changes) could publish a half-written JSON — which
+  the corrupt-file recovery path then silently "fixed" by resetting ALL
+  settings to defaults. Saves are now serialized (each write starts after
+  the previous rename lands) with the JSON snapshotted at call time.
 - **Mic auto-leveling was silently inert** — the `obs-filters` plugin
   (home of libobs' compressor/limiter/noise-suppression filters) was never
   in the SDK build allow-list, and libobs "creates" sources with

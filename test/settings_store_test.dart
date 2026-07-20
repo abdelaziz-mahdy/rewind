@@ -535,4 +535,37 @@ void main() {
     // valid JSON on disk
     jsonDecode(store.file.readAsStringSync());
   });
+  test('concurrent saves never publish a torn file — last snapshot wins',
+      () async {
+    final store = SettingsStore(tmp);
+    // Unserialized, these all truncate/write the SAME .tmp path at once —
+    // the bug this pins is a rename publishing another writer's
+    // half-written JSON (which load() then "recovers" to defaults).
+    final futures = <Future<void>>[
+      for (var i = 1; i <= 20; i++)
+        store.save(AppSettings(defaultBufferSeconds: i)),
+    ];
+    await Future.wait(futures);
+
+    final loaded = await store.load();
+    // Valid JSON (load didn't fall back to defaults via the corrupt-file
+    // path — 30 is the default, so any 1..20 value proves a real read)
+    // and specifically the LAST queued snapshot.
+    expect(loaded.defaultBufferSeconds, 20);
+    expect(File('${store.file.path}.bad').existsSync(), isFalse);
+  });
+
+  test('save snapshots state at call time, not at queue-drain time',
+      () async {
+    final store = SettingsStore(tmp);
+    final s = AppSettings(defaultBufferSeconds: 15);
+    final first = store.save(s);
+    // Mutate AFTER the first save call but before its write completes —
+    // the first snapshot must still be 15; the second save persists 60.
+    s.defaultBufferSeconds = 60;
+    await first;
+    await store.save(s);
+    expect((await store.load()).defaultBufferSeconds, 60);
+  });
+
 }
