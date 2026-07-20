@@ -1,7 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:rewind/src/clip/thumbnail_generator.dart';
+
+/// A real, decodable 1x1 JPEG. The fake used to write three bare magic
+/// bytes (`FF D8 FF`), which is NOT a valid image: `Image.file` throws
+/// "Invalid image data", and although `ClipTile`'s errorBuilder catches it
+/// visually, Flutter still records the codec exception globally — which
+/// trips `takeException()` and flakes any test (and the integration-test UI
+/// tour) that renders a tile. A valid image decodes cleanly.
+final Uint8List _tinyJpeg = base64Decode(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRof'
+  'Hh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAAB'
+  'AAAAAAAAAAAAAAAAAAAAAv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8AH//Z',
+);
 
 /// A [ThumbnailGenerator] that writes a tiny placeholder file instead of
 /// touching media_kit — the seam every test in this suite exercises instead
@@ -37,7 +51,7 @@ class FakeThumbnailGenerator implements ThumbnailGenerator {
     generatedFor.add(videoPath);
     final file = File(thumbPath);
     file.parent.createSync(recursive: true);
-    file.writeAsBytesSync(const [0xFF, 0xD8, 0xFF]); // JPEG-ish magic bytes
+    file.writeAsBytesSync(_tinyJpeg); // a real, decodable 1x1 JPEG
     return true;
   }
 }

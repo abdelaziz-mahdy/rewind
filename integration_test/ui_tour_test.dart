@@ -13,9 +13,14 @@ import 'package:rewind/src/clip/clip_trimmer.dart';
 import 'package:rewind/src/clip/filmstrip.dart';
 import 'package:rewind/src/clip/match_export.dart';
 import 'package:rewind/src/clip/match_stats.dart';
+import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/clip/thumbnail_cache.dart';
+import 'package:rewind/src/coordinator/clip_coordinator.dart';
+import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
+import 'package:rewind/src/ui/supported_games_screen.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
@@ -175,6 +180,43 @@ void main() {
     )));
     await t.pump(const Duration(milliseconds: 400));
     await shoot('04-match-screen');
+  });
+
+  testWidgets('supported games — running-now add section', (t) async {
+    final library = ClipLibrary(clipsDir: tmp);
+    final settings = AppSettings();
+    final coordinator = ClipCoordinator(
+      registry: GameRegistry(),
+      library: library,
+      storage: StorageManager(library),
+      settings: settings,
+      outDir: tmp.path,
+    );
+    await t.pumpWidget(frame(SupportedGamesScreen(
+      coordinator: coordinator,
+      library: library,
+      onSettingsChanged: (_) async {},
+      onOpenGame: (_) {},
+      listApps: () => [
+        AppInfo(
+            bundleId: 'com.riotgames.valorant',
+            name: 'VALORANT',
+            pid: 10,
+            windowId: 1),
+        AppInfo(bundleId: '', name: 'PenguinHotel.exe', pid: 11, windowId: 2),
+        AppInfo(
+            bundleId: 'com.spotify.client',
+            name: 'Spotify',
+            pid: 12,
+            windowId: 3),
+      ],
+    )));
+    await t.pump(const Duration(milliseconds: 300));
+    // Scroll to the Running now section at the bottom.
+    await t.scrollUntilVisible(find.text('Running now'), 300,
+        scrollable: find.byType(Scrollable).first);
+    await t.pump(const Duration(milliseconds: 200));
+    await shoot('07-supported-games');
   });
 
   testWidgets('onboarding — first-run welcome', (t) async {
