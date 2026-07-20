@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import '../../clip/clip.dart';
 import '../../clip/clip_library.dart';
 import '../../clip/clip_trimmer.dart';
+import '../../clip/filmstrip.dart';
 import '../../clip/match_stats.dart';
 import '../../clip/thumbnail_cache.dart';
+import '../clip_file_actions.dart';
 import '../../events/game_catalog.dart';
 import '../../events/game_event.dart';
 import '../player_screen.dart';
@@ -321,12 +323,12 @@ class _ClipTileState extends State<ClipTile> {
   Future<void> _onAction(BuildContext context, _ClipAction action) async {
     switch (action) {
       case _ClipAction.openDefault:
-        if (!await _open(widget.clip.path) && context.mounted) {
-          _showOpenFailed(context);
+        if (!await openClipFile(widget.clip.path) && context.mounted) {
+          showOpenFailedToast(context);
         }
       case _ClipAction.reveal:
-        if (!await _reveal(widget.clip.path) && context.mounted) {
-          _showOpenFailed(context);
+        if (!await revealClipFile(widget.clip.path) && context.mounted) {
+          showOpenFailedToast(context);
         }
       case _ClipAction.protect:
         // Protected clips are exempt from StorageManager's auto-cleanup
@@ -376,58 +378,11 @@ class _ClipTileState extends State<ClipTile> {
         // The real platform exporter; PlayerScreen hides Trim wherever
         // it reports unsupported (Linux, until ffmpeg_kit ships binaries).
         trimmer: FfmpegKitClipTrimmer(),
+        filmstrip: FfmpegFilmstripGenerator(),
       ),
     ));
   }
 
-  /// A menu item that silently does nothing reads as broken — failures
-  /// (missing file, no OS handler) get one small toast instead.
-  static void _showOpenFailed(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      behavior: SnackBarBehavior.floating,
-      content: Text("Couldn't open this file — it may have been moved or "
-          'deleted.'),
-    ));
-  }
-
-  static Future<bool> _open(String path) async {
-    try {
-      if (Platform.isMacOS) {
-        final r = await Process.run('open', [path]);
-        return r.exitCode == 0;
-      } else if (Platform.isWindows) {
-        // `start` is a cmd.exe built-in, not an executable; a quoted first
-        // arg is taken as the window title, so pass an empty title first.
-        // No exit-code gate: cmd/start exit codes don't reliably reflect
-        // whether a handler opened (explorer famously returns 1 on
-        // success), so Windows stays launch-and-hope with only the
-        // exception path reporting failure.
-        await Process.run('cmd', ['/c', 'start', '', path]);
-        return true;
-      }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<bool> _reveal(String path) async {
-    try {
-      if (Platform.isMacOS) {
-        final r = await Process.run('open', ['-R', path]);
-        return r.exitCode == 0;
-      } else if (Platform.isWindows) {
-        // Documented form: "/select," joined with the path as ONE argument.
-        // Same no-exit-code-gate rationale as _open: explorer returns 1
-        // even when the window opens fine.
-        await Process.run('explorer', ['/select,$path']);
-        return true;
-      }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
 }
 
 /// The hover-revealed overflow trigger pinned over the thumbnail: a dark
