@@ -70,7 +70,10 @@ OBS_TAG="${OBS_TAG:-32.1.2}"
 # RECIPE_VERSION.
 #   1: initial cut — linux-capture (X11), linux-pipewire (Wayland portal),
 #      linux-pulseaudio, obs-ffmpeg (VAAPI + ffmpeg_aac), obs-nvenc, obs-x264.
-RECIPE_VERSION="1"
+#   2: + obs-filters (compressor/limiter/noise suppression for the mic
+#      chain; SpeexDSP disabled — the vendored internal RNNoise needs no
+#      system dep and is the suppression method Rewind uses).
+RECIPE_VERSION="2"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/native/third_party/obs"
@@ -207,6 +210,7 @@ add_obs_plugin(linux-pulseaudio PLATFORMS LINUX)
 add_obs_plugin(obs-ffmpeg)
 add_obs_plugin(obs-nvenc)
 add_obs_plugin(obs-x264)
+add_obs_plugin(obs-filters)
 EOF
 
   mv "$SRC_TMP" "$SRC"
@@ -232,6 +236,7 @@ cmake -S "$SRC" -B "$BUILD" -G Ninja \
   -DENABLE_PULSEAUDIO=ON \
   -DENABLE_NVENC=ON \
   -DENABLE_HEVC=ON \
+  -DENABLE_SPEEXDSP=OFF \
   -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF
 
 cmake --build "$BUILD" --config RelWithDebInfo --parallel "$JOBS"
@@ -273,7 +278,7 @@ fi
 # obs-plugins/: the plugin .so files (flat, PREFIX "" per each plugin's own
 # CMakeLists.txt — see rw_plat_setup_module_paths()'s doc comment in
 # rewind_obs_linux.c).
-for plugin in linux-capture linux-pipewire linux-pulseaudio obs-ffmpeg obs-nvenc obs-x264; do
+for plugin in linux-capture linux-pipewire linux-pulseaudio obs-ffmpeg obs-nvenc obs-x264 obs-filters; do
   found="$(find "$BUILD" -maxdepth 3 -name "${plugin}.so" | head -n1)"
   if [[ -z "$found" ]]; then
     echo "ERROR: required plugin missing from build: ${plugin}.so (plugin" >&2
@@ -299,7 +304,7 @@ cp "$found_mux" "$OUT/bin/"
 
 # data/: libobs core (effects, locale) + per-plugin data (locale)
 cp -a "$SRC/libobs/data/." "$OUT/data/libobs/"
-for plugin in linux-capture linux-pipewire linux-pulseaudio obs-ffmpeg obs-nvenc obs-x264; do
+for plugin in linux-capture linux-pipewire linux-pulseaudio obs-ffmpeg obs-nvenc obs-x264 obs-filters; do
   if [[ -d "$SRC/plugins/$plugin/data" ]]; then
     mkdir -p "$OUT/data/obs-plugins/$plugin"
     cp -a "$SRC/plugins/$plugin/data/." "$OUT/data/obs-plugins/$plugin/"

@@ -23,7 +23,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native/third_party/obs
-          key: libobs-${{ runner.arch }}-32.1.2-deps-2025-08-23-recipe-2
+          key: libobs-${{ runner.arch }}-32.1.2-deps-2025-08-23-recipe-3
       - run: bash tools/fetch_libobs.sh
 
       - run: flutter config --enable-macos-desktop
@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native/third_party/obs
-          key: libobs-windows-x64-32.1.2-recipe-2
+          key: libobs-windows-x64-32.1.2-recipe-3
       - run: ./tools/fetch_libobs_windows.ps1
         shell: pwsh
 
