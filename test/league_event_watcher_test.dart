@@ -114,6 +114,49 @@ void main() {
     expect(emitted, hasLength(2));
   });
 
+  test('a Multikill maps KillStreak to the exact tier, active player only',
+      () async {
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+
+    Map<String, dynamic> multi(int id, String killer, int streak) => {
+          'EventID': id,
+          'EventName': 'Multikill',
+          'KillerName': killer,
+          'KillStreak': streak,
+        };
+    responses['/liveclientdata/eventdata'] = _events([
+      multi(0, 'Me#EUW', 2), // double
+      multi(1, 'Me#EUW', 3), // triple
+      multi(2, 'Me#EUW', 4), // quadra
+      multi(3, 'Me#EUW', 5), // penta
+      multi(4, 'Enemy#1', 5), // not us -> ignored
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(emitted.map((e) => e.kind).toList(), [
+      GameEventKind.doubleKill,
+      GameEventKind.tripleKill,
+      GameEventKind.quadraKill,
+      GameEventKind.pentaKill,
+    ]);
+  });
+
+  test('a Multikill with a missing/unknown KillStreak falls back to double',
+      () async {
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+
+    responses['/liveclientdata/eventdata'] = _events([
+      {'EventID': 0, 'EventName': 'Multikill', 'KillerName': 'Me#EUW'},
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(emitted.single.kind, GameEventKind.doubleKill);
+  });
+
   test('a 2-team mode (CLASSIC) splits into your team vs enemies', () async {
     responses['/liveclientdata/gamestats'] =
         jsonEncode({'gameMode': 'CLASSIC'});

@@ -99,6 +99,10 @@ All notable changes to Rewind are documented here. Format based on
   instead of the first-run empty state.
 
 ### Fixed
+- **League multikills now clip at their real tier**: the Multikill handler
+  always emitted a "double kill" regardless of the actual streak. It now
+  reads the event's `KillStreak` (2→double, 3→triple, 4→quadra, 5→penta),
+  so a pentakill is finally saved and labeled as a pentakill.
 - **Concurrent settings saves could wipe settings.json**: every save
   shared one `settings.json.tmp` scratch file, so two overlapping saves
   (e.g. rapid Settings changes) could publish a half-written JSON — which
