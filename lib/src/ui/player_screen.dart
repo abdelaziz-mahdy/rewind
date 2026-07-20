@@ -365,6 +365,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               onSeek: (d) => _player.seek(d),
               onToggleMute: _toggleMute,
               trimming: _trimming,
+              clip: widget.clip,
               onToggleTrim: _trimAvailable && _duration > Duration.zero
                   ? _toggleTrimming
                   : null,
@@ -408,27 +409,6 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(relativeAge(clip.createdAt), style: theme.textTheme.bodyMuted),
-          const SizedBox(width: 4),
-          IconButton(
-            key: const ValueKey('playerRevealButton'),
-            icon: const Icon(Icons.folder_open_outlined, size: 20),
-            tooltip: Platform.isMacOS ? 'Reveal in Finder' : 'Show in folder',
-            onPressed: () async {
-              if (!await revealClipFile(clip.path) && context.mounted) {
-                showOpenFailedToast(context);
-              }
-            },
-          ),
-          IconButton(
-            key: const ValueKey('playerOpenExternalButton'),
-            icon: const Icon(Icons.open_in_new, size: 20),
-            tooltip: 'Open in default player',
-            onPressed: () async {
-              if (!await openClipFile(clip.path) && context.mounted) {
-                showOpenFailedToast(context);
-              }
-            },
-          ),
         ],
       ),
     );
@@ -459,6 +439,11 @@ class _Controls extends StatelessWidget {
   final VoidCallback? onToggleTrim;
   final bool trimming;
 
+  /// For the file actions (reveal/open) that live on this strip — they
+  /// used to sit in the header's top-right corner, far from where the eye
+  /// actually rests while watching (the transport strip).
+  final Clip clip;
+
   const _Controls({
     required this.playing,
     required this.position,
@@ -469,6 +454,7 @@ class _Controls extends StatelessWidget {
     required this.onSeek,
     required this.onToggleMute,
     required this.trimming,
+    required this.clip,
     this.onToggleTrim,
   });
 
@@ -524,6 +510,26 @@ class _Controls extends StatelessWidget {
             icon: Icon(volumeIcon(volume)),
             tooltip: volume <= 0 ? 'Unmute' : 'Mute',
             onPressed: onToggleMute,
+          ),
+          IconButton(
+            key: const ValueKey('playerRevealButton'),
+            icon: const Icon(Icons.folder_open_outlined, size: 20),
+            tooltip: Platform.isMacOS ? 'Reveal in Finder' : 'Show in folder',
+            onPressed: () async {
+              if (!await revealClipFile(clip.path) && context.mounted) {
+                showOpenFailedToast(context);
+              }
+            },
+          ),
+          IconButton(
+            key: const ValueKey('playerOpenExternalButton'),
+            icon: const Icon(Icons.open_in_new, size: 20),
+            tooltip: 'Open in default player',
+            onPressed: () async {
+              if (!await openClipFile(clip.path) && context.mounted) {
+                showOpenFailedToast(context);
+              }
+            },
           ),
         ],
       ),
