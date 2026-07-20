@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -1237,6 +1238,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: MicTestMeter(pollLevels: widget.audioLevels),
+              ),
+            // Echo guidance lives IN the app (maintainer: "document it to
+            // the users so they know what to do"): there is no echo
+            // cancellation filter in libobs, so the honest fixes are
+            // headphones or the OS-level mic processing — users shouldn't
+            // have to discover that from a bug report.
+            if (widget.settings.captureMicrophone)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  key: const ValueKey('micEchoTip'),
+                  Platform.isMacOS
+                      ? 'Hear the game echoing through your mic? Play with '
+                          'headphones, or turn on Voice Isolation (Control '
+                          'Center → Mic Mode while Rewind is capturing) — '
+                          'speaker echo can’t be removed after the fact.'
+                      : 'Hear the game echoing through your mic? Play with '
+                          'headphones — speaker echo can’t be removed '
+                          'after the fact.',
+                  style: Theme.of(context).textTheme.bodyMuted,
+                ),
               ),
           ],
         ),
