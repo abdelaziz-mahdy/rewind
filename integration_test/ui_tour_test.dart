@@ -197,7 +197,7 @@ void main() {
       library: library,
       onSettingsChanged: (_) async {},
       onOpenGame: (_) {},
-      listApps: () => [
+      listApps: () => const [
         AppInfo(
             bundleId: 'com.riotgames.valorant',
             name: 'VALORANT',
