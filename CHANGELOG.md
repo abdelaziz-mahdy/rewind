@@ -59,6 +59,13 @@ All notable changes to Rewind are documented here. Format based on
   (`rewind_set_mic_noise_suppression`).
 
 ### Changed
+- **Accessibility verified**: every icon-only button in the app carries a
+  tooltip (doubling as its screen-reader label), the theme palette is
+  WCAG 2.1 AA-verified — all five foreground tokens clear 4.5:1 against
+  all three surfaces (tightest pair 5.01:1, documented in theme.dart so a
+  retune re-checks instead of eyeballing) — and the app has no
+  perpetually-running animations (the REC dot has been static since the
+  idle-CPU fix).
 - **Player header actions**: Reveal in Finder / Show in folder and Open in
   default player now live in the player itself, not only in the clip
   tile's overflow menu.
