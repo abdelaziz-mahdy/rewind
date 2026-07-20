@@ -448,6 +448,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final parsed = int.tryParse(t);
       if (parsed == null || parsed < 1) {
         controller.text = current?.toString() ?? '';
+        // Say WHY the value snapped back — a silent revert reads as the
+        // field eating the input.
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Storage limits need a whole number of 1 or more.'),
+        ));
         return;
       }
       next = parsed;

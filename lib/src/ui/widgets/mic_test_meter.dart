@@ -209,6 +209,12 @@ class _MicTestMeterState extends State<MicTestMeter> {
               label: 'Voice',
               db: _levels!.micPeakDb,
               holdDb: _micPeakHold,
+              // The good-verdict window (see micTestVerdict) drawn ON the
+              // bar: without it "Too quiet" beside a half-full bar reads
+              // as a contradiction — dB is not linear loudness, so the
+              // target zone must be visible, not implied.
+              targetMinDb: -22,
+              targetMaxDb: -5,
               color: switch (micTestVerdict(_micPeakHold)) {
                 MicTestVerdict.clipping => tokens.rec,
                 MicTestVerdict.tooLoud || MicTestVerdict.tooQuiet =>
@@ -251,18 +257,24 @@ class _MicTestMeterState extends State<MicTestMeter> {
 }
 
 /// One horizontal level bar: a hairline track with a colored fill mapping
-/// -60..0 dBFS to 0..100% width, plus a thin peak-hold tick.
+/// -60..0 dBFS to 0..100% width, plus a thin peak-hold tick and (when
+/// [targetMinDb]/[targetMaxDb] are set) a visible target zone the user is
+/// asked to land the bar inside.
 class _LevelBar extends StatelessWidget {
   final String label;
   final double db;
   final double holdDb;
   final Color color;
+  final double? targetMinDb;
+  final double? targetMaxDb;
 
   const _LevelBar({
     required this.label,
     required this.db,
     required this.holdDb,
     required this.color,
+    this.targetMinDb,
+    this.targetMaxDb,
   });
 
   static double _fraction(double db) => ((db + 60) / 60).clamp(0.0, 1.0);
@@ -291,6 +303,24 @@ class _LevelBar extends StatelessWidget {
                         border: Border.all(color: tokens.hairline),
                       ),
                     ),
+                    if (targetMinDb != null && targetMaxDb != null)
+                      Positioned(
+                        left: w * _fraction(targetMinDb!),
+                        width: w * (_fraction(targetMaxDb!) -
+                            _fraction(targetMinDb!)),
+                        top: 0,
+                        bottom: 0,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: tokens.accent.withValues(alpha: 0.18),
+                            border: Border.symmetric(
+                              vertical: BorderSide(
+                                  color:
+                                      tokens.accent.withValues(alpha: 0.5)),
+                            ),
+                          ),
+                        ),
+                      ),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 80),
                       width: w * _fraction(db),
