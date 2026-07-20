@@ -52,6 +52,21 @@ Internally the shim is split by platform: `rewind_obs.c` holds the shared API la
 
 The shim is where OS-specific capture selection happens: on macOS it configures a ScreenCaptureKit-based source, on Windows a DXGI-duplication/Windows-Graphics-Capture source — but that choice is internal; the Dart-facing API is identical.
 
+**Mic processing chain** (shared `rewind_obs.c`, platform-neutral): the mic
+source carries an ordered private-filter chain — RNNoise
+`noise_suppress_filter` (suppression must see the raw signal) →
+`compressor_filter` → `limiter_filter` — each independently toggleable
+(`rewind_set_mic_noise_suppression` / `rewind_set_mic_leveling`). All three
+ids live in the `obs-filters` plugin, which every platform's fetch script
+ships; the shim verifies an id is actually registered
+(`obs_enum_filter_types`) before creating it, because libobs "creates"
+unknown ids as non-NULL inert placeholders — a NULL check can never detect
+a missing filter plugin. Live levels for the Settings mic test come from
+one `obs_volmeter` per audio source (`rewind_audio_levels_json`):
+post-filter and post-volume, so the meter reports exactly what lands in the
+recording mix, with a 500 ms staleness floor so a stopped source reads as
+silence instead of freezing at its last value.
+
 **Windows capture path** (implemented, CI-compiled against the real pinned
 libobs SDK, **not yet validated on real Windows hardware** — see ROADMAP.md):
 
