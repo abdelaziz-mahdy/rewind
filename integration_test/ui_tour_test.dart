@@ -19,10 +19,12 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
+import 'package:rewind/src/ui/onboarding_screen.dart';
 import 'package:rewind/src/ui/player_screen.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 
+import '../test/fakes/fake_capture_engine.dart';
 import '../test/fakes/fake_thumbnail_generator.dart';
 
 /// A visual tour of Rewind's key screens on the real macOS app. macOS's
@@ -173,6 +175,17 @@ void main() {
     )));
     await t.pump(const Duration(milliseconds: 400));
     await shoot('04-match-screen');
+  });
+
+  testWidgets('onboarding — first-run welcome', (t) async {
+    await t.pumpWidget(frame(OnboardingScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      onDone: () {},
+      engine: FakeCaptureEngine()..screenPermissionGranted = true,
+    )));
+    await t.pump(const Duration(milliseconds: 400));
+    await shoot('06-onboarding');
   });
 
   testWidgets('player — trim mode with real FFmpeg filmstrip', (t) async {
