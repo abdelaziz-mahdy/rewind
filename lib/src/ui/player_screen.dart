@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,7 +7,9 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../clip/clip.dart';
+import '../clip/clip_library.dart';
 import '../clip/clip_markers.dart';
+import '../clip/clip_trimmer.dart';
 import '../clip/match_stats.dart';
 import '../events/game_catalog.dart';
 import 'format_duration.dart';
@@ -54,7 +57,21 @@ class PlayerScreen extends StatefulWidget {
   /// CLAUDE.md/this feature's honesty note).
   final List<MatchEventStamp> events;
 
-  const PlayerScreen({required this.clip, this.events = const [], super.key});
+  /// The clip library, for indexing a trimmed copy (see [trimmer]). Null
+  /// (tests, embeddings without a library) hides the Trim button.
+  final ClipLibrary? library;
+
+  /// The platform trim exporter. Null or unsupported (Windows/Linux for
+  /// now) hides the Trim button — no dead affordance.
+  final ClipTrimmer? trimmer;
+
+  const PlayerScreen({
+    required this.clip,
+    this.events = const [],
+    this.library,
+    this.trimmer,
+    super.key,
+  });
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -89,6 +106,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// black frame with a dead seek bar — this swaps the video area for an
   /// explanation and a fallback.
   String? _playbackError;
+
+  /// Trim mode: while true the controls grow a range selector and a save
+  /// row. [_trimRange] is in milliseconds within the clip; null until the
+  /// user first enters trim mode after the duration is known.
+  bool _trimming = false;
+  RangeValues? _trimRange;
+
+  /// True while a trim export runs — disables the save button so a slow
+  /// export can't be double-fired.
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -140,6 +167,81 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _toggleMute() {
     _player.setVolume(_volume > 0 ? 0 : _previousVolume);
+  }
+
+  bool get _trimAvailable =>
+      widget.library != null &&
+      (widget.trimmer?.isSupported ?? false) &&
+      _playbackError == null;
+
+  void _toggleTrimming() {
+    if (_duration <= Duration.zero) return;
+    setState(() {
+      _trimming = !_trimming;
+      if (_trimming) {
+        _trimRange ??=
+            RangeValues(0, _duration.inMilliseconds.toDouble());
+      }
+    });
+  }
+
+  Future<void> _saveTrim() async {
+    final library = widget.library;
+    final trimmer = widget.trimmer;
+    final range = _trimRange;
+    if (library == null || trimmer == null || range == null) return;
+    final start = Duration(milliseconds: range.start.round());
+    final end = Duration(milliseconds: range.end.round());
+    if (end - start < const Duration(seconds: 1)) {
+      _toast('Trims need to be at least a second long.');
+      return;
+    }
+
+    setState(() => _exporting = true);
+    final outPath =
+        trimOutPath(widget.clip.path, library.all.map((c) => c.path));
+    final ok = await trimmer.trim(
+        srcPath: widget.clip.path, start: start, end: end, outPath: outPath);
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _exporting = false);
+      _toast("Couldn't save the trim — the original clip is untouched.");
+      return;
+    }
+
+    // Same gameId/session/event as the source so the trim files next to it
+    // in every grouping; fresh size from the real exported file.
+    var size = 0;
+    try {
+      size = await File(outPath).length();
+    } on FileSystemException {
+      // Indexed with size 0 rather than dropped — the file exists (the
+      // exporter said so); a transient stat failure shouldn't lose it.
+    }
+    library.add(Clip(
+      path: outPath,
+      gameId: widget.clip.gameId,
+      event: widget.clip.event,
+      createdAt: widget.clip.createdAt,
+      sizeBytes: size,
+      sessionAt: widget.clip.sessionAt,
+      killCount: widget.clip.killCount,
+      eventLabel: 'Trimmed',
+    ));
+    await library.save();
+    if (!mounted) return;
+    setState(() {
+      _exporting = false;
+      _trimming = false;
+    });
+    _toast('Trimmed clip saved.');
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      content: Text(message),
+    ));
   }
 
   void _handleKey(KeyEvent event) {
@@ -198,7 +300,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
               onTogglePlay: _togglePlay,
               onSeek: (d) => _player.seek(d),
               onToggleMute: _toggleMute,
+              trimming: _trimming,
+              onToggleTrim: _trimAvailable && _duration > Duration.zero
+                  ? _toggleTrimming
+                  : null,
             ),
+            if (_trimming && _trimRange != null)
+              _TrimBar(
+                range: _trimRange!,
+                duration: _duration,
+                exporting: _exporting,
+                onChanged: (r) => setState(() => _trimRange = r),
+                onPreview: (d) => _player.seek(d),
+                onSave: _saveTrim,
+                onCancel: () => setState(() => _trimming = false),
+              ),
           ],
         ),
       ),
@@ -262,6 +378,12 @@ class _Controls extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onToggleMute;
 
+  /// Trim-mode toggle. Null hides the button entirely (no library, no
+  /// platform support, playback failed) — an affordance that can't work
+  /// shouldn't render.
+  final VoidCallback? onToggleTrim;
+  final bool trimming;
+
   const _Controls({
     required this.playing,
     required this.position,
@@ -271,6 +393,8 @@ class _Controls extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeek,
     required this.onToggleMute,
+    required this.trimming,
+    this.onToggleTrim,
   });
 
   @override
@@ -313,6 +437,14 @@ class _Controls extends StatelessWidget {
             ),
           ),
           Text(formatDuration(duration), style: durationStyle),
+          if (onToggleTrim != null)
+            IconButton(
+              key: const ValueKey('trimButton'),
+              icon: const Icon(Icons.content_cut),
+              tooltip: trimming ? 'Close trim' : 'Trim clip',
+              color: trimming ? context.rewindTokens.accent : null,
+              onPressed: onToggleTrim,
+            ),
           IconButton(
             icon: Icon(volumeIcon(volume)),
             tooltip: volume <= 0 ? 'Unmute' : 'Mute',
@@ -354,6 +486,80 @@ class _PlaybackErrorPanel extends StatelessWidget {
         SelectableText(message,
             style: textTheme.bodyMuted, textAlign: TextAlign.center),
       ],
+    );
+  }
+}
+
+
+/// The trim row shown under the controls in trim mode: a range selector
+/// over the clip with live in/out timecodes, and Save/Cancel. Dragging a
+/// handle seeks the player to that edge so the user sees the exact frame
+/// they're cutting on.
+class _TrimBar extends StatelessWidget {
+  final RangeValues range;
+  final Duration duration;
+  final bool exporting;
+  final ValueChanged<RangeValues> onChanged;
+  final ValueChanged<Duration> onPreview;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
+
+  const _TrimBar({
+    required this.range,
+    required this.duration,
+    required this.exporting,
+    required this.onChanged,
+    required this.onPreview,
+    required this.onSave,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final timeStyle = theme.textTheme.bodyMuted
+        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final totalMs = duration.inMilliseconds.toDouble();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      decoration: BoxDecoration(border: Border(top: hairlineBorder())),
+      child: Row(
+        children: [
+          Text(formatDuration(Duration(milliseconds: range.start.round())),
+              style: timeStyle),
+          Expanded(
+            child: RangeSlider(
+              key: const ValueKey('trimRange'),
+              values: range,
+              max: totalMs > 0 ? totalMs : 1.0,
+              onChanged: exporting
+                  ? null
+                  : (r) {
+                      // Seek to whichever edge moved so the cut frame is
+                      // visible while dragging.
+                      final startMoved = r.start != range.start;
+                      onPreview(Duration(
+                          milliseconds:
+                              (startMoved ? r.start : r.end).round()));
+                      onChanged(r);
+                    },
+            ),
+          ),
+          Text(formatDuration(Duration(milliseconds: range.end.round())),
+              style: timeStyle),
+          const SizedBox(width: 16),
+          TextButton(
+            onPressed: exporting ? null : onCancel,
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            key: const ValueKey('saveTrimButton'),
+            onPressed: exporting ? null : onSave,
+            child: Text(exporting ? 'Saving…' : 'Save trimmed clip'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -187,6 +187,13 @@ generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
 
 - Dart: follow `flutter analyze` / `dart format`. Lints in `analysis_options.yaml`.
 - C: C11, no C++ in the shim (keeps `dart:ffi` binding simple — no name mangling).
+- Native support ships macOS AND Windows minimum (Linux when the primitive
+  exists); prefer shared C in the shim over per-platform channels. If a
+  platform channel is unavoidable, define it with pigeon (never a raw
+  MethodChannel); new C FFI surface is generated with ffigen from
+  `native/shim/rewind_obs.h`, not hand-written (the existing hand-written
+  bindings predate this rule — don't grow them by hand). See
+  CONTRIBUTING.md → Conventions.
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). This drives the changelog and release notes.
   - **Do NOT add a `Claude-Session:` trailer** (or any AI-session link / "Co-authored-by: Claude" / "Generated with" line) to commit messages or PR bodies. Keep messages clean — subject + body only.
 - Versioning: Semantic Versioning. Pre-1.0 the minor version tracks roadmap milestones.
