@@ -251,7 +251,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
             if (sessions.isEmpty)
               _EmptyGameClips(
                   displayName: entry.displayName,
-                  hotkeyLabel: widget.hotkeyLabel)
+                  hotkeyLabel: widget.hotkeyLabel,
+                  onEditCaptureSettings: widget.onEditCaptureSettings)
             else
               // Keyed 'clipsList' so the pre-existing list-scoped test
               // finders keep working across the clip-grid → match-grid
@@ -640,8 +641,13 @@ class _Card extends StatelessWidget {
 class _EmptyGameClips extends StatelessWidget {
   final String displayName;
   final String hotkeyLabel;
+  final VoidCallback onEditCaptureSettings;
 
-  const _EmptyGameClips({required this.displayName, required this.hotkeyLabel});
+  const _EmptyGameClips({
+    required this.displayName,
+    required this.hotkeyLabel,
+    required this.onEditCaptureSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -650,10 +656,23 @@ class _EmptyGameClips extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Center(
-        child: Text(
-          'No $displayName clips yet — press $hotkeyLabel during a game.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.body.copyWith(color: muted),
+        child: Column(
+          children: [
+            Text(
+              'No $displayName clips yet — press $hotkeyLabel during a game.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.body.copyWith(color: muted),
+            ),
+            const SizedBox(height: 16),
+            // An action so a zero-clip hub isn't a dead end: auto-clipping
+            // and buffer length live in this game's capture settings, the
+            // usual reason nothing has been clipped yet.
+            OutlinedButton(
+              key: const ValueKey('emptyGameEditSettings'),
+              onPressed: onEditCaptureSettings,
+              child: const Text('Edit capture settings'),
+            ),
+          ],
         ),
       ),
     );

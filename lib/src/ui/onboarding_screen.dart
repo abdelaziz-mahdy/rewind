@@ -517,11 +517,18 @@ class _PermissionStepView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton(
-            key: const ValueKey('relaunchButton'),
-            onPressed: onRelaunch,
-            child: const Text('Relaunch Rewind'),
-          ),
+          // With no relaunch hook wired (tests, embeddings) a disabled
+          // button with no explanation would just look broken — fall back
+          // to telling the user to do it themselves.
+          if (onRelaunch != null)
+            FilledButton(
+              key: const ValueKey('relaunchButton'),
+              onPressed: onRelaunch,
+              child: const Text('Relaunch Rewind'),
+            )
+          else
+            Text('Quit and reopen Rewind to start capturing.',
+                style: theme.textTheme.bodyMuted),
         ],
       );
     } else {
