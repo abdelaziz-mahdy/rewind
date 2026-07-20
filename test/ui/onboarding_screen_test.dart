@@ -79,12 +79,26 @@ void main() {
   testWidgets('permission step: granted mid-session shows the relaunch state',
       (t) async {
     final engine = FakeCaptureEngine()..screenPermissionGranted = true;
-    await t.pumpWidget(_app(
-        screen(engine: engine, captureError: 'replay buffer failed to start')));
+    await t.pumpWidget(_app(screen(
+        engine: engine,
+        captureError: 'replay buffer failed to start',
+        onRelaunch: () {})));
     await nextTo(t, 1);
     expect(find.text('Granted. Relaunch Rewind to start capturing.'),
         findsOneWidget);
     expect(find.byKey(const ValueKey('relaunchButton')), findsOneWidget);
+  });
+
+  testWidgets(
+      'permission step: relaunch state without a relaunch hook shows the '
+      'quit-and-reopen instruction instead of a dead button', (t) async {
+    final engine = FakeCaptureEngine()..screenPermissionGranted = true;
+    await t.pumpWidget(_app(
+        screen(engine: engine, captureError: 'replay buffer failed to start')));
+    await nextTo(t, 1);
+    expect(find.byKey(const ValueKey('relaunchButton')), findsNothing);
+    expect(find.text('Quit and reopen Rewind to start capturing.'),
+        findsOneWidget);
   });
 
   testWidgets('permission step opens System Settings via the secondary button',
