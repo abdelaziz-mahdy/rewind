@@ -115,6 +115,12 @@ class AppSettings {
   /// whole point, so it's on from first launch, not an opt-in.
   bool micAutoLevel;
 
+  /// Whether the RNNoise mic noise-suppression filter (see
+  /// `rewind_set_mic_noise_suppression`) is on — strips keyboard clatter,
+  /// fans, and room hum from the mic before the leveling chain touches it.
+  /// Default TRUE for the same "set once, forget" reason as [micAutoLevel].
+  bool micNoiseSuppression;
+
   /// Auto-cleanup: cap on total clip storage, in whole GB. Null means
   /// UNLIMITED (cleanup by size off). Defaults to 20 — the pre-existing
   /// hardcoded `RetentionPolicy.twentyGb` behavior, now user-visible.
@@ -204,6 +210,7 @@ class AppSettings {
     this.micVolume = 1.0,
     this.gameAudioVolume = 1.0,
     this.micAutoLevel = true,
+    this.micNoiseSuppression = true,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.onboardingComplete = false,
@@ -259,6 +266,7 @@ class AppSettings {
         'micVolume': micVolume,
         'gameAudioVolume': gameAudioVolume,
         'micAutoLevel': micAutoLevel,
+        'micNoiseSuppression': micNoiseSuppression,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'onboardingComplete': onboardingComplete,
@@ -296,6 +304,8 @@ class AppSettings {
         // ON — the feature's whole point is "set once, forget", so a fresh
         // install and an existing settings file both start auto-leveled.
         micAutoLevel: j['micAutoLevel'] as bool? ?? true,
+        // Same absent-key-falls-back-to-ON reasoning as micAutoLevel.
+        micNoiseSuppression: j['micNoiseSuppression'] as bool? ?? true,
         // A stored null is a deliberate "unlimited" choice and must survive
         // the round-trip; only a MISSING key (pre-cleanup settings file)
         // falls back to the 20 GB default.

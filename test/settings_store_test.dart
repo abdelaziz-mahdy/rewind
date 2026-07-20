@@ -138,6 +138,23 @@ void main() {
     expect(AppSettings().micAutoLevel, isTrue);
   });
 
+  test('micNoiseSuppression defaults to true', () {
+    expect(AppSettings().micNoiseSuppression, isTrue);
+  });
+
+  test('micNoiseSuppression round-trips through toJson/fromJson', () {
+    final s = AppSettings(micNoiseSuppression: false);
+    final loaded = AppSettings.fromJson(s.toJson());
+    expect(loaded.micNoiseSuppression, isFalse);
+  });
+
+  test(
+      'fromJson with no micNoiseSuppression key (pre-existing settings file) '
+      'falls back to true — suppression is on by default', () {
+    final json = AppSettings().toJson()..remove('micNoiseSuppression');
+    expect(AppSettings.fromJson(json).micNoiseSuppression, isTrue);
+  });
+
   test('micAutoLevel round-trips through toJson/fromJson', () {
     final s = AppSettings(micAutoLevel: false);
     final loaded = AppSettings.fromJson(s.toJson());

@@ -108,6 +108,10 @@ class Shell extends StatefulWidget {
   /// button (see `SettingsScreen.onSetMicMonitoring`).
   final void Function(bool enabled)? onSetMicMonitoring;
 
+  /// Forwarded to the Settings destination's mic-test meter (see
+  /// `SettingsScreen.audioLevels`).
+  final String? Function()? audioLevels;
+
   /// Resolves the live `SteamStatsWatcher.status` notifier for the embedded
   /// Settings destination's Steam page — a GETTER, not the notifier itself,
   /// re-read every time Settings builds (a keyless watcher exists
@@ -142,6 +146,7 @@ class Shell extends StatefulWidget {
     this.onCleanUpStorage,
     this.onSetCaptureApp,
     this.onSetMicMonitoring,
+    this.audioLevels,
     this.thumbnails,
     this.ddragon,
     this.steamStatus,
@@ -196,11 +201,13 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     widget.coordinator.lastSaveError.addListener(_showSaveErrorIfAny);
+    widget.coordinator.lastManualSave.addListener(_showManualSaveToast);
   }
 
   @override
   void dispose() {
     widget.coordinator.lastSaveError.removeListener(_showSaveErrorIfAny);
+    widget.coordinator.lastManualSave.removeListener(_showManualSaveToast);
     super.dispose();
   }
 
@@ -212,6 +219,21 @@ class _ShellState extends State<Shell> {
       behavior: SnackBarBehavior.floating,
       backgroundColor: Theme.of(context).colorScheme.error,
       content: Text("Couldn't save clip: $message"),
+    ));
+  }
+
+  /// Visible confirmation for a manual save — without it, pressing "Save
+  /// clip" from Settings or an empty hub looked like it did nothing (the
+  /// only success signals were an optional sound and a clip list the user
+  /// might not be on).
+  void _showManualSaveToast() {
+    if (!mounted) return;
+    final clip = widget.coordinator.lastManualSave.value;
+    if (clip == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: Duration(seconds: 3),
+      content: Text('Clip saved'),
     ));
   }
 
@@ -280,6 +302,7 @@ class _ShellState extends State<Shell> {
           capturableApps: widget.capturableApps,
           audioInputs: widget.audioInputs,
           onSetMicMonitoring: widget.onSetMicMonitoring,
+          audioLevels: widget.audioLevels,
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
@@ -490,6 +513,10 @@ class _DetectedGameBanner extends StatelessWidget {
             key: ValueKey('detectedGameBannerDismiss:${game.gameId}'),
             icon: const Icon(Icons.close, size: 16),
             color: tokens.textMuted,
+            // Names the scope: dismissal is session-only, the banner comes
+            // back next launch/game — without this the icon-only ✕ can read
+            // as "never show again".
+            tooltip: 'Dismiss for now',
             onPressed: onDismiss,
           ),
         ],

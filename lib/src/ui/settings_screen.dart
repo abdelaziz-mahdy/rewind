@@ -27,6 +27,7 @@ import 'theme.dart';
 import 'widgets/clip_tile.dart' show formatSize;
 import 'widgets/event_matrix.dart';
 import 'widgets/game_tile_avatar.dart';
+import 'widgets/mic_test_meter.dart';
 
 /// Full-page Settings (the research-locked "variant G" design, see
 /// docs/superpowers/specs — settings covers the whole window; its own left
@@ -69,6 +70,12 @@ class SettingsScreen extends StatefulWidget {
   /// target. Optional so existing callers/tests that don't care about
   /// monitoring don't need to wire it (the button still renders but no-ops).
   final void Function(bool enabled)? onSetMicMonitoring;
+
+  /// Returns the engine's current live audio levels JSON (see
+  /// `CaptureEngine.audioLevelsJson`), polled by the mic-test meter while a
+  /// test runs. Optional so existing callers/tests that don't wire it keep
+  /// working — the meter then reports levels as unavailable.
+  final String? Function()? audioLevels;
 
   /// Called with `true` when the hotkey recorder starts listening and
   /// `false` whenever it stops (a captured combo, Escape, clicking away, or
@@ -148,6 +155,7 @@ class SettingsScreen extends StatefulWidget {
     this.capturableApps = const [],
     this.audioInputs = const [],
     this.onSetMicMonitoring,
+    this.audioLevels,
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
@@ -774,6 +782,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onChanged(widget.settings);
   }
 
+  /// Writes [AppSettings.micNoiseSuppression] straight through, same as
+  /// [_handleMicAutoLevelChanged].
+  void _handleMicNoiseSuppressionChanged(bool value) {
+    widget.settings.micNoiseSuppression = value;
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   /// Toggles live mic monitoring — see [SettingsScreen.onSetMicMonitoring]'s
   /// doc. Local UI state only: the on/off flag itself is never persisted.
   void _handleMicListenToggle() {
@@ -888,20 +904,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SettingsSidebar(
-            selectedGeneralPage: _selectedGeneralPage,
-            selectedGameId: _selectedGameId,
-            gameEntries: _effectiveGameEntries,
-            onSelectGeneral: _selectGeneralPage,
-            onSelectGame: _selectGame,
-            onClose: widget.onClose,
+    // Escape closes Settings, same as the ✕ button — this is a full-page
+    // takeover (not a route), so without an explicit handler the keyboard
+    // has no way back out (PlayerScreen already honors Escape; Settings
+    // shouldn't be the one dead end). CallbackShortcuts + autofocus'd Focus
+    // scope: the shortcut fires from anywhere inside the page that hasn't
+    // claimed the key itself (text fields and the hotkey recorder consume
+    // their own key events first, so typing/recording is unaffected).
+    return CallbackShortcuts(
+      bindings: {
+        if (widget.onClose != null)
+          const SingleActivator(LogicalKeyboardKey.escape): widget.onClose!,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SettingsSidebar(
+                selectedGeneralPage: _selectedGeneralPage,
+                selectedGameId: _selectedGameId,
+                gameEntries: _effectiveGameEntries,
+                onSelectGeneral: _selectGeneralPage,
+                onSelectGame: _selectGame,
+                onClose: widget.onClose,
+              ),
+              Expanded(child: _selectedBody(context)),
+            ],
           ),
-          Expanded(child: _selectedBody(context)),
-        ],
+        ),
       ),
     );
   }
@@ -1183,6 +1215,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: widget.settings.micAutoLevel,
                 switchKey: const ValueKey('micAutoLevelSwitch'),
                 onChanged: _handleMicAutoLevelChanged,
+              ),
+            if (widget.settings.captureMicrophone)
+              _ToggleRow(
+                label: 'Filter background noise',
+                hint: 'Removes keyboard clatter, fans, and room hum from '
+                    'your mic — recommended.',
+                value: widget.settings.micNoiseSuppression,
+                switchKey: const ValueKey('micNoiseSuppressionSwitch'),
+                onChanged: _handleMicNoiseSuppressionChanged,
+              ),
+            // The mic test: speak and get told whether the slider is right,
+            // instead of recording a clip and guessing from playback.
+            if (widget.settings.captureMicrophone)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: MicTestMeter(pollLevels: widget.audioLevels),
               ),
           ],
         ),

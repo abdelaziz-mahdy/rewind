@@ -85,6 +85,12 @@ external int _setGameVolume(double volume);
 @Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_leveling')
 external int _setMicLeveling(int enabled);
 
+@Native<Int32 Function(Int32)>(symbol: 'rewind_set_mic_noise_suppression')
+external int _setMicNoiseSuppression(int enabled);
+
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(symbol: 'rewind_audio_levels_json')
+external int _audioLevelsJson(Pointer<Utf8> jsonOut, int jsonCap);
+
 @Native<Int32 Function()>(symbol: 'rewind_preflight_screen_permission')
 external int _preflightScreenPermission();
 
@@ -284,6 +290,25 @@ class RewindObs {
   /// Enables/disables the mic auto-leveling filter chain
   /// (compressor->limiter).
   int setMicLeveling(bool enabled) => _setMicLeveling(enabled ? 1 : 0);
+
+  /// Enables/disables the RNNoise mic noise-suppression filter.
+  int setMicNoiseSuppression(bool enabled) =>
+      _setMicNoiseSuppression(enabled ? 1 : 0);
+
+  /// Raw JSON object from `rewind_audio_levels_json` (live mic/game dBFS
+  /// levels for the mic-test meter), or null on failure. Small fixed-field
+  /// object, so the perf-stats buffer size comfortably covers it.
+  String? audioLevelsJson() {
+    final buf = malloc<Uint8>(_kPerfStatsBufferSize);
+    try {
+      final p = buf.cast<Utf8>();
+      final r = _audioLevelsJson(p, _kPerfStatsBufferSize);
+      if (r != 0) return null;
+      return p.toDartString();
+    } finally {
+      malloc.free(buf);
+    }
+  }
 
   /// True if screen-capture permission is currently granted. Safe to poll
   /// repeatedly (e.g. from onboarding UI) — never prompts.

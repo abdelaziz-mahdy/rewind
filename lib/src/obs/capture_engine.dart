@@ -163,6 +163,19 @@ abstract class CaptureEngine {
   /// filters are attached/removed immediately. Returns false on failure.
   bool setMicLeveling(bool enabled);
 
+  /// Enable/disable mic noise suppression: an RNNoise filter on the
+  /// microphone source that removes keyboard/fan/background noise before
+  /// the leveling chain, default ON. Same lifecycle contract as
+  /// [setMicLeveling]. Returns false on failure.
+  bool setMicNoiseSuppression(bool enabled);
+
+  /// Compact JSON snapshot of the live audio levels for the mic-test meter
+  /// (`{"mic_peak_db":…,"mic_mag_db":…,"game_peak_db":…,"game_mag_db":…}`,
+  /// dBFS, -120.0 = silence floor), or null on failure. Safe to poll at UI
+  /// rate (~10 Hz). See `rewind_audio_levels_json` in
+  /// native/shim/rewind_obs.h.
+  String? audioLevelsJson();
+
   /// Human-readable description of the most recent failure, or an empty
   /// string if the last operation succeeded.
   String get lastError;

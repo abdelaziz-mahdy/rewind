@@ -228,6 +228,28 @@ int rewind_set_mic_monitoring(int enabled);
  * No-op in stub mode. Returns 0 on success. */
 int rewind_set_mic_leveling(int enabled);
 
+/* Enable/disable mic noise suppression: an RNNoise noise_suppress_filter
+ * attached to the mic source ahead of the auto-leveling chain (suppression
+ * must see the raw signal BEFORE the compressor amplifies noise floor along
+ * with voice), default ON. Same lifecycle contract as
+ * rewind_set_mic_leveling: safe before init (preference remembered), live
+ * attach/remove when the mic source exists, no-op in stub mode. Returns 0
+ * on success. */
+int rewind_set_mic_noise_suppression(int enabled);
+
+/* Writes a JSON object with the current live audio levels, for the mic-test
+ * meter UI:
+ *   {"mic_peak_db":-18.2,"mic_mag_db":-24.0,
+ *    "game_peak_db":-12.4,"game_mag_db":-20.1}
+ * Values are dBFS as reported by an obs_volmeter attached to the mic /
+ * desktop-audio sources (post-filter, post-volume-slider — i.e. what
+ * actually lands in the recording mix). Sources that don't exist (mic off,
+ * audio mode none) report -120.0, the same floor used for silence. Safe to
+ * poll at UI rate (~10 Hz); values update on libobs' audio thread ~every
+ * 50 ms. Stub mode: always the -120.0 floor. Returns 0 on success, 1 if
+ * the buffer is too small. */
+int rewind_audio_levels_json(char *json_out, int json_cap);
+
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
  * `max_height` caps the output height (aspect preserved) when the display
  * is taller, or 0 for source resolution. Applied at rewind_obs_init — call

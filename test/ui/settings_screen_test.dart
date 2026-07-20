@@ -1044,6 +1044,47 @@ void main() {
       expect(toggle.value, isTrue);
     });
 
+    testWidgets('toggling noise suppression writes micNoiseSuppression',
+        (t) async {
+      final calls = <AppSettings>[];
+      final settings = AppSettings(captureMicrophone: true);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+      )));
+
+      await t.tap(find.byKey(const ValueKey('micNoiseSuppressionSwitch')));
+      await t.pump();
+
+      expect(calls, isNotEmpty);
+      expect(settings.micNoiseSuppression, isFalse);
+      expect(calls.last.micNoiseSuppression, isFalse);
+    });
+
+    testWidgets('noise suppression toggle hidden when the mic is off',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: false),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(
+          find.byKey(const ValueKey('micNoiseSuppressionSwitch')), findsNothing);
+      expect(find.byKey(const ValueKey('micTestButton')), findsNothing);
+    });
+
+    testWidgets('mic test button renders when the mic is on', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(captureMicrophone: true),
+        onChanged: (_) async {},
+        displays: const [],
+      )));
+
+      expect(find.byKey(const ValueKey('micTestButton')), findsOneWidget);
+    });
+
     testWidgets('toggling mic auto-level writes micAutoLevel', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings(captureMicrophone: true);
@@ -1947,6 +1988,22 @@ void main() {
     )));
 
     await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
+    await t.pump();
+
+    expect(closed, isTrue);
+  });
+
+  testWidgets('pressing Escape closes Settings, same as the ✕ button',
+      (t) async {
+    var closed = false;
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+      onClose: () => closed = true,
+    )));
+
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
     await t.pump();
 
     expect(closed, isTrue);

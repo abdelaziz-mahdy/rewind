@@ -116,6 +116,13 @@ class RewindObsEngine implements CaptureEngine {
   bool setMicLeveling(bool enabled) => _obs.setMicLeveling(enabled) == 0;
 
   @override
+  bool setMicNoiseSuppression(bool enabled) =>
+      _obs.setMicNoiseSuppression(enabled) == 0;
+
+  @override
+  String? audioLevelsJson() => _obs.audioLevelsJson();
+
+  @override
   bool preflightScreenPermission() => _obs.preflightScreenPermission();
 
   @override

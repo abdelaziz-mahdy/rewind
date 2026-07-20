@@ -132,6 +132,11 @@ static void perf_process_stats(double *cpu_user_s, double *cpu_sys_s, long long 
  * pull in a header it can't use. */
 #include "rewind_obs_internal.h"
 
+/* os_gettime_ns() for the audio-level staleness stamps (see the volmeter
+ * globals below) — monotonic, safe from any thread, already exported by
+ * libobs. */
+#include <util/platform.h>
+
 /* path_exists() below is the one place this shared file needs an OS file-
  * existence check; pull in just enough of a platform header for that (not
  * the platform's full capture/audio/encoder API surface, which stays
@@ -256,17 +261,47 @@ static float g_game_volume = 1.0f;
 /* Mic auto-leveling (see rewind_set_mic_leveling): a compressor->limiter
  * filter chain attached to the mic source, default ON. g_mic_compressor/
  * g_mic_limiter are non-owning pointers once attached: obs_source_filter_
- * add() takes its own ref (see rw_attach_mic_leveling below), so ownership
+ * add() takes its own ref (see rw_attach_mic_filters below), so ownership
  * lives with the mic source's filter list from that point on, and
  * obs_source_filter_remove() (rw_release_mic_leveling) is what actually
  * drops that ref — this file must never obs_source_release() them again.
  * Both NULL whenever nothing is currently attached (leveling off, or no mic
- * source exists yet); rw_attach_mic_leveling/rw_release_mic_leveling are
+ * source exists yet); rw_attach_mic_filters/rw_release_mic_filters are
  * idempotent on that state, so every call site can call them
  * unconditionally. */
 static int g_mic_leveling = 1;
 static obs_source_t *g_mic_compressor = NULL;
 static obs_source_t *g_mic_limiter = NULL;
+
+/* Mic noise suppression (see rewind_set_mic_noise_suppression): an RNNoise
+ * noise_suppress_filter attached AHEAD of the leveling chain (it must see
+ * the raw signal before the compressor pulls the noise floor up with the
+ * voice), default ON. Same non-owning-pointer contract as the leveling
+ * filters above. */
+static int g_mic_noise_suppression = 1;
+static obs_source_t *g_mic_noise = NULL;
+
+/* Live audio levels for the mic-test meter (see rewind_audio_levels_json):
+ * one obs_volmeter per metered source, created lazily on first attach and
+ * destroyed at shutdown. Attach-and-forget is safe: obs_volmeter_attach_
+ * source() connects to the source's "destroy" signal and detaches itself
+ * (volmeter_source_destroyed in libobs/obs-audio-controls.c), so a released
+ * mic/desktop-audio source never leaves a dangling volmeter->source.
+ * Levels are written from libobs' audio thread (~every 50 ms) and read from
+ * the FFI thread; plain volatile floats — a torn read of a meter value is
+ * harmless (next poll corrects it), so no lock. The *_at_ns stamps let the
+ * JSON report the silence floor when a source stopped producing audio
+ * (volmeter callbacks simply stop firing — values would otherwise stale at
+ * their last reading forever). */
+#define RW_LEVEL_FLOOR_DB (-120.0f)
+static obs_volmeter_t *g_mic_volmeter = NULL;
+static obs_volmeter_t *g_game_volmeter = NULL;
+static volatile float g_mic_peak_db = RW_LEVEL_FLOOR_DB;
+static volatile float g_mic_mag_db = RW_LEVEL_FLOOR_DB;
+static volatile float g_game_peak_db = RW_LEVEL_FLOOR_DB;
+static volatile float g_game_mag_db = RW_LEVEL_FLOOR_DB;
+static volatile uint64_t g_mic_level_at_ns = 0;
+static volatile uint64_t g_game_level_at_ns = 0;
 
 int fail(const char *msg) { set_error(msg); return 1; }
 
@@ -396,12 +431,59 @@ int find_obs_sdk_dir(char *out, size_t out_size) {
  * Idempotent: a second call with filters already attached (e.g. from both
  * rewind_set_mic_leveling(1) and rw_apply_mic_prefs on the same mic source)
  * is a no-op — g_mic_compressor/g_mic_limiter are always cleared by
- * rw_release_mic_leveling before a new mic source is built (see every
+ * rw_release_mic_filters before a new mic source is built (see every
  * mic-teardown call site below), so this only ever fires once per live mic
  * source. */
-static void rw_attach_mic_leveling(obs_source_t *mic) {
-    if (!mic || !g_mic_leveling) return;
+/* Reports whether a filter type id is actually registered. Guarding source
+ * creation with this is NOT optional: obs_source_create_private() on an
+ * unregistered id logs "Source ID '%s' not found" but STILL returns a
+ * non-NULL placeholder source (libobs/obs-source.c, obs_source_create_
+ * internal's !info branch) that passes silently through the audio chain
+ * doing nothing — which is exactly how mic auto-leveling shipped inert for
+ * weeks before obs-filters was added to the SDK allow-list (fetch_libobs*
+ * recipe 3). A NULL check alone can never catch a missing filter plugin. */
+static int rw_filter_type_available(const char *id) {
+    const char *fid = NULL;
+    for (size_t i = 0; obs_enum_filter_types(i, &fid); i++) {
+        if (fid && strcmp(fid, id) == 0) return 1;
+    }
+    return 0;
+}
+
+static void rw_attach_mic_filters(obs_source_t *mic) {
+    if (!mic) return;
+
+    /* Noise suppression FIRST: added first = highest filter index = runs
+     * first (see the ADD ORDER MATTERS note above), so the suppressor sees
+     * the raw mic signal before the compressor raises the floor. */
+    if (g_mic_noise_suppression && !g_mic_noise) {
+        if (rw_filter_type_available("noise_suppress_filter")) {
+            obs_data_t *ns = obs_data_create();
+            /* RNNoise: the ML denoiser, no tuning knob needed (speex's
+             * suppress_level only applies to the speex method). Verified
+             * against noise-suppress-filter.c in the vendored source. */
+            obs_data_set_string(ns, "method", "rnnoise");
+            g_mic_noise = obs_source_create_private("noise_suppress_filter", "rewind-mic-noise", ns);
+            obs_data_release(ns);
+            if (g_mic_noise) {
+                obs_source_filter_add(mic, g_mic_noise);
+                obs_source_release(g_mic_noise);
+            }
+        } else {
+            blog(LOG_WARNING, "rewind: noise_suppress_filter not registered "
+                              "(obs-filters plugin missing?); mic noise suppression skipped");
+        }
+    }
+
+    if (!g_mic_leveling) return;
     if (g_mic_compressor || g_mic_limiter) return;
+
+    if (!rw_filter_type_available("compressor_filter") ||
+        !rw_filter_type_available("limiter_filter")) {
+        blog(LOG_WARNING, "rewind: compressor/limiter filters not registered "
+                          "(obs-filters plugin missing?); mic auto-leveling skipped");
+        return;
+    }
 
     obs_data_t *cs = obs_data_create();
     obs_data_set_double(cs, "ratio", 4.0);
@@ -441,7 +523,7 @@ static void rw_attach_mic_leveling(obs_source_t *mic) {
 }
 
 /* Removes+releases whatever of the auto-leveling filter chain is currently
- * attached to `mic` (see rw_attach_mic_leveling above) and clears the
+ * attached to `mic` (see rw_attach_mic_filters above) and clears the
  * stored pointers. MUST run before `mic` itself is released on every
  * teardown path: obs_source_filter_remove() needs its filter's parent
  * source still alive (native/third_party/work/obs-studio/libobs/obs-
@@ -461,6 +543,22 @@ static void rw_release_mic_leveling(obs_source_t *mic) {
     g_mic_compressor = NULL;
 }
 
+/* Noise-suppression counterpart of rw_release_mic_leveling — separate so
+ * rewind_set_mic_noise_suppression(0) can drop just its own filter while
+ * the leveling chain stays attached (and vice versa). Same "must run before
+ * the mic source is released" rule. */
+static void rw_release_mic_noise(obs_source_t *mic) {
+    if (mic && g_mic_noise) obs_source_filter_remove(mic, g_mic_noise);
+    g_mic_noise = NULL;
+}
+
+/* Full-chain teardown for the mic-source release sites (shutdown, disable,
+ * device rebuild) — everything this file ever attached to `mic`. */
+static void rw_release_mic_filters(obs_source_t *mic) {
+    rw_release_mic_leveling(mic);
+    rw_release_mic_noise(mic);
+}
+
 /* Applies g_game_volume to g_sysaudio if it currently exists — called right
  * after every rw_plat_rebuild_system_audio() call (rewind_obs_init,
  * rewind_set_audio_mode, rewind_set_capture_app's app-mode branch), mirroring
@@ -468,8 +566,59 @@ static void rw_release_mic_leveling(obs_source_t *mic) {
  * NULL (audio mode off, or app mode with no capture target set yet) —
  * nothing to apply to; rewind_set_game_volume itself still stores the
  * preference for whenever a desktop-audio source next exists. */
+/* Volmeter callbacks (libobs audio thread). Reduce the per-channel arrays
+ * to a single loudest-channel value — the meter UI shows one bar per
+ * source, not a channel matrix. -INFINITY (silent/unused channel) clamps to
+ * the floor. */
+static float rw_level_max_db(const float vals[MAX_AUDIO_CHANNELS]) {
+    float best = RW_LEVEL_FLOOR_DB;
+    for (int i = 0; i < MAX_AUDIO_CHANNELS; i++) {
+        float v = vals[i];
+        if (v > best) best = v;
+    }
+    if (best > 0.0f) best = 0.0f;
+    return best;
+}
+
+static void rw_volmeter_cb_mic(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
+                               const float peak[MAX_AUDIO_CHANNELS],
+                               const float input_peak[MAX_AUDIO_CHANNELS]) {
+    (void)param; (void)input_peak;
+    g_mic_mag_db = rw_level_max_db(magnitude);
+    g_mic_peak_db = rw_level_max_db(peak);
+    g_mic_level_at_ns = os_gettime_ns();
+}
+
+static void rw_volmeter_cb_game(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
+                                const float peak[MAX_AUDIO_CHANNELS],
+                                const float input_peak[MAX_AUDIO_CHANNELS]) {
+    (void)param; (void)input_peak;
+    g_game_mag_db = rw_level_max_db(magnitude);
+    g_game_peak_db = rw_level_max_db(peak);
+    g_game_level_at_ns = os_gettime_ns();
+}
+
+/* (Re)attaches the mic/game volmeter to `source`, creating the volmeter on
+ * first use. Called from the same "after every (re)create" discipline spots
+ * as the volume appliers below; attach detaches any previous source
+ * internally, and a destroyed source detaches itself via its "destroy"
+ * signal, so this needs no matching per-teardown-site call. */
+static void rw_attach_volmeter(obs_volmeter_t **vm, obs_source_t *source,
+                               obs_volmeter_updated_t cb) {
+    if (!source) return;
+    if (!*vm) {
+        *vm = obs_volmeter_create(OBS_FADER_LOG);
+        if (!*vm) return;
+        obs_volmeter_add_callback(*vm, cb, NULL);
+    }
+    obs_volmeter_attach_source(*vm, source);
+}
+
 static void rw_apply_game_volume(void) {
-    if (g_sysaudio) obs_source_set_volume(g_sysaudio, g_game_volume);
+    if (g_sysaudio) {
+        obs_source_set_volume(g_sysaudio, g_game_volume);
+        rw_attach_volmeter(&g_game_volmeter, g_sysaudio, rw_volmeter_cb_game);
+    }
 }
 
 /* Applies the current mic-volume/monitoring/leveling preferences to `mic` —
@@ -484,6 +633,7 @@ static void rw_apply_game_volume(void) {
 static void rw_apply_mic_prefs(obs_source_t *mic) {
     if (!mic) return;
     obs_source_set_volume(mic, g_mic_volume);
+    rw_attach_volmeter(&g_mic_volmeter, mic, rw_volmeter_cb_mic);
     if (g_mic_monitoring) {
         if (!g_monitoring_device_set) {
             /* "Default"/"default" are the exact literal name/id obs_startup
@@ -502,7 +652,7 @@ static void rw_apply_mic_prefs(obs_source_t *mic) {
         }
         obs_source_set_monitoring_type(mic, OBS_MONITORING_TYPE_MONITOR_ONLY);
     }
-    rw_attach_mic_leveling(mic);
+    rw_attach_mic_filters(mic);
 }
 
 /* Attaches `capture` (the platform's current g_capture, or NULL to detach)
@@ -748,7 +898,7 @@ cleanup:
     if (g_venc) { obs_encoder_release(g_venc); g_venc = NULL; }
     if (g_aenc) { obs_encoder_release(g_aenc); g_aenc = NULL; }
     if (g_mic) {
-        rw_release_mic_leveling(g_mic);
+        rw_release_mic_filters(g_mic);
         obs_set_output_source(2, NULL);
         obs_source_release(g_mic);
         g_mic = NULL;
@@ -1022,7 +1172,14 @@ int rewind_obs_shutdown(void) {
     g_mic_monitoring = 0;
     /* Same "must run before the source itself is released" rule as the
      * monitoring safety net above — see rw_release_mic_leveling's doc. */
-    rw_release_mic_leveling(g_mic);
+    rw_release_mic_filters(g_mic);
+    /* Volmeters go before their sources: destroy detaches from the source's
+     * signal handler, which must still be alive. (A destroyed source also
+     * self-detaches, but destroying in this order needs no such reliance.) */
+    obs_volmeter_destroy(g_mic_volmeter);  g_mic_volmeter = NULL;
+    obs_volmeter_destroy(g_game_volmeter); g_game_volmeter = NULL;
+    g_mic_level_at_ns = 0;
+    g_game_level_at_ns = 0;
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);      g_mic = NULL;
     obs_set_output_source(1, NULL);
@@ -1085,7 +1242,7 @@ int rewind_set_mic_enabled(int enabled) {
          * the leveling filter chain — see rw_release_mic_leveling's doc on
          * why it must run before the release below. */
         obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
-        rw_release_mic_leveling(g_mic);
+        rw_release_mic_filters(g_mic);
         obs_set_output_source(2, NULL);
         obs_source_release(g_mic);
         g_mic = NULL;
@@ -1114,7 +1271,7 @@ void rewind_set_mic_device(const char *uid_or_null) {
      * monitoring on the OUTGOING source, and release its leveling filters,
      * before it's released. */
     obs_source_set_monitoring_type(g_mic, OBS_MONITORING_TYPE_NONE);
-    rw_release_mic_leveling(g_mic);
+    rw_release_mic_filters(g_mic);
     obs_set_output_source(2, NULL);
     obs_source_release(g_mic);
     g_mic = rw_plat_create_mic_source();
@@ -1160,9 +1317,50 @@ int rewind_set_game_volume(float volume) {
 int rewind_set_mic_leveling(int enabled) {
     g_mic_leveling = enabled ? 1 : 0;
     if (g_mic) {
-        if (g_mic_leveling) rw_attach_mic_leveling(g_mic);
+        if (g_mic_leveling) rw_attach_mic_filters(g_mic);
         else rw_release_mic_leveling(g_mic);
     }
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_noise_suppression(int enabled) {
+    g_mic_noise_suppression = enabled ? 1 : 0;
+    if (g_mic) {
+        if (g_mic_noise_suppression) rw_attach_mic_filters(g_mic);
+        else rw_release_mic_noise(g_mic);
+    }
+    set_error("");
+    return 0;
+}
+
+int rewind_audio_levels_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+
+    /* A source that stopped producing audio just stops firing volmeter
+     * callbacks — its last reading would stale at "speaking level" forever.
+     * Anything older than 500 ms reports the silence floor instead (the
+     * callbacks fire ~every 50 ms while audio flows, so a live source can
+     * never trip this). */
+    uint64_t now = os_gettime_ns();
+    float mic_peak = g_mic_peak_db, mic_mag = g_mic_mag_db;
+    float game_peak = g_game_peak_db, game_mag = g_game_mag_db;
+    uint64_t mic_at = g_mic_level_at_ns, game_at = g_game_level_at_ns;
+    const uint64_t stale_ns = 500ull * 1000000ull;
+    if (mic_at == 0 || now - mic_at > stale_ns) {
+        mic_peak = RW_LEVEL_FLOOR_DB;
+        mic_mag = RW_LEVEL_FLOOR_DB;
+    }
+    if (game_at == 0 || now - game_at > stale_ns) {
+        game_peak = RW_LEVEL_FLOOR_DB;
+        game_mag = RW_LEVEL_FLOOR_DB;
+    }
+
+    int n = snprintf(json_out, (size_t)json_cap,
+        "{\"mic_peak_db\":%.1f,\"mic_mag_db\":%.1f,"
+        "\"game_peak_db\":%.1f,\"game_mag_db\":%.1f}",
+        mic_peak, mic_mag, game_peak, game_mag);
+    if (n < 0 || n >= json_cap) { set_error("audio levels truncated"); return 1; }
     set_error("");
     return 0;
 }
@@ -1491,6 +1689,22 @@ int rewind_set_game_volume(float volume) {
 
 int rewind_set_mic_leveling(int enabled) {
     (void)enabled;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_noise_suppression(int enabled) {
+    (void)enabled;
+    set_error("");
+    return 0;
+}
+
+int rewind_audio_levels_json(char *json_out, int json_cap) {
+    if (!json_out || json_cap <= 0) { set_error("invalid buffer"); return 1; }
+    int n = snprintf(json_out, (size_t)json_cap,
+        "{\"mic_peak_db\":-120.0,\"mic_mag_db\":-120.0,"
+        "\"game_peak_db\":-120.0,\"game_mag_db\":-120.0}");
+    if (n < 0 || n >= json_cap) { set_error("audio levels truncated"); return 1; }
     set_error("");
     return 0;
 }
