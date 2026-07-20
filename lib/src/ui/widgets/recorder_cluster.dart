@@ -216,15 +216,24 @@ class RecorderCluster extends StatelessWidget {
           ],
           SizedBox(
             height: _controlHeight,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+            // Tooltip carries the WHY when the button is disabled — a bare
+            // greyed control otherwise reads as broken (the status line
+            // explaining it lives in a different corner of the deck).
+            child: Tooltip(
+              message: captureError == null
+                  ? ''
+                  : 'Capture unavailable — check Screen Recording permission',
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+                ),
+                onPressed:
+                    captureError == null ? () => coordinator.onHotkey() : null,
+                icon:
+                    const Icon(Icons.videocam_outlined, size: _controlIconSize),
+                label: const Text('Save clip'),
               ),
-              onPressed:
-                  captureError == null ? () => coordinator.onHotkey() : null,
-              icon: const Icon(Icons.videocam_outlined, size: _controlIconSize),
-              label: const Text('Save clip'),
             ),
           ),
           const SizedBox(height: 8),
@@ -669,14 +678,20 @@ class _RecordButtonState extends State<_RecordButton> {
     }
     return SizedBox(
       height: _controlHeight,
-      child: OutlinedButton.icon(
-        key: const ValueKey('recordButton'),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+      // Same disabled-state tooltip rationale as the Save clip button.
+      child: Tooltip(
+        message: widget.disabled
+            ? 'Capture unavailable — check Screen Recording permission'
+            : '',
+        child: OutlinedButton.icon(
+          key: const ValueKey('recordButton'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
+          ),
+          onPressed: onPressed,
+          icon: const Icon(Icons.fiber_manual_record, size: _controlIconSize),
+          label: const Text('Record'),
         ),
-        onPressed: onPressed,
-        icon: const Icon(Icons.fiber_manual_record, size: _controlIconSize),
-        label: const Text('Record'),
       ),
     );
   }

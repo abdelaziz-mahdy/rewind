@@ -7,6 +7,44 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Mic test meter with level hints**: a "Test my mic" button (Settings →
+  Capture → Audio, under the mic controls) opens a live level meter — speak
+  a few words and Rewind tells you in plain language whether the mic slider
+  is right ("Level looks good", "Too quiet — raise Mic volume", "Clipping —
+  lower Mic volume") instead of making you record a clip and guess from
+  playback. While game audio is flowing it shows a second bar and reports
+  how far your voice sits above the game mix. Backed by a new
+  `rewind_audio_levels_json` shim call (an `obs_volmeter` per audio source,
+  post-filter and post-slider, so the meter shows exactly what lands in
+  clips).
+- **Mic noise suppression**: a "Filter background noise" toggle (on by
+  default) attaches libobs' RNNoise `noise_suppress_filter` to the mic
+  ahead of the auto-leveling chain, stripping keyboard clatter, fans, and
+  room hum before the compressor can amplify them
+  (`rewind_set_mic_noise_suppression`).
+
+### Changed
+- **UX polish pass**: a broken/missing clip now shows "Couldn't play this
+  clip" with the underlying error in the player instead of an indefinite
+  black frame with a dead seek bar; manual saves ("Save clip" button /
+  hotkey) confirm with a "Clip saved" toast so the button never looks
+  inert; Escape closes Settings like the ✕ button; the disabled Save
+  clip/Record buttons explain why in a tooltip when capture is unavailable;
+  "Open in default player"/"Reveal in Finder" report failures instead of
+  silently doing nothing; the clip delete confirmation styles Delete as
+  destructive; the detected-game banner's ✕ clarifies it dismisses for the
+  session only; an event filter that matches nothing offers "Clear filter"
+  instead of the first-run empty state.
+
+### Fixed
+- **Mic auto-leveling was silently inert** — the `obs-filters` plugin
+  (home of libobs' compressor/limiter/noise-suppression filters) was never
+  in the SDK build allow-list, and libobs "creates" sources with
+  unregistered ids as non-NULL inert placeholders, so the auto-leveling
+  chain attached nothing and no warning ever fired. The plugin now ships on
+  all three platforms (fetch recipe bumps: macOS 3, Windows 3, Linux 2) and
+  the shim verifies filter ids are actually registered before creating
+  them, logging loudly when they aren't.
 - **User-renameable game display names**: auto-detected games used to
   surface raw executable-derived names ("PENGUINHOTEL-WIN64-SHIPPING")
   everywhere — the hub title, All Clips session headers, the rail, the MY
