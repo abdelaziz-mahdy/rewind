@@ -28,7 +28,10 @@ DEPS_VERSION="2025-08-23"
 #   1: initial cut -- mac-capture, obs-ffmpeg, coreaudio-encoder
 #   2: + mac-videotoolbox (H.264 hardware encoder; without it there is no
 #      macOS-capable video encoder in the SDK and clip saving fails)
-RECIPE_VERSION="2"
+#   3: + obs-filters (compressor/limiter/noise suppression for the mic
+#      chain; without it obs_source_create_private() silently returns inert
+#      placeholder sources and mic auto-leveling does nothing)
+RECIPE_VERSION="3"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/native/third_party/obs"
@@ -121,9 +124,9 @@ cmake_minimum_required(VERSION 3.28...3.30)
 # --- Rewind: patched by tools/fetch_libobs.sh ---
 # Upstream builds every plugin (and unconditionally requires the obs-browser /
 # obs-websocket git submodules to be checked out). Rewind only needs capture +
-# encode, so this file is replaced at fetch time with an allow-list of the
-# modules we actually ship: mac-capture, mac-videotoolbox, obs-ffmpeg,
-# coreaudio-encoder.
+# encode + mic audio filters, so this file is replaced at fetch time with an
+# allow-list of the modules we actually ship: mac-capture, mac-videotoolbox,
+# obs-ffmpeg, coreaudio-encoder, obs-filters.
 
 option(ENABLE_PLUGINS "Enable building OBS plugins" ON)
 
@@ -138,6 +141,7 @@ add_obs_plugin(coreaudio-encoder PLATFORMS WINDOWS MACOS)
 add_obs_plugin(mac-capture PLATFORMS MACOS)
 add_obs_plugin(mac-videotoolbox PLATFORMS MACOS)
 add_obs_plugin(obs-ffmpeg)
+add_obs_plugin(obs-filters)
 EOF
 
   # Patch 2/3: skip the Qt6 prebuilt download.
@@ -243,6 +247,7 @@ cp -R "$BUILD/plugins/mac-capture/RelWithDebInfo/mac-capture.plugin" "$OUT/obs-p
 cp -R "$BUILD/plugins/mac-videotoolbox/RelWithDebInfo/mac-videotoolbox.plugin" "$OUT/obs-plugins/"
 cp -R "$BUILD/plugins/obs-ffmpeg/RelWithDebInfo/obs-ffmpeg.plugin" "$OUT/obs-plugins/"
 cp -R "$BUILD/plugins/coreaudio-encoder/RelWithDebInfo/coreaudio-encoder.plugin" "$OUT/obs-plugins/"
+cp -R "$BUILD/plugins/obs-filters/RelWithDebInfo/obs-filters.plugin" "$OUT/obs-plugins/"
 
 # bin/: the obs-ffmpeg-mux helper. obs-ffmpeg's muxer/replay-buffer SPAWNS
 # this standalone executable to write files, resolving it next to the main
@@ -258,6 +263,7 @@ rsync -a "$SRC/plugins/mac-capture/data/" "$OUT/data/obs-plugins/mac-capture/"
 rsync -a "$SRC/plugins/mac-videotoolbox/data/" "$OUT/data/obs-plugins/mac-videotoolbox/"
 rsync -a "$SRC/plugins/obs-ffmpeg/data/" "$OUT/data/obs-plugins/obs-ffmpeg/"
 rsync -a "$SRC/plugins/coreaudio-encoder/data/" "$OUT/data/obs-plugins/coreaudio-encoder/"
+rsync -a "$SRC/plugins/obs-filters/data/" "$OUT/data/obs-plugins/obs-filters/"
 
 echo "$STAMP_VALUE" > "$STAMP"
 echo "libobs $OBS_TAG ($BUILD_ARCH) ready in $OUT"

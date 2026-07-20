@@ -74,7 +74,9 @@ $ObsTag = '32.1.2'
 #   2: required/optional runtime split (a missing required dep is now fatal
 #      instead of a silent warning), FFmpeg/x264 DLLs globbed by prefix
 #      (survive soname bumps), d3dcompiler_47.dll bundled defensively.
-$RecipeVersion = 2
+#   3: + obs-filters (compressor/limiter/noise suppression for the mic
+#      chain; without it the mic filter sources are inert placeholders).
+$RecipeVersion = 3
 
 $WindowsZipName = "OBS-Studio-$ObsTag-Windows-x64.zip"
 $SourcesTarName = "OBS-Studio-$ObsTag-Sources.tar.gz"
@@ -259,7 +261,7 @@ if ($ffCopied -eq 0) {
 # license to redistribute and which isn't present on a stock Windows
 # machine; ffmpeg_aac (from obs-ffmpeg, already kept) is the Windows audio
 # encoder instead.
-$pluginsKeep = @('win-capture', 'win-wasapi', 'obs-ffmpeg', 'obs-x264', 'obs-nvenc', 'obs-qsv11')
+$pluginsKeep = @('win-capture', 'win-wasapi', 'obs-ffmpeg', 'obs-x264', 'obs-nvenc', 'obs-qsv11', 'obs-filters')
 foreach ($p in $pluginsKeep) {
     $dll = Join-Path $runtimeDir "obs-plugins/64bit/$p.dll"
     if (-not (Test-Path $dll)) {
