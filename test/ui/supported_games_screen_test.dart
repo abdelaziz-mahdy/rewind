@@ -7,6 +7,7 @@ import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
+import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
@@ -57,12 +58,14 @@ void main() {
   SupportedGamesScreen screen({
     Future<void> Function(AppSettings)? onSettingsChanged,
     ValueChanged<String>? onOpenGame,
+    List<AppInfo> Function()? listApps,
   }) =>
       SupportedGamesScreen(
         coordinator: coordinator,
         library: library,
         onSettingsChanged: onSettingsChanged ?? (_) async {},
         onOpenGame: onOpenGame ?? (_) {},
+        listApps: listApps,
       );
 
   Finder row(String gameId) => find.byKey(ValueKey('supportedGameRow:$gameId'));
@@ -197,4 +200,48 @@ void main() {
     // is tested against buildGameDirectory directly in
     // game_directory_test.dart ("Marvel Rivals never surfaces an iconPath").
   });
+  group('Running now section', () {
+    AppInfo app(String name, {String bundleId = 'com.x.app'}) => AppInfo(
+        bundleId: bundleId, name: name, pid: 42, windowId: 1);
+
+    testWidgets('hidden without listApps wired', (t) async {
+      await _pump(t, _app(screen()));
+      expect(find.text('Running now'), findsNothing);
+    });
+
+    testWidgets('lists a running app with an Add button that learns it',
+        (t) async {
+      final persisted = <AppSettings>[];
+      await _pump(t, _app(screen(
+        listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
+        onSettingsChanged: (s) async => persisted.add(s),
+      )));
+
+      final rowFinder = find.byKey(const ValueKey('runningAppRow:app:penguin_hotel'));
+      await t.scrollUntilVisible(rowFinder, 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(rowFinder, findsOneWidget);
+
+      await t.tap(find.descendant(
+          of: rowFinder, matching: find.text('Add')));
+      await t.pump();
+
+      expect(persisted, isNotEmpty);
+      final cfg = coordinator.settings.configFor('app:penguin_hotel');
+      expect(cfg.processMatch, 'Penguin Hotel');
+      expect(cfg.displayName, 'Penguin Hotel');
+    });
+
+    testWidgets('an already-learned app does not offer Add again', (t) async {
+      coordinator.settings.setConfig(
+          coordinator.settings.configFor('app:penguin_hotel')
+            ..processMatch = 'Penguin Hotel');
+      await _pump(t, _app(screen(
+        listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
+      )));
+      expect(find.byKey(const ValueKey('runningAppRow:app:penguin_hotel')),
+          findsNothing);
+    });
+  });
+
 }

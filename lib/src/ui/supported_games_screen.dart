@@ -4,8 +4,10 @@ import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
+import '../obs/app_info.dart';
 import '../games/game_descriptor.dart';
 import '../settings/app_settings.dart';
+import 'capture_app_match.dart';
 import 'theme.dart';
 import 'widgets/game_tile_avatar.dart';
 
@@ -107,11 +109,19 @@ class SupportedGamesScreen extends StatefulWidget {
   /// their explicit Add button is the only affordance.
   final ValueChanged<String> onOpenGame;
 
+  /// Live app enumeration for the "Running now" section — lets a user add
+  /// any app that's actually running right now, not just catalog titles
+  /// (the original "Add game" gap: the fixed catalog couldn't add the game
+  /// you were literally playing). Null (tests, stub engine) hides the
+  /// section.
+  final List<AppInfo> Function()? listApps;
+
   const SupportedGamesScreen({
     required this.coordinator,
     required this.library,
     required this.onSettingsChanged,
     required this.onOpenGame,
+    this.listApps,
     super.key,
   });
 
@@ -126,6 +136,32 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
     settings.setConfig(cfg);
     setState(() {});
     widget.onSettingsChanged(settings);
+  }
+
+  /// "Running now" Add: same learn path as picking the app as a capture
+  /// source (`learnAppAsGame` — processMatch/displayName/iconPath rules),
+  /// WITHOUT switching the capture target; auto-switch takes over next
+  /// time the game is detected running.
+  void _addRunningApp(AppInfo a) {
+    final settings = widget.coordinator.settings;
+    learnAppAsGame(settings, a);
+    setState(() {});
+    widget.onSettingsChanged(settings);
+  }
+
+  /// Running apps not yet in the library and not already a catalog row —
+  /// the catalog rows above already carry their own Add/state. Probable
+  /// games first (Wine exes + catalog matches, per partitionCapturableApps),
+  /// then everything else.
+  List<AppInfo> _addableRunningApps(AppSettings settings) {
+    final apps = widget.listApps?.call() ?? const <AppInfo>[];
+    final known = settings.allConfigs.map((c) => c.gameId).toSet();
+    final grouped = partitionCapturableApps(apps);
+    return [
+      for (final a in [...grouped.games, ...grouped.others])
+        if (matchingCatalogGame(a) == null && !known.contains(gameIdForApp(a)))
+          a,
+    ];
   }
 
   @override
@@ -158,6 +194,38 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
                 onAdd: () => _addGame(row.gameId),
                 onOpen: () => widget.onOpenGame(row.gameId),
               ),
+            if (widget.listApps != null) ...[
+              const SizedBox(height: 28),
+              Text('Running now', style: theme.textTheme.title),
+              const SizedBox(height: 4),
+              Text(
+                "Playing something that isn't in the list? Add any app "
+                'running right now and Rewind will treat it as a game — '
+                'auto-detected and auto-captured next time it launches.',
+                style: theme.textTheme.bodyMuted,
+              ),
+              const SizedBox(height: 8),
+              ...switch (_addableRunningApps(settings)) {
+                [] => [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Nothing new running — every running app is already '
+                        'in your library or the list above.',
+                        style: theme.textTheme.bodyMuted,
+                      ),
+                    ),
+                  ],
+                final apps => [
+                    for (final a in apps)
+                      _RunningAppRow(
+                        key: ValueKey('runningAppRow:${gameIdForApp(a)}'),
+                        app: a,
+                        onAdd: () => _addRunningApp(a),
+                      ),
+                  ],
+              },
+            ],
             const SizedBox(height: 20),
             Text(
               'Rewind only reads official local APIs and process names — '
@@ -279,5 +347,58 @@ class _StateIndicator extends StatelessWidget {
           child: const Text('Add'),
         );
     }
+  }
+}
+
+
+/// One "Running now" row: the app's real icon (when macOS gave us one),
+/// name, a Wine marker where relevant, and an Add button. Mirrors
+/// _CatalogRowTile's geometry so the two lists read as one screen.
+class _RunningAppRow extends StatelessWidget {
+  final AppInfo app;
+  final VoidCallback onAdd;
+
+  const _RunningAppRow({required this.app, required this.onAdd, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: BorderRadius.circular(tokens.radiusCard),
+        border: Border.fromBorderSide(hairlineBorder()),
+      ),
+      child: Row(
+        children: [
+          GameTileAvatar(
+            gameId: gameIdForApp(app),
+            displayName: app.name,
+            iconPath: app.iconPath,
+            size: 32,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              app.name,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.body,
+            ),
+          ),
+          if (app.bundleId.isEmpty) ...[
+            Text('Windows app', style: theme.textTheme.bodyMuted),
+            const SizedBox(width: 12),
+          ],
+          OutlinedButton(
+            onPressed: onAdd,
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 }

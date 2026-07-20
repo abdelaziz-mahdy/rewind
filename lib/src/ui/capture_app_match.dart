@@ -1,4 +1,6 @@
 import '../events/game_catalog.dart';
+import '../settings/app_settings.dart';
+import '../settings/game_config.dart';
 import '../games/game_descriptor.dart';
 import '../obs/app_info.dart';
 
@@ -93,6 +95,36 @@ String gameIdForApp(AppInfo app,
   final nameSlug = slugify(app.name);
   final slug = nameSlug.isNotEmpty ? nameSlug : slugify(app.bundleId);
   return 'app:$slug';
+}
+
+/// Writes the [GameConfig] that makes Rewind "learn" a running app as a
+/// game — the shared half of picking a capture source
+/// (`_SourceLine._pickApp`) and the Supported Games screen's "Running now"
+/// Add button. Returns the gameId the app was learned under. Mutates
+/// [settings] in place; the caller persists (onSettingsChanged) and
+/// decides separately whether to also switch the capture target.
+///
+/// Field rules (all "capture once, never overwrite"):
+/// - `processMatch`: the app's name, so detection auto-follows next launch.
+/// - `displayName`: only for freshly-minted `app:<slug>` entries — catalog
+///   gameIds carry their own curated displayName which must not be
+///   shadowed.
+/// - `iconPath`: lets the rail show the real app icon when the game isn't
+///   running — except for Riot games, whose icon IS Riot's official logo
+///   (policy-forbidden; see `usesOfficialLogo`). Null for Wine apps (no
+///   bundle → no icon) is correct, not a bug.
+String learnAppAsGame(AppSettings settings, AppInfo a) {
+  final gameId = gameIdForApp(a);
+  final cfg = settings.configFor(gameId);
+  cfg.processMatch ??= a.name;
+  if (gameId.startsWith('app:') && matchingCatalogGame(a) == null) {
+    cfg.displayName ??= a.name;
+  }
+  if (!usesOfficialLogo(gameId: gameId, bundleId: a.bundleId)) {
+    cfg.iconPath ??= a.iconPath;
+  }
+  settings.setConfig(cfg);
+  return gameId;
 }
 
 /// Splits the capture-source menu's app list into probable games and
