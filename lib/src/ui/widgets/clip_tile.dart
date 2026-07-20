@@ -374,8 +374,8 @@ class _ClipTileState extends State<ClipTile> {
         events: events,
         library: library,
         // The real platform exporter; PlayerScreen hides Trim wherever
-        // it reports unsupported (Windows/Linux for now).
-        trimmer: MethodChannelClipTrimmer(),
+        // it reports unsupported (Linux, until ffmpeg_kit ships binaries).
+        trimmer: FfmpegKitClipTrimmer(),
       ),
     ));
   }

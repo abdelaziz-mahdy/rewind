@@ -5,7 +5,7 @@ import 'package:rewind/src/clip/thumbnail_generator.dart';
 
 /// A [ThumbnailGenerator] that writes a tiny placeholder file instead of
 /// touching media_kit — the seam every test in this suite exercises instead
-/// of `MediaKitThumbnailGenerator` (never constructible in a widget-test
+/// of `FfmpegThumbnailGenerator` (FFmpeg binaries absent in the widget-test
 /// host process; see CLAUDE.md's testing gotchas).
 class FakeThumbnailGenerator implements ThumbnailGenerator {
   /// Paths (by [videoPath]) that should report failure instead of writing a

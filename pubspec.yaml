@@ -25,6 +25,7 @@ dependencies:
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
   file_selector: ^1.1.0
+  ffmpeg_kit_flutter_new: ^4.5.1
 
 dev_dependencies:
   flutter_test:
