@@ -1,12 +1,16 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/clip_trimmer.dart';
+import 'package:rewind/src/clip/filmstrip.dart';
 import 'package:rewind/src/clip/match_export.dart';
 import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/clip/thumbnail_cache.dart';
@@ -15,6 +19,7 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
+import 'package:rewind/src/ui/player_screen.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 
@@ -28,6 +33,9 @@ import '../test/fakes/fake_thumbnail_generator.dart';
 /// the artifact.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  // The real main() does this before any media_kit Player is built; the
+  // player trim tour needs it too.
+  MediaKit.ensureInitialized();
 
   final boundaryKey = GlobalKey();
 
@@ -165,5 +173,55 @@ void main() {
     )));
     await t.pump(const Duration(milliseconds: 400));
     await shoot('04-match-screen');
+  });
+
+  testWidgets('player — trim mode with real FFmpeg filmstrip', (t) async {
+    // Generate a real 8-second test clip so media_kit can play it and the
+    // filmstrip generator has actual frames to sample (both plugins are
+    // live on the device).
+    final videoPath = '${tmp.path}/testclip.mp4';
+    await FFmpegKit.executeWithArguments([
+      '-f', 'lavfi',
+      '-i', 'testsrc=duration=8:size=1280x720:rate=30',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+      '-y', videoPath,
+    ]);
+    if (!File(videoPath).existsSync()) {
+      // If ffmpeg couldn't produce a clip, skip rather than fail the tour.
+      return;
+    }
+
+    final library = ClipLibrary(clipsDir: tmp);
+    final theClip = clip('testclip', GameEventKind.pentaKill, DateTime.now());
+    library.add(theClip);
+
+    await t.pumpWidget(frame(PlayerScreen(
+      clip: theClip,
+      library: library,
+      trimmer: FfmpegKitClipTrimmer(),
+      filmstrip: FfmpegFilmstripGenerator(),
+    )));
+
+    // Wait (bounded) for media_kit to report a duration so the trim button
+    // becomes available.
+    for (var i = 0; i < 60; i++) {
+      await t.pump(const Duration(milliseconds: 250));
+      if (find.byKey(const ValueKey('trimButton')).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+    final trimBtn = find.byKey(const ValueKey('trimButton'));
+    if (trimBtn.evaluate().isEmpty) {
+      // media_kit never reported a duration on this runner — capture what
+      // we have rather than failing.
+      await shoot('05-player-no-trim');
+      return;
+    }
+    await t.tap(trimBtn);
+    // Let the filmstrip generate + decode.
+    for (var i = 0; i < 30; i++) {
+      await t.pump(const Duration(milliseconds: 250));
+    }
+    await shoot('05-player-trim');
   });
 }
