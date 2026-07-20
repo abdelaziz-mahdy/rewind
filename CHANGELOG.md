@@ -7,13 +7,22 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **"Running now" on Supported Games**: playing something the catalog
+  doesn't know? The Supported Games screen now ends with a live list of
+  running apps (probable games first, Windows/CrossOver exes included) —
+  one Add click learns it as a game (same rules as picking it as a capture
+  source: process auto-detection next launch, real app icon in the rail,
+  no Riot-logo exceptions violated) without touching your current capture
+  target.
 - **Clip trimming in the player**: a scissors button opens trim mode — an
   FFmpeg-generated filmstrip of frames spans the trim surface (above the
   timeline), with editor-style grab handles over it; the trimmed-off ends
   dim so the kept span reads at a glance, dragging a handle seeks the
   player to the exact cut frame, and an in → out + "selected" readout
   tracks the range. "Save trimmed clip" exports
-  the selection as a NEW clip next to the original, losslessly
+  the selection as a NEW clip next to the original — the confirmation
+  toast carries a Play action that opens the trimmed result immediately
+  (a result the user can't act on isn't a result) — losslessly
   (FFmpeg stream copy via `ffmpeg_kit_flutter_new`; the cut lands on the
   keyframe at/before the chosen start). The original clip is untouched;
   the trim is indexed into the library immediately with a "Trimmed"

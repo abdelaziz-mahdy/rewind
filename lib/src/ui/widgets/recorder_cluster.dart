@@ -438,7 +438,6 @@ class _SourceLine extends StatelessWidget {
   /// duplicate row for a game the catalog already knows) and never
   /// overwrites an already-set `processMatch` on an existing config.
   void _pickApp(AppInfo a) {
-    final gameId = gameIdForApp(a);
     if (a.bundleId.isEmpty) {
       // Wine/CrossOver program (see AppInfo.bundleId): ScreenCaptureKit has
       // no bundle id to app-capture it by. The persisted preference stays
@@ -451,26 +450,10 @@ class _SourceLine extends StatelessWidget {
       settings.captureAppBundleId = a.bundleId;
       settings.captureAppName = a.name;
     }
-    final cfg = settings.configFor(gameId);
-    cfg.processMatch ??= a.name;
-    // Only for freshly-minted app:<slug> entries: catalog gameIds carry
-    // their own (curated) displayName, which must not be shadowed.
-    if (gameId.startsWith('app:') && matchingCatalogGame(a) == null) {
-      cfg.displayName ??= a.name;
-    }
-    // Same "capture once, never overwrite" rule as processMatch/displayName
-    // above: this is what lets the rail (`GameTileAvatar`) show the real
-    // app icon even when the game isn't currently running (an `AppInfo`
-    // only exists while its process is enumerable) — see `GameConfig.
-    // iconPath`'s doc. Null for Wine apps (no bundle, so no icon) is a
-    // correct, expected value here, not a bug — and so is skipping this for
-    // Riot games: their app icon IS Riot's official logo, which Riot's
-    // policy forbids using (see `usesOfficialLogo`'s doc); the monogram
-    // stays for those.
-    if (!usesOfficialLogo(gameId: gameId, bundleId: a.bundleId)) {
-      cfg.iconPath ??= a.iconPath;
-    }
-    settings.setConfig(cfg);
+    // The "learn this app as a game" half (GameConfig writes — see
+    // learnAppAsGame's doc for the field rules) is shared with the
+    // Supported Games screen's "Running now" Add button.
+    final gameId = learnAppAsGame(settings, a);
     final persisted = onSettingsChanged(settings);
     if (a.bundleId.isEmpty && a.windowId != 0) {
       persisted.whenComplete(() => onWinePick?.call(a, gameId));

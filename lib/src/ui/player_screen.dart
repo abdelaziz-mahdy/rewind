@@ -243,7 +243,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Indexed with size 0 rather than dropped — the file exists (the
       // exporter said so); a transient stat failure shouldn't lose it.
     }
-    library.add(Clip(
+    final trimmed = Clip(
       path: outPath,
       gameId: widget.clip.gameId,
       event: widget.clip.event,
@@ -252,14 +252,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
       sessionAt: widget.clip.sessionAt,
       killCount: widget.clip.killCount,
       eventLabel: 'Trimmed',
-    ));
+    );
+    library.add(trimmed);
     await library.save();
     if (!mounted) return;
     setState(() {
       _exporting = false;
       _trimming = false;
     });
-    _toast('Trimmed clip saved.');
+    // The toast must hand the user the result, not just report it —
+    // maintainer hit exactly this: "says clip is trimmed but doesn't show
+    // the trimmed clips anywhere nor a way to open that clip". Play swaps
+    // this player over to the trimmed clip; it's also indexed in the
+    // library next to its source (same session/createdAt) for later.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 6),
+      content: const Text('Trimmed clip saved'),
+      action: SnackBarAction(
+        label: 'Play',
+        onPressed: () {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+            settings: const RouteSettings(name: playerScreenRouteName),
+            builder: (_) => PlayerScreen(
+              clip: trimmed,
+              events: widget.events,
+              library: widget.library,
+              trimmer: widget.trimmer,
+              filmstrip: widget.filmstrip,
+            ),
+          ));
+        },
+      ),
+    ));
   }
 
   void _toast(String message) {

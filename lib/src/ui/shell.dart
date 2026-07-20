@@ -292,6 +292,7 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           onSettingsChanged: widget.onSettingsChanged,
           onOpenGame: (gameId) => _select(GameDestination(gameId)),
+          listApps: widget.listApps,
         ),
       SettingsDestination(initialGameId: final gameId, initialTab: final tab) =>
         SettingsScreen(
