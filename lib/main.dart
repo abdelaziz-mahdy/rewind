@@ -177,6 +177,7 @@ Future<void> main() async {
   engine.setMicDevice(settings.micDeviceUid);
   engine.setMicVolume(settings.micVolume);
   engine.setMicLeveling(settings.micAutoLevel);
+  engine.setMicNoiseSuppression(settings.micNoiseSuppression);
   engine.setAudioMode(audioModeToShim(settings.audioMode));
   engine.setGameVolume(settings.gameAudioVolume);
   engine.setCaptureQuality(settings.captureFps, settings.captureMaxHeight ?? 0);
@@ -493,6 +494,7 @@ Future<void> main() async {
       engine?.setMicDevice(s.micDeviceUid);
       engine?.setMicVolume(s.micVolume);
       engine?.setMicLeveling(s.micAutoLevel);
+      engine?.setMicNoiseSuppression(s.micNoiseSuppression);
       engine?.setAudioMode(audioModeToShim(s.audioMode));
       engine?.setGameVolume(s.gameAudioVolume);
       // Quality stored for next launch (a live pipeline can't change fps/res).
@@ -519,6 +521,7 @@ Future<void> main() async {
     },
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
     onSetMicMonitoring: (enabled) => engine?.setMicMonitoring(enabled),
+    audioLevels: () => engine?.audioLevelsJson(),
     onCleanUpStorage: () async {
       // Same enforcement as the automatic sweep, but user-triggered from
       // Settings → Storage; returns the removals so the tab can report
@@ -576,6 +579,10 @@ class RewindApp extends StatefulWidget {
   /// Forwarded to the embedded Settings destination's mic-volume "listen"
   /// button (see `SettingsScreen.onSetMicMonitoring`).
   final void Function(bool enabled)? onSetMicMonitoring;
+
+  /// Forwarded to the embedded Settings destination's mic-test meter (see
+  /// `SettingsScreen.audioLevels`).
+  final String? Function()? audioLevels;
   final Future<List<Clip>> Function()? onCleanUpStorage;
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
@@ -614,6 +621,7 @@ class RewindApp extends StatefulWidget {
     this.settingsRevision,
     this.onSetCaptureApp,
     this.onSetMicMonitoring,
+    this.audioLevels,
     this.onCleanUpStorage,
     this.thumbnails,
     this.ddragon,
@@ -694,6 +702,7 @@ class _RewindAppState extends State<RewindApp> {
               onCleanUpStorage: widget.onCleanUpStorage,
               onSetCaptureApp: widget.onSetCaptureApp,
               onSetMicMonitoring: widget.onSetMicMonitoring,
+              audioLevels: widget.audioLevels,
               thumbnails: widget.thumbnails,
               ddragon: widget.ddragon,
               steamStatus: widget.steamStatus,

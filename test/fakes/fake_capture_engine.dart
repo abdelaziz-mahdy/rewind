@@ -282,6 +282,31 @@ class FakeCaptureEngine implements CaptureEngine {
     return true;
   }
 
+  /// Every value passed to [setMicNoiseSuppression], in call order.
+  final List<bool> setMicNoiseSuppressionCalls = [];
+
+  /// Last value passed to [setMicNoiseSuppression].
+  bool? micNoiseSuppression;
+
+  @override
+  bool setMicNoiseSuppression(bool enabled) {
+    calls.add('setMicNoiseSuppression:$enabled');
+    setMicNoiseSuppressionCalls.add(enabled);
+    micNoiseSuppression = enabled;
+    return true;
+  }
+
+  /// Settable JSON returned by [audioLevelsJson] — tests drive the mic-test
+  /// meter with this rather than the real FFI/native shim. Null (the
+  /// default) mirrors a shim-level failure.
+  String? audioLevelsJsonValue;
+
+  @override
+  String? audioLevelsJson() {
+    calls.add('audioLevelsJson');
+    return audioLevelsJsonValue;
+  }
+
   /// Settable current screen-capture permission state, mirroring the real
   /// engine's live/pollable grant state — tests flip this directly to
   /// simulate a grant happening in System Settings while the app runs.
