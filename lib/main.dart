@@ -115,7 +115,7 @@ Future<void> main() async {
             'using the default');
     clipsDir = await ensureClipsDir();
   }
-  final thumbnailCache = ThumbnailCache(MediaKitThumbnailGenerator());
+  final thumbnailCache = ThumbnailCache(FfmpegThumbnailGenerator());
   final library = await ClipLibrary.load(
     clipsDir,
     onClipDeleted: (clip) => thumbnailCache.invalidate(clip),

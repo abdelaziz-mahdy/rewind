@@ -5,6 +5,7 @@
 import FlutterMacOS
 import Foundation
 
+import ffmpeg_kit_flutter_new
 import file_selector_macos
 import hotkey_manager_macos
 import media_kit_libs_macos_video
@@ -15,6 +16,7 @@ import tray_manager
 import wakelock_plus
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  FFmpegKitFlutterPlugin.register(with: registry.registrar(forPlugin: "FFmpegKitFlutterPlugin"))
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))
   HotkeyManagerMacosPlugin.register(with: registry.registrar(forPlugin: "HotkeyManagerMacosPlugin"))
   MediaKitLibsMacosVideoPlugin.register(with: registry.registrar(forPlugin: "MediaKitLibsMacosVideoPlugin"))

@@ -26,13 +26,34 @@ void main() {
     });
   });
 
-  group('MethodChannelClipTrimmer', () {
-    test('rejects an empty or inverted range without touching the channel',
+  group('trimArguments', () {
+    test('input-seeks, stream-copies, and re-zeros timestamps', () {
+      expect(
+        trimArguments(
+          srcPath: '/clips/a.mp4',
+          start: const Duration(milliseconds: 1500),
+          end: const Duration(milliseconds: 9750),
+          outPath: '/clips/a-trim-1.mp4',
+        ),
+        [
+          '-ss', '1.500',
+          '-i', '/clips/a.mp4',
+          '-t', '8.250',
+          '-c', 'copy',
+          '-avoid_negative_ts', 'make_zero',
+          '-y', '/clips/a-trim-1.mp4',
+        ],
+      );
+    });
+  });
+
+  group('FfmpegKitClipTrimmer', () {
+    test('rejects an empty or inverted range without invoking FFmpeg',
         () async {
-      final trimmer = MethodChannelClipTrimmer();
-      // No channel handler is registered in tests — reaching the channel
-      // would throw MissingPluginException-driven false, but an invalid
-      // range must short-circuit before that.
+      final trimmer = FfmpegKitClipTrimmer();
+      // No FFmpeg binaries exist under `flutter test` — reaching the
+      // package would throw its way to false, but an invalid range must
+      // short-circuit before that.
       expect(
         await trimmer.trim(
           srcPath: '/a.mp4',
