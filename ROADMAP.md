@@ -83,7 +83,9 @@ These shape every milestone:
 
 ## v0.5 — "It's shareable"
 
-- [ ] In-app trim/clip editor
+- [x] In-app trim (player trim mode: range handles + lossless FFmpeg
+      stream-copy export to a new clip; macOS + Windows). A richer editor
+      (multi-segment, re-encode presets) remains open.
 - [ ] Export presets (resolution/bitrate)
 - [ ] Optional upload/share targets
 

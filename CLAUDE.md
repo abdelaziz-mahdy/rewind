@@ -123,7 +123,9 @@ rewind/
   file exists, and clips silently vanish from the library without it.
 
 **media_kit headless-Player gotchas (cost hours diagnosing thumbnail
-generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
+generation — HISTORICAL since thumbnails moved to FFmpeg
+(`FfmpegThumbnailGenerator`, 2026-07-20), but still true for `PlayerScreen`
+playback and any future headless media_kit use):**
 - **`Player.screenshot()` returns null with no VideoController attached.**
   The default headless `PlayerConfiguration` has `vo=null` (no video output),
   and mpv's `screenshot-raw` command reads from the video output's current
@@ -170,8 +172,8 @@ generation — see `ThumbnailGenerator`/`MediaKitThumbnailGenerator`):**
   libmpv); tests assert navigation by route name (`playerScreenRouteName`).
 - Real `dart:io` file work inside `testWidgets` bodies hangs the fake-async
   zone — use plain `test()` or fakes.
-- Thumbnails: `MediaKitThumbnailGenerator` (media_kit-backed, like
-  `PlayerScreen`) must never be constructed in tests — fake the
+- Thumbnails: `FfmpegThumbnailGenerator` (ffmpeg_kit-backed; FFmpeg
+  binaries absent in the test host) must never be constructed in tests — fake the
   `ThumbnailGenerator` seam instead (`test/fakes/fake_thumbnail_generator.dart`).
   That fake writes with the `*Sync` `dart:io` calls deliberately: the async
   variants hang forever if a `ClipTile` widget test triggers them (via
