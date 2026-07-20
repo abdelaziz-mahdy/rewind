@@ -136,7 +136,16 @@ class MatchCard extends StatelessWidget {
                       Positioned(
                         right: 8,
                         top: 8,
-                        child: _CountPill(count: count),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (stats?.result != null) ...[
+                              MatchResultBadge(result: stats!.result!),
+                              const SizedBox(height: 6),
+                            ],
+                            _CountPill(count: count),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -303,6 +312,41 @@ class _KdBadge extends StatelessWidget {
 
 /// The "N clips" pill over the thumbnail's top-right, a dark scrim behind it
 /// for legibility over any frame.
+/// A WIN / LOSS chip for a decided match (see [MatchResult]). Green (accent)
+/// for a win, red (rec) for a loss, over a dark scrim so it stays legible on
+/// any thumbnail — the same treatment as the count pill it sits above.
+/// Shared by the match card and the match screen.
+class MatchResultBadge extends StatelessWidget {
+  final MatchResult result;
+
+  /// A larger variant for the match screen header (vs. the compact card pill).
+  final bool large;
+
+  const MatchResultBadge({required this.result, this.large = false, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    final theme = Theme.of(context);
+    final isWin = result == MatchResult.win;
+    final color = isWin ? tokens.accent : tokens.rec;
+    return Container(
+      padding: EdgeInsets.symmetric(
+          horizontal: large ? 10 : 8, vertical: large ? 4 : 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(tokens.radiusChip),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        isWin ? 'WIN' : 'LOSS',
+        style: (large ? theme.textTheme.label : theme.textTheme.micro)
+            .copyWith(color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
 class _CountPill extends StatelessWidget {
   final int count;
 

@@ -157,6 +157,36 @@ void main() {
     expect(emitted.single.kind, GameEventKind.doubleKill);
   });
 
+
+  test('GameEnd maps Result to victory/defeat; unknown result is neutral',
+      () async {
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+
+    responses['/liveclientdata/eventdata'] = _events([
+      {'EventID': 0, 'EventName': 'GameEnd', 'Result': 'Win'},
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted.map((e) => e.kind), contains(GameEventKind.victory));
+
+    emitted.clear();
+    responses['/liveclientdata/eventdata'] = _events([
+      {'EventID': 1, 'EventName': 'GameEnd', 'Result': 'Lose'},
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted.map((e) => e.kind), contains(GameEventKind.defeat));
+
+    emitted.clear();
+    responses['/liveclientdata/eventdata'] = _events([
+      {'EventID': 2, 'EventName': 'GameEnd'}, // no Result -> neutral
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted.single.kind, GameEventKind.other);
+  });
+
   test('a 2-team mode (CLASSIC) splits into your team vs enemies', () async {
     responses['/liveclientdata/gamestats'] =
         jsonEncode({'gameMode': 'CLASSIC'});
