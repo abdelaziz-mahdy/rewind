@@ -10,8 +10,10 @@ import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clip_markers.dart';
 import '../clip/clip_trimmer.dart';
+import '../clip/filmstrip.dart';
 import '../clip/match_stats.dart';
 import '../events/game_catalog.dart';
+import 'clip_file_actions.dart';
 import 'format_duration.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
@@ -61,15 +63,22 @@ class PlayerScreen extends StatefulWidget {
   /// (tests, embeddings without a library) hides the Trim button.
   final ClipLibrary? library;
 
-  /// The platform trim exporter. Null or unsupported (Windows/Linux for
-  /// now) hides the Trim button — no dead affordance.
+  /// The platform trim exporter. Null or unsupported (Linux, until
+  /// ffmpeg_kit ships binaries there) hides the Trim button — no dead
+  /// affordance.
   final ClipTrimmer? trimmer;
+
+  /// Produces the trim bar's frame filmstrip. Null (tests, embeddings)
+  /// just renders the trim bar without frames — the filmstrip is
+  /// enhancement, never a gate on trimming.
+  final FilmstripGenerator? filmstrip;
 
   const PlayerScreen({
     required this.clip,
     this.events = const [],
     this.library,
     this.trimmer,
+    this.filmstrip,
     super.key,
   });
 
@@ -116,6 +125,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// True while a trim export runs — disables the save button so a slow
   /// export can't be double-fired.
   bool _exporting = false;
+
+  /// Filmstrip frame paths for trim mode, generated once per screen on
+  /// first entry (cached on disk by the generator itself). Empty until
+  /// generation lands — the trim bar shows its plain track meanwhile.
+  List<String> _filmstrip = const [];
+  bool _filmstripRequested = false;
 
   @override
   void initState() {
@@ -183,6 +198,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             RangeValues(0, _duration.inMilliseconds.toDouble());
       }
     });
+    if (_trimming && !_filmstripRequested) {
+      _filmstripRequested = true;
+      widget.filmstrip
+          ?.generate(widget.clip.path, _duration)
+          .then((frames) {
+        if (mounted && frames.isNotEmpty) {
+          setState(() => _filmstrip = frames);
+        }
+      });
+    }
   }
 
   Future<void> _saveTrim() async {
@@ -291,6 +316,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
               ),
             ),
+            // Trim bar sits ABOVE the timeline (maintainer call: reads
+            // cleaner as an editing surface over the transport strip).
+            if (_trimming && _trimRange != null)
+              _TrimBar(
+                range: _trimRange!,
+                duration: _duration,
+                exporting: _exporting,
+                filmstrip: _filmstrip,
+                onChanged: (r) => setState(() => _trimRange = r),
+                onPreview: (d) => _player.seek(d),
+                onSave: _saveTrim,
+                onCancel: () => setState(() => _trimming = false),
+              ),
             _Controls(
               playing: _playing,
               position: _position,
@@ -305,16 +343,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ? _toggleTrimming
                   : null,
             ),
-            if (_trimming && _trimRange != null)
-              _TrimBar(
-                range: _trimRange!,
-                duration: _duration,
-                exporting: _exporting,
-                onChanged: (r) => setState(() => _trimRange = r),
-                onPreview: (d) => _player.seek(d),
-                onSave: _saveTrim,
-                onCancel: () => setState(() => _trimming = false),
-              ),
           ],
         ),
       ),
@@ -354,6 +382,27 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(relativeAge(clip.createdAt), style: theme.textTheme.bodyMuted),
+          const SizedBox(width: 4),
+          IconButton(
+            key: const ValueKey('playerRevealButton'),
+            icon: const Icon(Icons.folder_open_outlined, size: 20),
+            tooltip: Platform.isMacOS ? 'Reveal in Finder' : 'Show in folder',
+            onPressed: () async {
+              if (!await revealClipFile(clip.path) && context.mounted) {
+                showOpenFailedToast(context);
+              }
+            },
+          ),
+          IconButton(
+            key: const ValueKey('playerOpenExternalButton'),
+            icon: const Icon(Icons.open_in_new, size: 20),
+            tooltip: 'Open in default player',
+            onPressed: () async {
+              if (!await openClipFile(clip.path) && context.mounted) {
+                showOpenFailedToast(context);
+              }
+            },
+          ),
         ],
       ),
     );
@@ -491,14 +540,17 @@ class _PlaybackErrorPanel extends StatelessWidget {
 }
 
 
-/// The trim row shown under the controls in trim mode: a range selector
-/// over the clip with live in/out timecodes, and Save/Cancel. Dragging a
-/// handle seeks the player to that edge so the user sees the exact frame
-/// they're cutting on.
+/// The trim surface shown ABOVE the timeline in trim mode: an FFmpeg
+/// filmstrip of frames sampled across the clip with the range handles
+/// drawn over it (the selected span stays full-brightness, the trimmed-off
+/// ends dim), live in/out timecodes, and Save/Cancel. Dragging a handle
+/// seeks the player to that edge so the user sees the exact cut frame in
+/// the video area too.
 class _TrimBar extends StatelessWidget {
   final RangeValues range;
   final Duration duration;
   final bool exporting;
+  final List<String> filmstrip;
   final ValueChanged<RangeValues> onChanged;
   final ValueChanged<Duration> onPreview;
   final VoidCallback onSave;
@@ -508,58 +560,223 @@ class _TrimBar extends StatelessWidget {
     required this.range,
     required this.duration,
     required this.exporting,
+    required this.filmstrip,
     required this.onChanged,
     required this.onPreview,
     required this.onSave,
     required this.onCancel,
   });
 
+  static const double _stripHeight = 56;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     final timeStyle = theme.textTheme.bodyMuted
         .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     final totalMs = duration.inMilliseconds.toDouble();
+    final max = totalMs > 0 ? totalMs : 1.0;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       decoration: BoxDecoration(border: Border(top: hairlineBorder())),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(formatDuration(Duration(milliseconds: range.start.round())),
-              style: timeStyle),
-          Expanded(
-            child: RangeSlider(
-              key: const ValueKey('trimRange'),
-              values: range,
-              max: totalMs > 0 ? totalMs : 1.0,
-              onChanged: exporting
-                  ? null
-                  : (r) {
-                      // Seek to whichever edge moved so the cut frame is
-                      // visible while dragging.
-                      final startMoved = r.start != range.start;
-                      onPreview(Duration(
-                          milliseconds:
-                              (startMoved ? r.start : r.end).round()));
-                      onChanged(r);
-                    },
-            ),
+          SizedBox(
+            height: _stripHeight,
+            child: LayoutBuilder(builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final startX = w * (range.start / max);
+              final endX = w * (range.end / max);
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  // The filmstrip (or a plain raised track until frames
+                  // land — generation is async and best-effort).
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: filmstrip.isEmpty
+                        ? DecoratedBox(
+                            decoration:
+                                BoxDecoration(color: tokens.surfaceRaised),
+                          )
+                        : Row(
+                            children: [
+                              for (final frame in filmstrip)
+                                Expanded(
+                                  child: Image.file(
+                                    File(frame),
+                                    fit: BoxFit.cover,
+                                    height: _stripHeight,
+                                    // A single unreadable frame must not
+                                    // take down the strip.
+                                    errorBuilder: (_, __, ___) =>
+                                        ColoredBox(
+                                            color: tokens.surfaceRaised),
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                  // Dim the trimmed-off ends so the kept span reads at a
+                  // glance (the classic editor treatment).
+                  Positioned(
+                    left: 0,
+                    width: startX.clamp(0.0, w),
+                    top: 0,
+                    bottom: 0,
+                    child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.65)),
+                  ),
+                  Positioned(
+                    left: endX.clamp(0.0, w),
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.65)),
+                  ),
+                  // Selection edges.
+                  Positioned(
+                    left: (startX - 1).clamp(0.0, w - 2),
+                    width: 2,
+                    top: 0,
+                    bottom: 0,
+                    child: ColoredBox(color: tokens.accent),
+                  ),
+                  Positioned(
+                    left: (endX - 1).clamp(0.0, w - 2),
+                    width: 2,
+                    top: 0,
+                    bottom: 0,
+                    child: ColoredBox(color: tokens.accent),
+                  ),
+                  // The interactive layer: a full-width RangeSlider with a
+                  // transparent track — the filmstrip IS the track.
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: _stripHeight,
+                      activeTrackColor: Colors.transparent,
+                      inactiveTrackColor: Colors.transparent,
+                      overlayShape: SliderComponentShape.noOverlay,
+                      rangeThumbShape: const _TrimHandleShape(),
+                      rangeTrackShape: const _FullWidthTrackShape(),
+                    ),
+                    child: RangeSlider(
+                      key: const ValueKey('trimRange'),
+                      values: range,
+                      max: max,
+                      onChanged: exporting
+                          ? null
+                          : (r) {
+                              // Seek to whichever edge moved so the cut
+                              // frame is visible while dragging.
+                              final startMoved = r.start != range.start;
+                              onPreview(Duration(
+                                  milliseconds:
+                                      (startMoved ? r.start : r.end)
+                                          .round()));
+                              onChanged(r);
+                            },
+                    ),
+                  ),
+                ],
+              );
+            }),
           ),
-          Text(formatDuration(Duration(milliseconds: range.end.round())),
-              style: timeStyle),
-          const SizedBox(width: 16),
-          TextButton(
-            onPressed: exporting ? null : onCancel,
-            child: const Text('Cancel'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            key: const ValueKey('saveTrimButton'),
-            onPressed: exporting ? null : onSave,
-            child: Text(exporting ? 'Saving…' : 'Save trimmed clip'),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                  formatDuration(
+                      Duration(milliseconds: range.start.round())),
+                  style: timeStyle),
+              const SizedBox(width: 8),
+              Text('→', style: timeStyle),
+              const SizedBox(width: 8),
+              Text(
+                  formatDuration(Duration(milliseconds: range.end.round())),
+                  style: timeStyle),
+              const SizedBox(width: 12),
+              Text(
+                '${formatDuration(Duration(milliseconds: (range.end - range.start).round()))} selected',
+                style: timeStyle,
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: exporting ? null : onCancel,
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                key: const ValueKey('saveTrimButton'),
+                onPressed: exporting ? null : onSave,
+                child: Text(exporting ? 'Saving…' : 'Save trimmed clip'),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+}
+
+/// Range handle drawn as a slim vertical grab bar spanning the filmstrip —
+/// the default round thumb reads as a music-volume knob, not a cut point.
+class _TrimHandleShape extends RangeSliderThumbShape {
+  const _TrimHandleShape();
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) =>
+      const Size(12, _TrimBar._stripHeight);
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    bool? isOnTop,
+    required SliderThemeData sliderTheme,
+    TextDirection? textDirection,
+    Thumb? thumb,
+    bool? isPressed,
+  }) {
+    final canvas = context.canvas;
+    final rect = Rect.fromCenter(
+        center: center, width: 12, height: _TrimBar._stripHeight);
+    final paint = Paint()
+      ..color = sliderTheme.thumbColor ?? const Color(0xFFFFFFFF);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(3)), paint);
+    // Grip notch.
+    final notch = Paint()
+      ..color = const Color(0x66000000)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(center.translate(0, -8), center.translate(0, 8), notch);
+  }
+}
+
+/// Track that spans the full stack width with no gutter padding, so the
+/// handles line up exactly with the filmstrip's pixels.
+class _FullWidthTrackShape extends RoundedRectRangeSliderTrackShape {
+  const _FullWidthTrackShape();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final height = sliderTheme.trackHeight ?? 4;
+    return Rect.fromLTWH(offset.dx, offset.dy + (parentBox.size.height - height) / 2,
+        parentBox.size.width, height);
   }
 }
