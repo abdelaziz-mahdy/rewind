@@ -299,4 +299,39 @@ void main() {
       );
     });
   });
+  group('event badge colors', () {
+    testWidgets(
+        'multikill tiers escalate to visibly distinct, brighter colors',
+        (t) async {
+      late Color kill, dbl, triple, quadra, penta, ace;
+      await t.pumpWidget(MaterialApp(
+        theme: rewindTheme(),
+        home: Builder(builder: (context) {
+          kill = eventColor(context, GameEventKind.kill);
+          dbl = eventColor(context, GameEventKind.doubleKill);
+          triple = eventColor(context, GameEventKind.tripleKill);
+          quadra = eventColor(context, GameEventKind.quadraKill);
+          penta = eventColor(context, GameEventKind.pentaKill);
+          ace = eventColor(context, GameEventKind.ace);
+          return const SizedBox();
+        }),
+      ));
+
+      // Every tier is a different color — a penta must never render
+      // pixel-identical to a plain kill (the pre-fix bug).
+      final tiers = {kill, dbl, triple, quadra, penta};
+      expect(tiers, hasLength(5));
+
+      // Lightness climbs monotonically kill -> penta (amber -> gold).
+      double light(Color c) => HSLColor.fromColor(c).lightness;
+      expect(light(dbl), greaterThan(light(kill)));
+      expect(light(triple), greaterThan(light(dbl)));
+      expect(light(quadra), greaterThan(light(triple)));
+      expect(light(penta), greaterThan(light(quadra)));
+
+      // Ace stays at base amber (a team event, not a personal multikill).
+      expect(ace, kill);
+    });
+  });
 }
+

@@ -59,6 +59,11 @@ All notable changes to Rewind are documented here. Format based on
   (`rewind_set_mic_noise_suppression`).
 
 ### Changed
+- **Multikill badges now escalate by tier**: kill/double/triple/quadra/penta
+  climb from amber toward a brighter gold instead of all sharing one amber,
+  so a pentakill visibly stands out from a plain kill in the clip grid and
+  match screen (all tiers stay AA-legible). Pairs with the multikill-tier
+  fix above — the tiers finally render, so they finally look distinct.
 - **Accessibility verified**: every icon-only button in the app carries a
   tooltip (doubling as its screen-reader label), the theme palette is
   WCAG 2.1 AA-verified — all five foreground tokens clear 4.5:1 against

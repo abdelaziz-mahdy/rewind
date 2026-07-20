@@ -52,13 +52,24 @@ Color eventColor(BuildContext context, GameEventKind kind) {
     case GameEventKind.statsUpdate:
     case GameEventKind.other:
       return scheme.outline;
+    // The multikill ladder shares one amber HUE FAMILY (so every combat
+    // highlight reads as "a kill"), but climbs toward a brighter, more
+    // saturated gold as the tier rises — a pentakill must be unmistakable
+    // next to a plain kill, not pixel-identical to it (they were, until the
+    // watcher started emitting real tiers). ace stays at base amber: it's a
+    // team event, not a personal multikill, so it shouldn't masquerade as a
+    // penta.
     case GameEventKind.kill:
-    case GameEventKind.doubleKill:
-    case GameEventKind.tripleKill:
-    case GameEventKind.quadraKill:
-    case GameEventKind.pentaKill:
     case GameEventKind.ace:
-      return _rotateAccent(scheme.primary, 32); // amber
+      return _combatAmber(scheme.primary, 0);
+    case GameEventKind.doubleKill:
+      return _combatAmber(scheme.primary, 1);
+    case GameEventKind.tripleKill:
+      return _combatAmber(scheme.primary, 2);
+    case GameEventKind.quadraKill:
+      return _combatAmber(scheme.primary, 3);
+    case GameEventKind.pentaKill:
+      return _combatAmber(scheme.primary, 4);
     case GameEventKind.achievement:
       // A distinct gold arm — close enough to combat's amber to read as
       // "also a highlight", far enough (32 -> 48) to tell an achievement
@@ -76,6 +87,22 @@ Color eventColor(BuildContext context, GameEventKind kind) {
 
 Color _rotateAccent(Color accent, double hue) =>
     HSLColor.fromColor(accent).withHue(hue % 360).toColor();
+
+/// The combat-highlight color for multikill [tier] (0 = single kill … 4 =
+/// pentakill). Base is the same amber as [_rotateAccent](…, 32); each tier
+/// nudges the hue toward gold and lifts saturation + lightness, so the
+/// ladder reads as one family that visibly intensifies — a penta glows
+/// brighter than a double. Lightness climbs from the accent's own value but
+/// is capped so the brightest tier stays legible on the badge's dark fill.
+Color _combatAmber(Color accent, int tier) {
+  final base = HSLColor.fromColor(accent);
+  return HSLColor.fromAHSL(
+    1,
+    (32 + tier * 3) % 360,
+    (base.saturation + tier * 0.03).clamp(0.0, 1.0),
+    (base.lightness + tier * 0.05).clamp(0.0, 0.72),
+  ).toColor();
+}
 
 /// The event-kind badge chip: accent-tinted fill/border, uppercase micro-label
 /// text (see [eventBadge]/[eventColor]). Shared by [ClipTile]'s thumbnail

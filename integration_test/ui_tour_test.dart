@@ -7,10 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_export.dart';
+import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/clip/thumbnail_cache.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
+import 'package:rewind/src/ui/clip_sessions.dart';
+import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 
@@ -124,5 +128,42 @@ void main() {
     )));
     await t.pump(const Duration(milliseconds: 300));
     await shoot('03-all-clips-empty');
+  });
+
+  testWidgets('match screen — relocated Watch/Export actions', (t) async {
+    final library = ClipLibrary(clipsDir: tmp);
+    final start = DateTime.now().subtract(const Duration(minutes: 22));
+    const kinds = [
+      GameEventKind.kill,
+      GameEventKind.doubleKill,
+      GameEventKind.tripleKill,
+      GameEventKind.quadraKill,
+      GameEventKind.pentaKill,
+    ];
+    final clips = [
+      for (var i = 0; i < kinds.length; i++)
+        clip('m$i', kinds[i], start.add(Duration(minutes: i * 4)))
+    ];
+    for (final c in clips) {
+      library.add(c);
+    }
+    final session = ClipSession(startedAt: start, clips: clips);
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: start,
+      kills: 7,
+      deaths: 3,
+      assists: 12,
+    );
+    await t.pumpWidget(frame(MatchClipsScreen(
+      session: session,
+      matchLabel: 'MATCH · 22 MIN AGO · 5 CLIPS',
+      stats: stats,
+      library: library,
+      thumbnails: ThumbnailCache(FakeThumbnailGenerator()),
+      exporter: FfmpegMatchExporter(),
+    )));
+    await t.pump(const Duration(milliseconds: 400));
+    await shoot('04-match-screen');
   });
 }
