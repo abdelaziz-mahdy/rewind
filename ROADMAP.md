@@ -86,6 +86,8 @@ These shape every milestone:
 - [x] In-app trim (player trim mode: range handles + lossless FFmpeg
       stream-copy export to a new clip; macOS + Windows). A richer editor
       (multi-segment, re-encode presets) remains open.
+- [x] Full-match viewer (clips on the real match timeline, gap-jumping
+      playback, event markers) + one-file lossless match export
 - [ ] Export presets (resolution/bitrate)
 - [ ] Optional upload/share targets
 

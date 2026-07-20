@@ -7,6 +7,20 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Watch the full match in-app**: a match's screen now has a "Watch
+  match" action — every clip laid on the REAL match timeline (recorded
+  spans bright, unrecorded spans as visible gaps, kills/achievements
+  marked at their true times, the current span highlighted), playback
+  runs clip-to-clip chronologically and auto-jumps across gaps, and
+  tapping anywhere on the timeline seeks — a tap into a gap jumps to the
+  next recorded span. Clip spans come from real ffprobe durations, not
+  guesses.
+- **Export the full match as one video**: the movie action on a match's
+  screen concatenates all its clips chronologically into a single
+  shareable file next to the clips (`…-full-match.mp4`) — lossless
+  stream-copy concat (same encoder settings across clips, so no
+  re-encode), with a Reveal action on the confirmation toast. The
+  individual clips are untouched.
 - **"Running now" on Supported Games**: playing something the catalog
   doesn't know? The Supported Games screen now ends with a live list of
   running apps (probable games first, Windows/CrossOver exes included) —

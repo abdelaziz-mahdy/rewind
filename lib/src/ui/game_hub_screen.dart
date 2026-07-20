@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../clip/clip_library.dart';
+import '../clip/duration_prober.dart';
+import '../clip/match_export.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
@@ -294,6 +296,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
     Navigator.of(context).push(MaterialPageRoute<void>(
       settings: const RouteSettings(name: matchClipsScreenRouteName),
       builder: (_) => MatchClipsScreen(
+        exporter: FfmpegMatchExporter(),
+        prober: FfprobeDurationProber(),
         session: session,
         matchLabel: _sessionLabel(entry, session),
         stats: widget.coordinator.matchStats
