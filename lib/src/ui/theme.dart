@@ -171,6 +171,13 @@ BorderSide hairlineBorder([double alpha = 0.08]) =>
 /// `Colors.white.withValues(...)` or a one-off `BorderRadius.circular(...)`.
 /// There is only ever one instance ([dark]) — no light theme is planned.
 @immutable
+/// Accessibility note (verified 2026-07-20, WCAG 2.1 contrast math): every
+/// foreground token below — text, textMuted, accent, warn, rec — clears the
+/// AA normal-text threshold (4.5:1) against every surface token (bg,
+/// surface, surfaceRaised); the tightest pair is rec-on-surfaceRaised at
+/// 5.01:1. When retuning any of these values, re-check the pairs (a quick
+/// relative-luminance script does it) rather than eyeballing — muted-on-dark
+/// is exactly where dark themes quietly go sub-AA.
 class RewindTokens extends ThemeExtension<RewindTokens> {
   /// Window background.
   final Color bg;
