@@ -51,8 +51,8 @@ void main() {
   tearDown(() => tmp.deleteSync(recursive: true));
 
   Future<void> shoot(String name) async {
-    final boundary = boundaryKey.currentContext!.findRenderObject()
-        as RenderRepaintBoundary;
+    final boundary =
+        boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: 2);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     final file = File('screenshots/$name.png');
@@ -118,7 +118,8 @@ void main() {
     final library = ClipLibrary(clipsDir: tmp);
     final base = DateTime.now();
     for (var i = 0; i < 4; i++) {
-      library.add(clip('clip$i',
+      library.add(clip(
+          'clip$i',
           i.isEven ? GameEventKind.kill : GameEventKind.pentaKill,
           base.subtract(Duration(minutes: i * 3)),
           label: i == 0 ? 'Trimmed' : null));
@@ -237,10 +238,18 @@ void main() {
     // live on the device).
     final videoPath = '${tmp.path}/testclip.mp4';
     await FFmpegKit.executeWithArguments([
-      '-f', 'lavfi',
-      '-i', 'testsrc=duration=8:size=1280x720:rate=30',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
-      '-y', videoPath,
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=duration=8:size=1280x720:rate=30',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-y',
+      videoPath,
     ]);
     if (!File(videoPath).existsSync()) {
       // If ffmpeg couldn't produce a clip, skip rather than fail the tour.

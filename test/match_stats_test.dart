@@ -55,7 +55,8 @@ void main() {
     expect(reloaded.statsFor('league_of_legends', start)!.updatedAt, eventAt);
   });
 
-  test('a persisted match without updatedAt (pre-feature) falls back to '
+  test(
+      'a persisted match without updatedAt (pre-feature) falls back to '
       'startedAt', () {
     final m = MatchStats.fromJson({
       'gameId': 'league_of_legends',
@@ -64,8 +65,7 @@ void main() {
     expect(m.updatedAt, start);
   });
 
-  test('latestFor picks the most recently updated match of that game only',
-      () {
+  test('latestFor picks the most recently updated match of that game only', () {
     final store = MatchStatsStore(dir: tmp);
     final earlier = start.subtract(const Duration(hours: 2));
     // An old match updated long ago, a new match updated just now, and a
@@ -402,8 +402,8 @@ void main() {
 
     await store.save();
     final reloaded = await MatchStatsStore.load(tmp);
-    expect(reloaded.statsFor('league_of_legends', start)!.result,
-        MatchResult.win);
+    expect(
+        reloaded.statsFor('league_of_legends', start)!.result, MatchResult.win);
   });
 
   test('a persisted match without result (pre-feature) is null', () {
@@ -421,5 +421,4 @@ void main() {
     expect(MatchResult.tryParse(null), isNull);
     expect(MatchResult.tryParse('draw'), isNull);
   });
-
 }

@@ -388,7 +388,6 @@ class _StateIndicator extends StatelessWidget {
   }
 }
 
-
 /// One "Running now" row: the app's real icon (a macOS bundle icon, or a
 /// game icon resolved from the local Steam library via [art]), name, a Wine
 /// marker where relevant, and an Add button. Mirrors _CatalogRowTile's

@@ -125,8 +125,7 @@ class _MatchTimelineScreenState extends State<MatchTimelineScreen> {
     final changed = index != _segmentIndex;
     setState(() => _segmentIndex = index);
     if (changed) {
-      await _player.open(
-          Media(layout.segments[index].clip.path), play: play);
+      await _player.open(Media(layout.segments[index].clip.path), play: play);
     }
     if (offset > Duration.zero) await _player.seek(offset);
     if (play && !changed) await _player.play();
@@ -177,8 +176,8 @@ class _MatchTimelineScreenState extends State<MatchTimelineScreen> {
                           'been moved or deleted.',
                           style: theme.textTheme.bodyMuted,
                         )
-                      : Video(controller: _controller,
-                          controls: NoVideoControls),
+                      : Video(
+                          controller: _controller, controls: NoVideoControls),
             ),
           ),
           if (layout != null && layout.segments.isNotEmpty)
@@ -278,8 +277,7 @@ class _MatchTimelineBar extends StatelessWidget {
                           for (var i = 0; i < layout.segments.length; i++)
                             Positioned(
                               left: w *
-                                  layout
-                                      .fractionOf(layout.segments[i].start),
+                                  layout.fractionOf(layout.segments[i].start),
                               width: (w *
                                       (layout.fractionOf(
                                               layout.segments[i].end) -
@@ -292,8 +290,7 @@ class _MatchTimelineBar extends StatelessWidget {
                                 decoration: BoxDecoration(
                                   color: i == currentSegment
                                       ? tokens.accent
-                                      : tokens.accent
-                                          .withValues(alpha: 0.35),
+                                      : tokens.accent.withValues(alpha: 0.35),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                               ),

@@ -194,15 +194,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() {
       _trimming = !_trimming;
       if (_trimming) {
-        _trimRange ??=
-            RangeValues(0, _duration.inMilliseconds.toDouble());
+        _trimRange ??= RangeValues(0, _duration.inMilliseconds.toDouble());
       }
     });
     if (_trimming && !_filmstripRequested) {
       _filmstripRequested = true;
-      widget.filmstrip
-          ?.generate(widget.clip.path, _duration)
-          .then((frames) {
+      widget.filmstrip?.generate(widget.clip.path, _duration).then((frames) {
         if (mounted && frames.isNotEmpty) {
           setState(() => _filmstrip = frames);
         }
@@ -571,7 +568,6 @@ class _PlaybackErrorPanel extends StatelessWidget {
   }
 }
 
-
 /// The trim surface shown ABOVE the timeline in trim mode: an FFmpeg
 /// filmstrip of frames sampled across the clip with the range handles
 /// drawn over it (the selected span stays full-brightness, the trimmed-off
@@ -645,8 +641,7 @@ class _TrimBar extends StatelessWidget {
                                     // A single unreadable frame must not
                                     // take down the strip.
                                     errorBuilder: (_, __, ___) =>
-                                        ColoredBox(
-                                            color: tokens.surfaceRaised),
+                                        ColoredBox(color: tokens.surfaceRaised),
                                   ),
                                 ),
                             ],
@@ -659,16 +654,16 @@ class _TrimBar extends StatelessWidget {
                     width: startX.clamp(0.0, w),
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.65)),
+                    child:
+                        ColoredBox(color: Colors.black.withValues(alpha: 0.65)),
                   ),
                   Positioned(
                     left: endX.clamp(0.0, w),
                     right: 0,
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.65)),
+                    child:
+                        ColoredBox(color: Colors.black.withValues(alpha: 0.65)),
                   ),
                   // Selection edges.
                   Positioned(
@@ -708,8 +703,7 @@ class _TrimBar extends StatelessWidget {
                               final startMoved = r.start != range.start;
                               onPreview(Duration(
                                   milliseconds:
-                                      (startMoved ? r.start : r.end)
-                                          .round()));
+                                      (startMoved ? r.start : r.end).round()));
                               onChanged(r);
                             },
                     ),
@@ -721,15 +715,12 @@ class _TrimBar extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: [
-              Text(
-                  formatDuration(
-                      Duration(milliseconds: range.start.round())),
+              Text(formatDuration(Duration(milliseconds: range.start.round())),
                   style: timeStyle),
               const SizedBox(width: 8),
               Text('→', style: timeStyle),
               const SizedBox(width: 8),
-              Text(
-                  formatDuration(Duration(milliseconds: range.end.round())),
+              Text(formatDuration(Duration(milliseconds: range.end.round())),
                   style: timeStyle),
               const SizedBox(width: 12),
               Text(
@@ -808,7 +799,10 @@ class _FullWidthTrackShape extends RoundedRectRangeSliderTrackShape {
     bool isDiscrete = false,
   }) {
     final height = sliderTheme.trackHeight ?? 4;
-    return Rect.fromLTWH(offset.dx, offset.dy + (parentBox.size.height - height) / 2,
-        parentBox.size.width, height);
+    return Rect.fromLTWH(
+        offset.dx,
+        offset.dy + (parentBox.size.height - height) / 2,
+        parentBox.size.width,
+        height);
   }
 }

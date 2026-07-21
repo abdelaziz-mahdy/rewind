@@ -204,8 +204,8 @@ void main() {
     // game_directory_test.dart ("Marvel Rivals never surfaces an iconPath").
   });
   group('Running now section', () {
-    AppInfo app(String name, {String bundleId = 'com.x.app'}) => AppInfo(
-        bundleId: bundleId, name: name, pid: 42, windowId: 1);
+    AppInfo app(String name, {String bundleId = 'com.x.app'}) =>
+        AppInfo(bundleId: bundleId, name: name, pid: 42, windowId: 1);
 
     testWidgets('hidden without listApps wired', (t) async {
       await _pump(t, _app(screen()));
@@ -215,18 +215,20 @@ void main() {
     testWidgets('lists a running app with an Add button that learns it',
         (t) async {
       final persisted = <AppSettings>[];
-      await _pump(t, _app(screen(
-        listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
-        onSettingsChanged: (s) async => persisted.add(s),
-      )));
+      await _pump(
+          t,
+          _app(screen(
+            listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
+            onSettingsChanged: (s) async => persisted.add(s),
+          )));
 
-      final rowFinder = find.byKey(const ValueKey('runningAppRow:app:penguin_hotel'));
+      final rowFinder =
+          find.byKey(const ValueKey('runningAppRow:app:penguin_hotel'));
       await t.scrollUntilVisible(rowFinder, 200,
           scrollable: find.byType(Scrollable).first);
       expect(rowFinder, findsOneWidget);
 
-      await t.tap(find.descendant(
-          of: rowFinder, matching: find.text('Add')));
+      await t.tap(find.descendant(of: rowFinder, matching: find.text('Add')));
       await t.pump();
 
       expect(persisted, isNotEmpty);
@@ -239,9 +241,11 @@ void main() {
       coordinator.settings.setConfig(
           coordinator.settings.configFor('app:penguin_hotel')
             ..processMatch = 'Penguin Hotel');
-      await _pump(t, _app(screen(
-        listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
-      )));
+      await _pump(
+          t,
+          _app(screen(
+            listApps: () => [app('Penguin Hotel', bundleId: 'com.pg.hotel')],
+          )));
       expect(find.byKey(const ValueKey('runningAppRow:app:penguin_hotel')),
           findsNothing);
     });
@@ -257,15 +261,16 @@ void main() {
         steamappsRoots: () => [steamRoot],
       );
       final persisted = <AppSettings>[];
-      await _pump(t, _app(screen(
-        // A running Wine app: bundle-less, window/exe named after the game.
-        listApps: () => [app('REPO', bundleId: '')],
-        steamResolver: resolver,
-        onSettingsChanged: (s) async => persisted.add(s),
-      )));
+      await _pump(
+          t,
+          _app(screen(
+            // A running Wine app: bundle-less, window/exe named after the game.
+            listApps: () => [app('REPO', bundleId: '')],
+            steamResolver: resolver,
+            onSettingsChanged: (s) async => persisted.add(s),
+          )));
 
-      final rowFinder =
-          find.byKey(const ValueKey('runningAppRow:app:repo'));
+      final rowFinder = find.byKey(const ValueKey('runningAppRow:app:repo'));
       await t.scrollUntilVisible(rowFinder, 200,
           scrollable: find.byType(Scrollable).first);
 

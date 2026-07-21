@@ -1070,8 +1070,8 @@ void main() {
         displays: const [],
       )));
 
-      expect(
-          find.byKey(const ValueKey('micNoiseSuppressionSwitch')), findsNothing);
+      expect(find.byKey(const ValueKey('micNoiseSuppressionSwitch')),
+          findsNothing);
       expect(find.byKey(const ValueKey('micTestButton')), findsNothing);
     });
 

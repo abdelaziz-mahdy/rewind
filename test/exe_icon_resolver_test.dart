@@ -94,8 +94,7 @@ void main() {
       ..createSync(recursive: true);
     File(p.join(gameDir.path, 'Cool.exe')).writeAsBytesSync(_fakePe(_png));
 
-    final r = resolver(
-        pid: (_) async => r'C:\Program Files\Cool\Cool.exe');
+    final r = resolver(pid: (_) async => r'C:\Program Files\Cool\Cool.exe');
     final path = await r.iconForApp(wineApp('Cool', 1));
 
     expect(path, isNotNull);
@@ -118,8 +117,8 @@ void main() {
         return null;
       },
     );
-    final path =
-        await r.iconForApp(const AppInfo(bundleId: 'com.x.y', name: 'Y', pid: 3));
+    final path = await r
+        .iconForApp(const AppInfo(bundleId: 'com.x.y', name: 'Y', pid: 3));
     expect(path, isNull);
     expect(called, isFalse); // short-circuits before touching the process list
   });

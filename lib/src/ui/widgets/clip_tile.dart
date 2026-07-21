@@ -213,8 +213,8 @@ class _ClipTileState extends State<ClipTile> {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          onTap: () => _openInApp(context, clip, widget.events,
-              library: widget.library),
+          onTap: () =>
+              _openInApp(context, clip, widget.events, library: widget.library),
           onFocusChange: (focused) => setState(() => _focused = focused),
           borderRadius: BorderRadius.circular(tokens.radiusCard),
           child: AnimatedContainer(
@@ -409,7 +409,6 @@ class _ClipTileState extends State<ClipTile> {
       ),
     ));
   }
-
 }
 
 /// The hover-revealed overflow trigger pinned over the thumbnail: a dark

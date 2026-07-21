@@ -51,14 +51,16 @@ void main() {
     test('returns the uuid when the display is connected', () {
       expect(validDisplayUuid('b', displays), 'b');
     });
-    test('returns null for a stale uuid missing from a NON-EMPTY list '
+    test(
+        'returns null for a stale uuid missing from a NON-EMPTY list '
         '(genuinely unplugged monitor)', () {
       expect(validDisplayUuid('gone', displays), isNull);
     });
     test('returns null for null input', () {
       expect(validDisplayUuid(null, displays), isNull);
     });
-    test('KEEPS the saved uuid when the list is empty (enumeration failed, '
+    test(
+        'KEEPS the saved uuid when the list is empty (enumeration failed, '
         'not a disconnected display) — else capture wrongly falls to the '
         'main display and erases the choice', () {
       expect(validDisplayUuid('a', const []), 'a');

@@ -7,8 +7,8 @@ import 'package:rewind/src/games/steam_icon_resolver.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 
-Directory _fakeSteamGame(Directory parent, String appId, String name,
-    String installDir) {
+Directory _fakeSteamGame(
+    Directory parent, String appId, String name, String installDir) {
   final root = Directory(p.join(parent.path, 'home-$appId'))..createSync();
   final steamapps = Directory(p.join(root.path, 'steamapps'))
     ..createSync(recursive: true);

@@ -23,12 +23,18 @@ abstract class ThumbnailGenerator {
 /// (aspect preserved; -2 keeps the height even, which some JPEG paths
 /// insist on). Pure so tests pin the exact command.
 List<String> thumbnailArguments(String videoPath, String thumbPath) => [
-      '-ss', '1',
-      '-i', videoPath,
-      '-frames:v', '1',
-      '-vf', 'scale=640:-2',
-      '-q:v', '3',
-      '-y', thumbPath,
+      '-ss',
+      '1',
+      '-i',
+      videoPath,
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=640:-2',
+      '-q:v',
+      '3',
+      '-y',
+      thumbPath,
     ];
 
 /// FFmpeg-backed [ThumbnailGenerator] (`ffmpeg_kit_flutter_new`) — replaced

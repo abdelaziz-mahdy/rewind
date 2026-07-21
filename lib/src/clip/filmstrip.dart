@@ -25,11 +25,16 @@ List<String> filmstripArguments({
   // clip. Guard degenerate durations so the filter never divides by zero.
   final fps = frameCount / (durationSeconds <= 0 ? 1 : durationSeconds);
   return [
-    '-i', videoPath,
-    '-vf', 'fps=${fps.toStringAsFixed(6)},scale=160:-2',
-    '-frames:v', '$frameCount',
-    '-q:v', '5',
-    '-y', '$outDir/frame_%02d.jpg',
+    '-i',
+    videoPath,
+    '-vf',
+    'fps=${fps.toStringAsFixed(6)},scale=160:-2',
+    '-frames:v',
+    '$frameCount',
+    '-q:v',
+    '5',
+    '-y',
+    '$outDir/frame_%02d.jpg',
   ];
 }
 
@@ -63,8 +68,8 @@ class FfmpegFilmstripGenerator implements FilmstripGenerator {
       final src = File(videoPath);
       if (!await src.exists()) return const [];
       final modified = await src.lastModified();
-      final dir = Directory(filmstripCacheDir(
-          videoPath, modified, Directory.systemTemp.path));
+      final dir = Directory(
+          filmstripCacheDir(videoPath, modified, Directory.systemTemp.path));
 
       final expected = [
         for (var i = 1; i <= kFilmstripFrameCount; i++)

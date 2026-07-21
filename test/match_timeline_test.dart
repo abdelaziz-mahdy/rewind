@@ -22,7 +22,8 @@ void main() {
       // clip B 21:05:00→21:05:20. Origin = A's start; the 4:30 between
       // them is a gap, not compressed away.
       final a = _clip('/a.mp4', t0.add(const Duration(seconds: 30)));
-      final b = _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
+      final b =
+          _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
       final layout = computeMatchTimeline(
         [b, a], // any order in — chronological out
         {
@@ -55,7 +56,8 @@ void main() {
 
     test('events keep their true position — including inside gaps', () {
       final a = _clip('/a.mp4', t0.add(const Duration(seconds: 30)));
-      final b = _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
+      final b =
+          _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
       final layout = computeMatchTimeline(
         [a, b],
         {
@@ -77,7 +79,8 @@ void main() {
 
     test('segmentAt and nextSegmentFrom cover gap seeking', () {
       final a = _clip('/a.mp4', t0.add(const Duration(seconds: 30)));
-      final b = _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
+      final b =
+          _clip('/b.mp4', t0.add(const Duration(minutes: 5, seconds: 20)));
       final layout = computeMatchTimeline(
         [a, b],
         {
@@ -86,7 +89,8 @@ void main() {
         },
         const [],
       );
-      expect(layout.segmentAt(const Duration(seconds: 10))!.clip.path, '/a.mp4');
+      expect(
+          layout.segmentAt(const Duration(seconds: 10))!.clip.path, '/a.mp4');
       expect(layout.segmentAt(const Duration(minutes: 2)), isNull);
       expect(layout.nextSegmentFrom(const Duration(minutes: 2))!.clip.path,
           '/b.mp4');
@@ -107,15 +111,25 @@ void main() {
     test('concatArguments stream-copies from the list file', () {
       expect(
         concatArguments('/tmp/list.txt', '/clips/out.mp4'),
-        ['-f', 'concat', '-safe', '0', '-i', '/tmp/list.txt', '-c', 'copy',
-         '-y', '/clips/out.mp4'],
+        [
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          '/tmp/list.txt',
+          '-c',
+          'copy',
+          '-y',
+          '/clips/out.mp4'
+        ],
       );
     });
 
     test('matchExportPath suffixes and bumps collisions', () {
       final first = _clip('/clips/rewind-1.mp4', t0);
-      expect(matchExportPath(first, const []),
-          '/clips/rewind-1-full-match.mp4');
+      expect(
+          matchExportPath(first, const []), '/clips/rewind-1-full-match.mp4');
       expect(
         matchExportPath(first, const ['/clips/rewind-1-full-match.mp4']),
         '/clips/rewind-1-full-match-2.mp4',

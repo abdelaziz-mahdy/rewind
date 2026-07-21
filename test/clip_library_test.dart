@@ -152,8 +152,7 @@ void main() {
 
     final loaded = await ClipLibrary.load(tmp);
     expect(loaded.all, hasLength(1));
-    expect(
-        File(p.join(tmp.path, 'clips.json.tmp')).existsSync(), isFalse,
+    expect(File(p.join(tmp.path, 'clips.json.tmp')).existsSync(), isFalse,
         reason: 'no orphaned tmp file after the writes settle');
   });
 }

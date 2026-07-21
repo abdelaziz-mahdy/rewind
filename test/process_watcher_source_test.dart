@@ -29,7 +29,8 @@ void main() {
 
     test('matches the needle at a separator boundary (…-Win64-Shipping)',
         () async {
-      final lister = FakeProcessLister()..names = ['VALORANT-Win64-Shipping.exe'];
+      final lister = FakeProcessLister()
+        ..names = ['VALORANT-Win64-Shipping.exe'];
       final source = ProcessWatcherSource(
         gameId: 'app:valorant',
         displayName: 'VALORANT',
@@ -62,7 +63,9 @@ void main() {
     test('a learned game needle matches its own exe (REPO -> REPO.exe)',
         () async {
       final lister = FakeProcessLister()
-        ..names = [r'C:\Program Files (x86)\Steam\steamapps\common\REPO\REPO.exe'];
+        ..names = [
+          r'C:\Program Files (x86)\Steam\steamapps\common\REPO\REPO.exe'
+        ];
       final source = ProcessWatcherSource(
         gameId: 'app:repo',
         displayName: 'R.E.P.O.',
