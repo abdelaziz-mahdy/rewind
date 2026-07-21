@@ -706,6 +706,96 @@ void main() {
     });
   });
 
+  group('full-session recording (GameConfig.recordFullSession)', () {
+    Future<void> waitForClip() async {
+      final done = Completer<void>();
+      void listener() {
+        if (library.all.isNotEmpty && !done.isCompleted) done.complete();
+      }
+
+      library.addListener(listener);
+      if (library.all.isNotEmpty && !done.isCompleted) done.complete();
+      await done.future.timeout(const Duration(seconds: 2));
+      library.removeListener(listener);
+    }
+
+    test('records the whole session for an opted-in game, grouped with it',
+        () async {
+      settings.setConfig(
+          GameConfig(gameId: 'league_of_legends', recordFullSession: true));
+
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.calls, contains('startRecording'));
+      expect(coordinator.isRecording.value, isTrue);
+      final sessionAt = coordinator.sessionStartedAtFor('league_of_legends');
+      expect(sessionAt, isNotNull);
+      expect(library.all, isEmpty); // buffer clips separate; nothing yet
+
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      await waitForClip();
+
+      expect(engine.calls, contains('stopRecording'));
+      expect(coordinator.isRecording.value, isFalse);
+      final vod = library.all.single;
+      expect(vod.gameId, 'league_of_legends');
+      expect(vod.event, GameEventKind.recording);
+      // Grouped with the match it recorded.
+      expect(vod.sessionAt, isNotNull);
+      expect(vod.sessionAt, sessionAt);
+      expect(File(vod.path).existsSync(), isTrue);
+    });
+
+    test('does NOT record when the game has not opted in', () async {
+      settings.setConfig(
+          GameConfig(gameId: 'league_of_legends', recordFullSession: false));
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.calls, isNot(contains('startRecording')));
+      expect(coordinator.isRecording.value, isFalse);
+    });
+
+    test('does NOT record a client/launcher activation (countsAsPlaying false)',
+        () async {
+      settings.setConfig(GameConfig(
+          gameId: 'app:league_of_legends', recordFullSession: true));
+      leagueClient.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.calls, isNot(contains('startRecording')));
+      expect(coordinator.isRecording.value, isFalse);
+    });
+
+    test('a manual recording in progress blocks an auto-session (one slot)',
+        () async {
+      settings.setConfig(
+          GameConfig(gameId: 'league_of_legends', recordFullSession: true));
+      await coordinator.toggleRecording(); // manual start
+      expect(coordinator.isRecording.value, isTrue);
+      final startCalls =
+          engine.calls.where((c) => c == 'startRecording').length;
+
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // No second startRecording — the manual recording owns the slot.
+      expect(engine.calls.where((c) => c == 'startRecording').length,
+          startCalls);
+      // And the game exiting must not stop the user's manual recording.
+      league.running = false;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.isRecording.value, isTrue);
+    });
+  });
+
   group('activeGameIds', () {
     test('starts empty', () {
       expect(coordinator.activeGameIds.value, isEmpty);

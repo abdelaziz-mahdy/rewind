@@ -2079,6 +2079,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   late int _bufferSeconds;
   late int _postEventSeconds;
   late bool _autoClip;
+  late bool _recordFullSession;
   late Set<GameEventKind> _enabledEvents;
   bool _advancedOpen = false;
 
@@ -2137,6 +2138,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     _bufferSeconds = snapshot.bufferSeconds;
     _postEventSeconds = snapshot.postEventSeconds;
     _autoClip = snapshot.autoClip;
+    _recordFullSession = snapshot.recordFullSession;
     _enabledEvents = Set.of(snapshot.enabledEvents);
     _displayName = widget.entry.displayName;
     if (_renameable) {
@@ -2219,6 +2221,11 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   void _setAutoClip(bool value) {
     setState(() => _autoClip = value);
     _commit((cfg) => cfg.autoClip = value);
+  }
+
+  void _setRecordFullSession(bool value) {
+    setState(() => _recordFullSession = value);
+    _commit((cfg) => cfg.recordFullSession = value);
   }
 
   void _setBuffer(int seconds) {
@@ -2352,6 +2359,20 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                     value: _bufferSeconds, child: Text('$_bufferSeconds s')),
             ],
             onChanged: (value) => _setBuffer(value ?? defaultSeconds),
+          ),
+        ),
+        _sectionDivider(context),
+        _SettingsSection(
+          title: 'Full session',
+          child: _ToggleRow(
+            label: 'Record the whole session',
+            hint: 'Record the entire play session to one continuous video '
+                'while this game is running — in addition to your buffer '
+                'clips. Great for full-match VODs. Note: session files are '
+                'large and count toward your storage limit like any clip.',
+            value: _recordFullSession,
+            onChanged: _setRecordFullSession,
+            switchKey: const ValueKey('recordFullSessionToggle'),
           ),
         ),
         const SizedBox(height: 4),

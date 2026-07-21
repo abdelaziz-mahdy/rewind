@@ -17,6 +17,15 @@ class GameConfig {
   /// Whether to auto-clip on detected events (vs. hotkey-only).
   bool autoClip;
 
+  /// Whether to record the ENTIRE play session to one continuous file while
+  /// this game is running, in ADDITION to the rolling replay buffer and its
+  /// event/hotkey clips (the buffer keeps running; both coexist — the shim's
+  /// continuous recording shares the buffer's encoders, see
+  /// `rewind_start_recording`). Off by default: full sessions are large, and
+  /// obey the same storage retention (`maxStorageGb`/`maxClipAgeDays`) as
+  /// clips. Started/stopped by `ClipCoordinator` on game activation/exit.
+  bool recordFullSession;
+
   /// Event kinds to auto-clip for this game.
   Set<GameEventKind> enabledEvents;
 
@@ -62,6 +71,7 @@ class GameConfig {
     this.bufferSeconds = 30,
     this.postEventSeconds = 5,
     this.autoClip = true,
+    this.recordFullSession = false,
     Set<GameEventKind>? enabledEvents,
     this.processMatch,
     this.displayName,
@@ -90,6 +100,7 @@ class GameConfig {
         'bufferSeconds': bufferSeconds,
         'postEventSeconds': postEventSeconds,
         'autoClip': autoClip,
+        'recordFullSession': recordFullSession,
         'enabledEvents': enabledEvents.map((e) => e.name).toList(),
         'processMatch': processMatch,
         'displayName': displayName,
@@ -103,6 +114,8 @@ class GameConfig {
         // default, same fallback the constructor already uses.
         postEventSeconds: j['postEventSeconds'] as int? ?? 5,
         autoClip: j['autoClip'] as bool? ?? true,
+        // Absent key (settings predating this feature) → off.
+        recordFullSession: j['recordFullSession'] as bool? ?? false,
         enabledEvents: ((j['enabledEvents'] as List?) ?? const [])
             .map((n) => GameEventKind.values.firstWhere((e) => e.name == n,
                 orElse: () => GameEventKind.other))

@@ -7,6 +7,13 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Record the whole play session (per game)**: a new "Full session" toggle
+  on each game's settings page records the entire session to one continuous
+  video while that game is running — in addition to the rolling buffer and
+  its event/hotkey clips (both keep working; the session VOD groups with the
+  match's other clips). Off by default; session files are large and obey the
+  same storage retention as clips. Starts on game launch, saves on exit; a
+  manual recording always takes precedence over the one recording slot.
 - **Real game icons + trustworthy "game is running" suggestions**: Steam
   games run through CrossOver/Wine (e.g. R.E.P.O.) have no macOS app icon,
   so they used to show a two-letter placeholder. Rewind now reads the real
