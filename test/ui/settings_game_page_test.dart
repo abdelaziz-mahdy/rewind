@@ -362,9 +362,8 @@ void main() {
     });
 
     testWidgets(
-        'a process-detected game (no live vendor API) shows NO Capture mode '
-        'section at all — offering "Highlights" for a game with no event '
-        'feed was a lie', (t) async {
+        'a process-detected game (no live vendor API) offers Manual + Full '
+        'session, but NOT Highlights (no event feed to auto-clip)', (t) async {
       await t.pumpWidget(_app(SettingsScreen(
         settings: AppSettings(),
         onChanged: (_) async {},
@@ -373,14 +372,54 @@ void main() {
         initialGameId: 'valorant',
       )));
 
-      expect(find.byKey(const ValueKey('captureMode:manual')), findsNothing);
+      // Manual and Full session apply to any game; Highlights needs events.
+      expect(find.byKey(const ValueKey('captureMode:manual')), findsOneWidget);
+      expect(find.byKey(const ValueKey('captureMode:full')), findsOneWidget);
       expect(
           find.byKey(const ValueKey('captureMode:highlights')), findsNothing);
       expect(
           find.byKey(const ValueKey('gameSettingsEventMatrix')), findsNothing);
-      // In its place: the plain statement of how this game IS captured.
+      // And a note explaining why Highlights is absent.
       expect(
           find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
+    });
+
+    testWidgets('Full session card is offered for a live-API game too',
+        (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+      expect(find.byKey(const ValueKey('captureMode:manual')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('captureMode:highlights')), findsOneWidget);
+      expect(find.byKey(const ValueKey('captureMode:full')), findsOneWidget);
+    });
+
+    testWidgets('picking Full session writes recordFullSession and clears '
+        'autoClip', (t) async {
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      await t.tap(find.byKey(const ValueKey('captureMode:full')));
+      await t.pump();
+
+      final cfg = calls.last.configFor('league_of_legends');
+      expect(cfg.recordFullSession, isTrue);
+      expect(cfg.autoClip, isFalse);
+      // The Highlights event matrix is hidden under Full session.
+      expect(
+          find.byKey(const ValueKey('gameSettingsEventMatrix')), findsNothing);
+      expect(find.byKey(const ValueKey('fullSessionNote')), findsOneWidget);
     });
   });
 
@@ -517,7 +556,7 @@ void main() {
 
       expect(
           find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
-      expect(find.textContaining('saved with your hotkey'), findsOneWidget);
+      expect(find.textContaining('no highlights to auto-clip'), findsOneWidget);
       expect(
           find.byKey(const ValueKey('postEventDelayDropdown')), findsNothing);
     });

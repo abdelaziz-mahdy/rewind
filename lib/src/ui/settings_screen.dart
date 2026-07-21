@@ -2218,14 +2218,23 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     return cfg;
   }
 
-  void _setAutoClip(bool value) {
-    setState(() => _autoClip = value);
-    _commit((cfg) => cfg.autoClip = value);
-  }
+  /// The selected capture mode — a single 3-way choice over the two
+  /// underlying booleans: manual (hotkey only), highlights (auto-clip picked
+  /// events), or full (record the whole session). Full session is exclusive
+  /// of highlights: it's "the whole game" instead of picked moments (the full
+  /// VOD contains every highlight anyway); the buffer + hotkey still work.
+  String get _mode =>
+      _recordFullSession ? 'full' : (_autoClip ? 'highlights' : 'manual');
 
-  void _setRecordFullSession(bool value) {
-    setState(() => _recordFullSession = value);
-    _commit((cfg) => cfg.recordFullSession = value);
+  void _setMode(String mode) {
+    setState(() {
+      _autoClip = mode == 'highlights';
+      _recordFullSession = mode == 'full';
+    });
+    _commit((cfg) {
+      cfg.autoClip = _autoClip;
+      cfg.recordFullSession = _recordFullSession;
+    });
   }
 
   void _setBuffer(int seconds) {
@@ -2304,47 +2313,51 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (groups.isEmpty)
+              _captureModeCards(context, hasEvents: groups.isNotEmpty),
+              // No event feed → no Highlights card; say why so its absence
+              // doesn't read as a bug.
+              if (groups.isEmpty) ...[
+                const SizedBox(height: 8),
                 Text(
-                  'Clips for this game are saved with your hotkey — no in-game '
-                  'event feed exists to auto-clip from yet.',
+                  'No in-game event feed for this game yet, so there are no '
+                  'highlights to auto-clip — Manual or Full session only.',
                   key: const ValueKey('noAutoClipEventsNote'),
                   style: Theme.of(context).textTheme.bodyMuted,
-                )
-              else ...[
-                _captureModeCards(context),
-                if (_autoClip) ...[
-                  const SizedBox(height: 12),
-                  Column(
-                    key: const ValueKey('gameSettingsEventMatrix'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (var i = 0; i < groups.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 12),
-                        EventGroup(
-                          label: groups[i].label,
-                          kinds: groups[i].kinds,
-                          selected: _enabledEvents,
-                          onChanged: _toggleEvent,
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _postEventDelayRow(context),
-                ],
+                ),
               ],
-              const SizedBox(height: 16),
-              _ToggleRow(
-                label: 'Record the whole session',
-                hint: 'Record the entire play session to one continuous video '
-                    'while this game is running — in addition to your buffer '
-                    'clips. Great for full-match VODs. Note: session files are '
-                    'large and count toward your storage limit like any clip.',
-                value: _recordFullSession,
-                onChanged: _setRecordFullSession,
-                switchKey: const ValueKey('recordFullSessionToggle'),
-              ),
+              // Highlights mode: the event matrix + burst-quiet delay.
+              if (_mode == 'highlights' && groups.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Column(
+                  key: const ValueKey('gameSettingsEventMatrix'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < groups.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      EventGroup(
+                        label: groups[i].label,
+                        kinds: groups[i].kinds,
+                        selected: _enabledEvents,
+                        onChanged: _toggleEvent,
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _postEventDelayRow(context),
+              ],
+              // Full session mode: the storage caveat.
+              if (_mode == 'full') ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Records the whole game to one continuous video, alongside '
+                  'your buffer/hotkey clips. Great for full-match VODs — but '
+                  'session files are large and count toward your storage limit '
+                  'like any clip.',
+                  key: const ValueKey('fullSessionNote'),
+                  style: Theme.of(context).textTheme.bodyMuted,
+                ),
+              ],
             ],
           ),
         ),
@@ -2434,29 +2447,42 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     );
   }
 
-  Widget _captureModeCards(BuildContext context) {
-    Widget cardFor(bool highlights) {
-      final (title, description) = highlights
-          ? ('Highlights', 'Auto-clip the moments you pick below')
-          : ('Manual only', 'Hotkey saves only — nothing automatic');
-      return _PresetCard(
-        key: ValueKey('captureMode:${highlights ? 'highlights' : 'manual'}'),
-        title: title,
-        description: description,
-        costLine: null,
-        selected: _autoClip == highlights,
-        recommended: false,
-        onTap: () => _setAutoClip(highlights),
-      );
-    }
+  /// The capture-mode choice as cards: Manual / Highlights / Full session.
+  /// The Highlights card is omitted for a game with no event feed
+  /// ([hasEvents] false) — there's nothing to auto-clip — leaving Manual and
+  /// Full session.
+  Widget _captureModeCards(BuildContext context, {required bool hasEvents}) {
+    Widget card(String mode, String title, String description) => _PresetCard(
+          key: ValueKey('captureMode:$mode'),
+          title: title,
+          description: description,
+          costLine: null,
+          selected: _mode == mode,
+          recommended: false,
+          onTap: () => _setMode(mode),
+        );
+
+    final cards = <Widget>[
+      Expanded(
+          child: card('manual', 'Manual only',
+              'Hotkey saves only — nothing automatic')),
+      if (hasEvents)
+        Expanded(
+            child: card('highlights', 'Highlights',
+                'Auto-clip the moments you pick below')),
+      Expanded(
+          child: card('full', 'Full session',
+              'Record the whole game to one video')),
+    ];
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: cardFor(false)),
-          const SizedBox(width: 10),
-          Expanded(child: cardFor(true)),
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            cards[i],
+          ],
         ],
       ),
     );
