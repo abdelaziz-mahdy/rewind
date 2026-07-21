@@ -23,8 +23,9 @@ All notable changes to Rewind are documented here. Format based on
   now decides "is this app a game?" from Steam's own installed-games list
   rather than guessing — so it suggests the game you launched, not
   `explorer.exe` or `steamwebhelper`. Cross-platform (native Windows/Linux
-  Steam paths and macOS CrossOver bottles); games from other sources still
-  fall back to the letter tile.
+  Steam paths and macOS CrossOver bottles). Non-Steam Wine games
+  (itch/Epic/standalone) get their real icon read straight out of the game's
+  own `.exe`; anything still unresolved falls back to the letter tile.
 - **Win/Loss on match cards**: League match cards and the match screen now
   show a WIN (green) or LOSS (red) badge once the game reports the result
   at match end (read from the Live Client `GameEnd` event, which Rewind
