@@ -21,6 +21,7 @@ import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
 import 'src/games/league/ddragon.dart';
+import 'src/games/steam_icon_backfill.dart';
 import 'src/games/steam_icon_resolver.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/file_log.dart';
@@ -128,6 +129,18 @@ Future<void> main() async {
   // docs/COMPLIANCE.md), cached under a `.ddragon/` dir beside the clips so
   // a match in progress never pays a network cost.
   final ddragon = DDragon(cacheDir: Directory('${clipsDir.path}/.ddragon'));
+  // Real game icons/names from the local Steam library, cached in a dot-dir
+  // the clip scanner and thumbnail orphan sweep both ignore (NOT `.thumbs`,
+  // which `removeOrphanThumbnails` sweeps of any unmatched jpg).
+  final steamResolver =
+      SteamIconResolver(cacheDir: Directory('${clipsDir.path}/.icons'));
+  // One-time backfill: games added before Steam-icon resolution existed have
+  // no iconPath — fill it from the Steam library where it maps, so the rail
+  // shows the real icon instead of a monogram. Persist only if it changed
+  // anything.
+  if (backfillSteamIcons(settings, steamResolver) > 0) {
+    await store.save(settings);
+  }
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
   // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
   unawaited(removeOrphanThumbnails(library.all, clipsDir));
@@ -477,12 +490,7 @@ Future<void> main() async {
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     settingsRevision: settingsRevision,
     steamStatus: steamStatus,
-    // Real game icons/names from the local Steam library, cached in a dot-dir
-    // the clip scanner ignores (NOT `.thumbs` — that dir is swept of any jpg
-    // without a matching clip by `removeOrphanThumbnails`, which would delete
-    // these).
-    steamResolver:
-        SteamIconResolver(cacheDir: Directory('${clipsDir.path}/.icons')),
+    steamResolver: steamResolver,
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
