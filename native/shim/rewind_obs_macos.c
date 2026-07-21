@@ -428,19 +428,30 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
      * against this table (soft limit — the entry was already emitted once,
      * so no incorrect output, just a missed dedup in a scenario that
      * shouldn't occur in practice). */
-    char seen[256][384];
-    int seen_count = 0;
+    /* Best representative window per app. A single app can have several
+     * windows in the all-Spaces list — a CrossOver/Wine game often has small
+     * OFF-screen helper windows (a 500x500 splash, thin title bars) alongside
+     * its real, display-covering game window. Front-to-back order is NOT
+     * reliably the game surface (an off-screen helper can precede it), so
+     * emitting the FIRST window per app captured that dead helper and recorded
+     * BLACK (2026-07-21, R.E.P.O. via CrossOver: window 17468, a 500x500
+     * off-screen window, preceded the layer-26 full-display game window
+     * 17481). Collect candidates, then per app keep the best: a display-
+     * covering window (the game surface) beats a smaller one, larger area
+     * breaks the rest; first-seen app order is preserved for the output. */
+    struct rw_cand {
+        char key[384];
+        char bundle_id[128];
+        char name[256];
+        char icon[512];
+        pid_t pid;
+        uint32_t window_id;
+        int on_screen;
+        int covers_display;
+        double area;
+    } cands[128];
+    int cand_count = 0;
 
-    size_t pos = 0;
-    json_out[0] = '\0';
-#define APPEND(...) do { \
-        int n = snprintf(json_out + pos, (size_t)json_cap - pos, __VA_ARGS__); \
-        if (n < 0 || (size_t)n >= (size_t)json_cap - pos) { CFRelease(windows); return fail("app list truncated"); } \
-        pos += (size_t)n; \
-    } while (0)
-
-    APPEND("[");
-    int first = 1;
     CFIndex count = CFArrayGetCount(windows);
     for (CFIndex i = 0; i < count; i++) {
         CFDictionaryRef entry = (CFDictionaryRef)CFArrayGetValueAtIndex(windows, i);
@@ -501,16 +512,6 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         } else {
             snprintf(key, sizeof(key), "%s", bundle_id);
         }
-        int dup = 0;
-        for (int s = 0; s < seen_count; s++) {
-            if (strcmp(seen[s], key) == 0) { dup = 1; break; }
-        }
-        if (dup) continue;
-        if (seen_count < 256) snprintf(seen[seen_count++], sizeof(seen[0]), "%s", key);
-
-        /* CGWindowListCopyWindowInfo returns windows front-to-back, so the
-         * first (only) window emitted per app is its frontmost — the one a
-         * window-capture pick should target (see rewind_set_capture_window). */
         uint32_t window_id = 0;
         CFNumberRef win_num = (CFNumberRef)CFDictionaryGetValue(entry, kCGWindowNumber);
         if (win_num) {
@@ -529,18 +530,56 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
             (CFBooleanRef)CFDictionaryGetValue(entry, kCGWindowIsOnscreen);
         int on_screen = onscreen_ref && CFBooleanGetValue(onscreen_ref);
 
+        /* Upsert as this app's representative, keeping the best window (see the
+         * rw_cand note): a display-covering window wins, then the larger; the
+         * app's first-seen slot (and thus output order) is preserved. */
+        int covers = rw_rect_covers_a_display(bounds);
+        double area = (double)bounds.size.width * (double)bounds.size.height;
+        int idx = -1;
+        for (int c = 0; c < cand_count; c++) {
+            if (strcmp(cands[c].key, key) == 0) { idx = c; break; }
+        }
+        if (idx < 0) {
+            if (cand_count >= (int)(sizeof(cands) / sizeof(cands[0]))) continue;
+            idx = cand_count++;
+        } else {
+            int better = (covers > cands[idx].covers_display) ||
+                (covers == cands[idx].covers_display && area > cands[idx].area);
+            if (!better) continue;
+        }
+        struct rw_cand *e = &cands[idx];
+        snprintf(e->key, sizeof(e->key), "%s", key);
+        snprintf(e->bundle_id, sizeof(e->bundle_id), "%s", bundle_id);
+        snprintf(e->name, sizeof(e->name), "%s", name);
+        snprintf(e->icon, sizeof(e->icon), "%s", icon);
+        e->pid = pid;
+        e->window_id = window_id;
+        e->on_screen = on_screen;
+        e->covers_display = covers;
+        e->area = area;
+    }
+
+    size_t pos = 0;
+    json_out[0] = '\0';
+#define APPEND(...) do { \
+        int n = snprintf(json_out + pos, (size_t)json_cap - pos, __VA_ARGS__); \
+        if (n < 0 || (size_t)n >= (size_t)json_cap - pos) { CFRelease(windows); return fail("app list truncated"); } \
+        pos += (size_t)n; \
+    } while (0)
+
+    APPEND("[");
+    for (int c = 0; c < cand_count; c++) {
+        struct rw_cand *e = &cands[c];
         char escaped_id[256] = "";
         char escaped_name[512] = "";
         char escaped_icon[PATH_MAX * 2] = "";
-        json_escape_append(bundle_id, escaped_id, sizeof(escaped_id));
-        json_escape_append(name, escaped_name, sizeof(escaped_name));
-        json_escape_append(icon, escaped_icon, sizeof(escaped_icon));
-
+        json_escape_append(e->bundle_id, escaped_id, sizeof(escaped_id));
+        json_escape_append(e->name, escaped_name, sizeof(escaped_name));
+        json_escape_append(e->icon, escaped_icon, sizeof(escaped_icon));
         APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"%s\","
                "\"window_id\":%u,\"on_screen\":%s}",
-               first ? "" : ",", escaped_id, escaped_name, (int)pid, escaped_icon,
-               (unsigned)window_id, on_screen ? "true" : "false");
-        first = 0;
+               c == 0 ? "" : ",", escaped_id, escaped_name, (int)e->pid, escaped_icon,
+               (unsigned)e->window_id, e->on_screen ? "true" : "false");
     }
     APPEND("]");
 #undef APPEND
