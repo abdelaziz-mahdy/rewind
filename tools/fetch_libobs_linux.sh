@@ -295,7 +295,11 @@ done
 # exists yet to place it next to rewind's own binary (packaging was out of
 # scope for this task); kept here so a future one has an obvious source.
 mkdir -p "$OUT/bin"
-found_mux="$(find "$BUILD" -maxdepth 3 -name 'obs-ffmpeg-mux' -type f | head -n1)"
+# The helper lands at build/plugins/obs-ffmpeg/ffmpeg-mux/obs-ffmpeg-mux —
+# four levels below $BUILD, so -maxdepth must be >= 4 (a -maxdepth 3 here
+# silently missed it and failed the build with "helper not found" even though
+# Ninja had just linked it).
+found_mux="$(find "$BUILD" -maxdepth 5 -name 'obs-ffmpeg-mux' -type f | head -n1)"
 if [[ -z "$found_mux" ]]; then
   echo "ERROR: obs-ffmpeg-mux helper not found under $BUILD after build." >&2
   exit 1
