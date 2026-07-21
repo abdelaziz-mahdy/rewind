@@ -157,7 +157,6 @@ void main() {
     expect(emitted.single.kind, GameEventKind.doubleKill);
   });
 
-
   test('GameEnd maps Result to victory/defeat; unknown result is neutral',
       () async {
     responses['/liveclientdata/eventdata'] = _events([]);

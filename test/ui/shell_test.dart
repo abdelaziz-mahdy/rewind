@@ -535,8 +535,8 @@ void main() {
             onSettingsChanged: (s) async => settingsCalls.add(s),
           )));
 
-      await t.tap(
-          find.byKey(const ValueKey('detectedGameBannerRecord:app:repo')));
+      await t
+          .tap(find.byKey(const ValueKey('detectedGameBannerRecord:app:repo')));
       await t.pump();
 
       expect(settingsCalls, isNotEmpty);

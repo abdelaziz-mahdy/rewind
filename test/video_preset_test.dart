@@ -26,7 +26,8 @@ void main() {
       expect(s.captureMaxHeight, 1440);
     });
 
-    test('custom leaves settings untouched (its values come from the '
+    test(
+        'custom leaves settings untouched (its values come from the '
         'Resolution/Framerate rows, not the card)', () {
       final s = AppSettings(captureFps: 30, captureMaxHeight: 720);
       VideoPreset.custom.applyTo(s);
@@ -58,10 +59,11 @@ void main() {
     });
   });
 
-  test('fresh settings default to the Balanced tier (research: the default '
+  test(
+      'fresh settings default to the Balanced tier (research: the default '
       'must be universally safe, not native res)', () {
     final s = AppSettings();
-    expect(VideoPreset.of(s.captureFps, s.captureMaxHeight),
-        VideoPreset.balanced);
+    expect(
+        VideoPreset.of(s.captureFps, s.captureMaxHeight), VideoPreset.balanced);
   });
 }

@@ -124,9 +124,9 @@ void main() {
       ..createSync(recursive: true);
     File(p.join(steamapps.path, 'appmanifest_77.acf')).writeAsStringSync(
         '"AppState"{"appid" "77" "name" "OnlyCap" "installdir" "OnlyCap"}');
-    final sub = Directory(
-        p.join(root.path, 'appcache', 'librarycache', '77', 'hh'))
-      ..createSync(recursive: true);
+    final sub =
+        Directory(p.join(root.path, 'appcache', 'librarycache', '77', 'hh'))
+          ..createSync(recursive: true);
     File(p.join(sub.path, 'library_600x900.jpg'))
         .writeAsBytesSync(const [5, 5, 5]);
 
@@ -160,8 +160,7 @@ void main() {
     final mainSteamapps = Directory(p.join(main.path, 'steamapps'))
       ..createSync(recursive: true);
     final lib2 = Directory(p.join(tmp.path, 'lib2'))..createSync();
-    _fakeSteam(lib2,
-        appId: '200', name: 'Far', installDir: 'FarGame');
+    _fakeSteam(lib2, appId: '200', name: 'Far', installDir: 'FarGame');
     // libraryfolders.vdf in the main library points at lib2.
     File(p.join(mainSteamapps.path, 'libraryfolders.vdf')).writeAsStringSync('''
 "libraryfolders"

@@ -144,8 +144,7 @@ bool processNameMatches(String processName, String needle) {
 
 /// True for ASCII `0-9` or `a-z` — [processNameMatches] lowercases first, so
 /// uppercase never reaches here.
-bool _isAlnum(int c) =>
-    (c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x7a);
+bool _isAlnum(int c) => (c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x7a);
 
 /// Detects a user-chosen application by checking the OS process list.
 ///

@@ -11,11 +11,16 @@ void main() {
         frameCount: 12,
       ),
       [
-        '-i', '/clips/a.mp4',
-        '-vf', 'fps=0.400000,scale=160:-2',
-        '-frames:v', '12',
-        '-q:v', '5',
-        '-y', '/tmp/strip/frame_%02d.jpg',
+        '-i',
+        '/clips/a.mp4',
+        '-vf',
+        'fps=0.400000,scale=160:-2',
+        '-frames:v',
+        '12',
+        '-q:v',
+        '5',
+        '-y',
+        '/tmp/strip/frame_%02d.jpg',
       ],
     );
   });

@@ -2471,8 +2471,8 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
             child: card('highlights', 'Highlights',
                 'Auto-clip the moments you pick below')),
       Expanded(
-          child: card('full', 'Full session',
-              'Record the whole game to one video')),
+          child: card(
+              'full', 'Full session', 'Record the whole game to one video')),
     ];
 
     return IntrinsicHeight(

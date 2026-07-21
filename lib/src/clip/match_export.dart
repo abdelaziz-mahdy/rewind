@@ -34,11 +34,16 @@ String concatListBody(Iterable<String> paths) {
 /// The FFmpeg argument list for a concat export from a written list file.
 /// Pure so tests pin the exact command.
 List<String> concatArguments(String listPath, String outPath) => [
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', listPath,
-      '-c', 'copy',
-      '-y', outPath,
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      listPath,
+      '-c',
+      'copy',
+      '-y',
+      outPath,
     ];
 
 /// The export file name for a match: derived from the first clip's file

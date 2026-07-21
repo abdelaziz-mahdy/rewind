@@ -132,8 +132,7 @@ class SteamIconResolver {
         for (final entity in steamapps.listSync()) {
           if (entity is! File) continue;
           final name = p.basename(entity.path);
-          if (!name.startsWith('appmanifest_') ||
-              !name.endsWith('.acf')) {
+          if (!name.startsWith('appmanifest_') || !name.endsWith('.acf')) {
             continue;
           }
           final m = _parseManifest(entity, steamapps.parent);
@@ -156,8 +155,7 @@ class SteamIconResolver {
       return const [];
     }
     final out = <Directory>[];
-    for (final match
-        in RegExp(r'"path"\s*"([^"]+)"').allMatches(text)) {
+    for (final match in RegExp(r'"path"\s*"([^"]+)"').allMatches(text)) {
       final raw = match.group(1)!.replaceAll(r'\\', r'\');
       out.add(Directory(p.join(raw, 'steamapps')));
     }
@@ -188,8 +186,8 @@ class SteamIconResolver {
   /// icon), else a `library_600x900.jpg` capsule in a subfolder, else a
   /// `logo.png`. Null when the game has no cached art.
   File? _findArtFile(Directory steamRoot, String appId) {
-    final dir = Directory(
-        p.join(steamRoot.path, 'appcache', 'librarycache', appId));
+    final dir =
+        Directory(p.join(steamRoot.path, 'appcache', 'librarycache', appId));
     if (!dir.existsSync()) return null;
 
     File? smallestLoose;
@@ -260,16 +258,17 @@ String _norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 /// Reads a `"key" "value"` pair from an ACF/VDF blob (whitespace-tolerant,
 /// first match wins). Null when the key is absent.
 String? _value(String text, String key) {
-  final m = RegExp('"$key"\\s*"([^"]*)"', caseSensitive: false).firstMatch(text);
+  final m =
+      RegExp('"$key"\\s*"([^"]*)"', caseSensitive: false).firstMatch(text);
   return m?.group(1);
 }
 
 /// Extracts the install dir from a `steamapps/common/<dir>/…` path (either
 /// slash style), or null if the path isn't inside a Steam common folder.
 String? _installDirFromPath(String path) {
-  final m = RegExp(r'steamapps[\\/]+common[\\/]+([^\\/]+)',
-          caseSensitive: false)
-      .firstMatch(path);
+  final m =
+      RegExp(r'steamapps[\\/]+common[\\/]+([^\\/]+)', caseSensitive: false)
+          .firstMatch(path);
   return m?.group(1);
 }
 
@@ -280,8 +279,8 @@ List<Directory> defaultSteamappsRoots() {
   final candidates = <String>[];
   if (Platform.isMacOS) {
     if (home != null) {
-      candidates
-          .add(p.join(home, 'Library', 'Application Support', 'Steam', 'steamapps'));
+      candidates.add(
+          p.join(home, 'Library', 'Application Support', 'Steam', 'steamapps'));
       candidates.addAll(_crossOverSteamapps(home));
     }
   } else if (Platform.isWindows) {

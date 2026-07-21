@@ -762,8 +762,8 @@ void main() {
 
     test('does NOT record a client/launcher activation (countsAsPlaying false)',
         () async {
-      settings.setConfig(GameConfig(
-          gameId: 'app:league_of_legends', recordFullSession: true));
+      settings.setConfig(
+          GameConfig(gameId: 'app:league_of_legends', recordFullSession: true));
       leagueClient.running = true;
       await registry.tickNow();
       await Future<void>.delayed(Duration.zero);
@@ -786,8 +786,8 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       // No second startRecording — the manual recording owns the slot.
-      expect(engine.calls.where((c) => c == 'startRecording').length,
-          startCalls);
+      expect(
+          engine.calls.where((c) => c == 'startRecording').length, startCalls);
       // And the game exiting must not stop the user's manual recording.
       league.running = false;
       await registry.tickNow();
@@ -1019,8 +1019,8 @@ void main() {
       // clips shouldn't be counted here — disable auto-clip so this asserts
       // ONLY the outcome recording, independent of the clip path.
       final settings = AppSettings();
-      settings.setConfig(
-          GameConfig(gameId: 'league_of_legends', autoClip: false));
+      settings
+          .setConfig(GameConfig(gameId: 'league_of_legends', autoClip: false));
       final c = ClipCoordinator(
         registry: localRegistry,
         library: localLib,

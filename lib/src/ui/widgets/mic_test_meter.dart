@@ -217,7 +217,8 @@ class _MicTestMeterState extends State<MicTestMeter> {
               targetMaxDb: -5,
               color: switch (micTestVerdict(_micPeakHold)) {
                 MicTestVerdict.clipping => tokens.rec,
-                MicTestVerdict.tooLoud || MicTestVerdict.tooQuiet =>
+                MicTestVerdict.tooLoud ||
+                MicTestVerdict.tooQuiet =>
                   tokens.warn,
                 _ => tokens.accent,
               },
@@ -236,9 +237,8 @@ class _MicTestMeterState extends State<MicTestMeter> {
               key: const ValueKey('micTestHint'),
               micTestHint(
                 micTestVerdict(_micPeakHold),
-                voiceOverGameDb: _levels!.gameActive
-                    ? _micPeakHold - _gamePeakHold
-                    : null,
+                voiceOverGameDb:
+                    _levels!.gameActive ? _micPeakHold - _gamePeakHold : null,
               ),
               style: textTheme.bodyMuted.copyWith(
                 color: switch (micTestVerdict(_micPeakHold)) {
@@ -306,8 +306,8 @@ class _LevelBar extends StatelessWidget {
                     if (targetMinDb != null && targetMaxDb != null)
                       Positioned(
                         left: w * _fraction(targetMinDb!),
-                        width: w * (_fraction(targetMaxDb!) -
-                            _fraction(targetMinDb!)),
+                        width: w *
+                            (_fraction(targetMaxDb!) - _fraction(targetMinDb!)),
                         top: 0,
                         bottom: 0,
                         child: DecoratedBox(
@@ -315,8 +315,7 @@ class _LevelBar extends StatelessWidget {
                             color: tokens.accent.withValues(alpha: 0.18),
                             border: Border.symmetric(
                               vertical: BorderSide(
-                                  color:
-                                      tokens.accent.withValues(alpha: 0.5)),
+                                  color: tokens.accent.withValues(alpha: 0.5)),
                             ),
                           ),
                         ),

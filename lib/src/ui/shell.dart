@@ -519,8 +519,7 @@ class _DetectedGameBannersState extends State<_DetectedGameBanners> {
       final game = resolver.steamGameByInstallDir(app.name);
       if (game == null) continue; // Not an installed Steam game — skip.
       final gameId = gameIdForApp(app);
-      if (configuredIds.contains(gameId) ||
-          widget.dismissed.contains(gameId)) {
+      if (configuredIds.contains(gameId) || widget.dismissed.contains(gameId)) {
         continue;
       }
       final art = resolver.resolveByInstallDir(app.name);

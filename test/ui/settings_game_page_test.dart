@@ -399,7 +399,8 @@ void main() {
       expect(find.byKey(const ValueKey('captureMode:full')), findsOneWidget);
     });
 
-    testWidgets('picking Full session writes recordFullSession and clears '
+    testWidgets(
+        'picking Full session writes recordFullSession and clears '
         'autoClip', (t) async {
       final calls = <AppSettings>[];
       await t.pumpWidget(_app(SettingsScreen(

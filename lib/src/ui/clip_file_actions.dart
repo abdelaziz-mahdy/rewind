@@ -49,7 +49,7 @@ Future<bool> revealClipFile(String path) async {
 void showOpenFailedToast(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
     behavior: SnackBarBehavior.floating,
-    content: Text(
-        "Couldn't open this file — it may have been moved or deleted."),
+    content:
+        Text("Couldn't open this file — it may have been moved or deleted."),
   ));
 }

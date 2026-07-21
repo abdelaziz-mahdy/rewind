@@ -65,6 +65,5 @@ double _estimatedMbps({required int fps, required int? maxHeight}) {
 /// Approximate size in whole megabytes of a [seconds]-long replay buffer at
 /// the given quality — `Mbps × seconds ÷ 8`.
 int estimatedBufferMegabytes(int seconds, {required int fps, int? maxHeight}) {
-  return (_estimatedMbps(fps: fps, maxHeight: maxHeight) * seconds / 8)
-      .round();
+  return (_estimatedMbps(fps: fps, maxHeight: maxHeight) * seconds / 8).round();
 }

@@ -290,8 +290,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                           const SizedBox(height: 12),
                           OutlinedButton(
                             key: const ValueKey('clearFilterButton'),
-                            onPressed: () =>
-                                setState(() => _filterKind = null),
+                            onPressed: () => setState(() => _filterKind = null),
                             child: const Text('Clear filter'),
                           ),
                         ],

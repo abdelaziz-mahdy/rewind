@@ -300,8 +300,7 @@ void main() {
     });
   });
   group('event badge colors', () {
-    testWidgets(
-        'multikill tiers escalate to visibly distinct, brighter colors',
+    testWidgets('multikill tiers escalate to visibly distinct, brighter colors',
         (t) async {
       late Color kill, dbl, triple, quadra, penta, ace;
       await t.pumpWidget(MaterialApp(
@@ -334,4 +333,3 @@ void main() {
     });
   });
 }
-

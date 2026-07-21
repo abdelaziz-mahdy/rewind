@@ -555,8 +555,7 @@ void main() {
     expect(File('${store.file.path}.bad').existsSync(), isFalse);
   });
 
-  test('save snapshots state at call time, not at queue-drain time',
-      () async {
+  test('save snapshots state at call time, not at queue-drain time', () async {
     final store = SettingsStore(tmp);
     final s = AppSettings(defaultBufferSeconds: 15);
     final first = store.save(s);
@@ -567,5 +566,4 @@ void main() {
     await store.save(s);
     expect((await store.load()).defaultBufferSeconds, 60);
   });
-
 }

@@ -31,8 +31,7 @@ String trimOutPath(String srcPath, Iterable<String> taken) {
   final dot = srcPath.lastIndexOf('.');
   final base =
       dot > srcPath.lastIndexOf('/') ? srcPath.substring(0, dot) : srcPath;
-  final ext =
-      dot > srcPath.lastIndexOf('/') ? srcPath.substring(dot) : '.mp4';
+  final ext = dot > srcPath.lastIndexOf('/') ? srcPath.substring(dot) : '.mp4';
   final existing = taken.toSet();
   for (var n = 1;; n++) {
     final candidate = '$base-trim-$n$ext';
@@ -57,12 +56,18 @@ List<String> trimArguments({
   required String outPath,
 }) =>
     [
-      '-ss', ffmpegSeconds(start),
-      '-i', srcPath,
-      '-t', ffmpegSeconds(end - start),
-      '-c', 'copy',
-      '-avoid_negative_ts', 'make_zero',
-      '-y', outPath,
+      '-ss',
+      ffmpegSeconds(start),
+      '-i',
+      srcPath,
+      '-t',
+      ffmpegSeconds(end - start),
+      '-c',
+      'copy',
+      '-avoid_negative_ts',
+      'make_zero',
+      '-y',
+      outPath,
     ];
 
 /// Real trimmer over `ffmpeg_kit_flutter_new` (bundled FFmpeg — the same

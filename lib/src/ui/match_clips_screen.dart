@@ -163,7 +163,6 @@ class MatchClipsScreen extends StatelessWidget {
   }
 }
 
-
 /// The app-bar "Export full match" action: one continuous video from all
 /// the match's clips (chronological, gaps between clips simply absent —
 /// stream-copy concat, no re-encode), saved next to the clips with a
@@ -193,8 +192,8 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (ordered.isEmpty) return;
     setState(() => _exporting = true);
-    final outPath = matchExportPath(
-        ordered.first, widget.library.all.map((c) => c.path));
+    final outPath =
+        matchExportPath(ordered.first, widget.library.all.map((c) => c.path));
     final ok = await widget.exporter.export(ordered, outPath);
     if (!mounted) return;
     setState(() => _exporting = false);
