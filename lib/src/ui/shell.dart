@@ -10,6 +10,7 @@ import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../games/league/ddragon.dart';
+import '../games/steam_icon_resolver.dart';
 import '../obs/app_info.dart';
 import '../obs/audio_input_info.dart';
 import '../obs/display_info.dart';
@@ -128,6 +129,11 @@ class Shell extends StatefulWidget {
   /// today's behavior.
   final ShellDestination? initialDestination;
 
+  /// Resolves real game icons/names from the local Steam library for the
+  /// Supported Games "Running now" list and the home detected-game banners
+  /// (Steam/Wine games have no macOS bundle icon). Null in tests / no Steam.
+  final SteamIconResolver? steamResolver;
+
   const Shell({
     required this.coordinator,
     required this.library,
@@ -151,6 +157,7 @@ class Shell extends StatefulWidget {
     this.ddragon,
     this.steamStatus,
     this.initialDestination,
+    this.steamResolver,
     super.key,
   });
 
@@ -293,6 +300,7 @@ class _ShellState extends State<Shell> {
           onSettingsChanged: widget.onSettingsChanged,
           onOpenGame: (gameId) => _select(GameDestination(gameId)),
           listApps: widget.listApps,
+          steamResolver: widget.steamResolver,
         ),
       SettingsDestination(initialGameId: final gameId, initialTab: final tab) =>
         SettingsScreen(

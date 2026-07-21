@@ -86,6 +86,36 @@ void main() {
     });
 
     testWidgets(
+        'a jpg/png iconPath (Steam library art) renders off disk, not the '
+        'monogram', (t) async {
+      final iconFile = File('${tmp.path}/steam-3241660.png')
+        ..writeAsBytesSync(_tinyPng);
+
+      await t.pumpWidget(app(GameTileAvatar(
+        gameId: 'app:repo',
+        displayName: 'Repo',
+        iconPath: iconFile.path,
+        size: 32,
+      )));
+
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('RE'), findsNothing);
+    });
+
+    testWidgets('a missing jpg/png iconPath falls back to the monogram',
+        (t) async {
+      await t.pumpWidget(app(GameTileAvatar(
+        gameId: 'app:repo',
+        displayName: 'Repo',
+        iconPath: '${tmp.path}/steam-nope.jpg',
+        size: 32,
+      )));
+
+      expect(find.byType(Image), findsNothing);
+      expect(find.text('RE'), findsOneWidget);
+    });
+
+    testWidgets(
         'a Wine game (no iconPath, per AppInfo.iconPath\'s contract) always '
         'shows the monogram', (t) async {
       await t.pumpWidget(app(const GameTileAvatar(

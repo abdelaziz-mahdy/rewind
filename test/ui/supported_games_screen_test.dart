@@ -10,6 +10,7 @@ import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/settings/app_settings.dart';
+import 'package:rewind/src/games/steam_icon_resolver.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/supported_games_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
@@ -59,6 +60,7 @@ void main() {
     Future<void> Function(AppSettings)? onSettingsChanged,
     ValueChanged<String>? onOpenGame,
     List<AppInfo> Function()? listApps,
+    SteamIconResolver? steamResolver,
   }) =>
       SupportedGamesScreen(
         coordinator: coordinator,
@@ -66,6 +68,7 @@ void main() {
         onSettingsChanged: onSettingsChanged ?? (_) async {},
         onOpenGame: onOpenGame ?? (_) {},
         listApps: listApps,
+        steamResolver: steamResolver,
       );
 
   Finder row(String gameId) => find.byKey(ValueKey('supportedGameRow:$gameId'));
@@ -242,6 +245,62 @@ void main() {
       expect(find.byKey(const ValueKey('runningAppRow:app:penguin_hotel')),
           findsNothing);
     });
-  });
 
+    // A Wine game (empty bundle id, no OS icon) resolved against a local
+    // Steam library shows the real name + icon, and Add stores them so the
+    // rail keeps the icon after the game stops.
+    testWidgets('a Steam game resolves its real name and icon', (t) async {
+      final steamRoot = _fakeSteamGame(tmp,
+          appId: '3241660', name: 'R.E.P.O.', installDir: 'REPO');
+      final resolver = SteamIconResolver(
+        cacheDir: Directory('${tmp.path}/icons'),
+        steamappsRoots: () => [steamRoot],
+      );
+      final persisted = <AppSettings>[];
+      await _pump(t, _app(screen(
+        // A running Wine app: bundle-less, window/exe named after the game.
+        listApps: () => [app('REPO', bundleId: '')],
+        steamResolver: resolver,
+        onSettingsChanged: (s) async => persisted.add(s),
+      )));
+
+      final rowFinder =
+          find.byKey(const ValueKey('runningAppRow:app:repo'));
+      await t.scrollUntilVisible(rowFinder, 200,
+          scrollable: find.byType(Scrollable).first);
+
+      // Steam's proper name, not the bare "REPO", and a real icon image.
+      expect(find.descendant(of: rowFinder, matching: find.text('R.E.P.O.')),
+          findsOneWidget);
+      expect(find.descendant(of: rowFinder, matching: find.byType(Image)),
+          findsOneWidget);
+
+      await t.tap(find.descendant(of: rowFinder, matching: find.text('Add')));
+      await t.pump();
+
+      final cfg = coordinator.settings.configFor('app:repo');
+      expect(cfg.displayName, 'R.E.P.O.');
+      expect(cfg.iconPath, isNotNull);
+      expect(File(cfg.iconPath!).existsSync(), isTrue);
+    });
+  });
+}
+
+/// Minimal on-disk Steam layout for one game under [parent]; returns the
+/// `steamapps` dir to hand to [SteamIconResolver.steamappsRoots].
+Directory _fakeSteamGame(
+  Directory parent, {
+  required String appId,
+  required String name,
+  required String installDir,
+}) {
+  final root = Directory('${parent.path}/steamhome')..createSync();
+  final steamapps = Directory('${root.path}/steamapps')
+    ..createSync(recursive: true);
+  File('${steamapps.path}/appmanifest_$appId.acf').writeAsStringSync(
+      '"AppState" { "appid" "$appId" "name" "$name" "installdir" "$installDir" }');
+  final lc = Directory('${root.path}/appcache/librarycache/$appId')
+    ..createSync(recursive: true);
+  File('${lc.path}/icon.jpg').writeAsBytesSync(const [1, 2, 3, 4]);
+  return steamapps;
 }

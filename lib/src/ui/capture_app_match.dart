@@ -2,6 +2,7 @@ import '../events/game_catalog.dart';
 import '../settings/app_settings.dart';
 import '../settings/game_config.dart';
 import '../games/game_descriptor.dart';
+import '../games/steam_icon_resolver.dart';
 import '../obs/app_info.dart';
 
 /// True if [processMatch] is a case-insensitive substring of [app]'s name or
@@ -108,20 +109,22 @@ String gameIdForApp(AppInfo app,
 /// - `processMatch`: the app's name, so detection auto-follows next launch.
 /// - `displayName`: only for freshly-minted `app:<slug>` entries — catalog
 ///   gameIds carry their own curated displayName which must not be
-///   shadowed.
+///   shadowed. Steam's own name (from [art]) is preferred over the bare
+///   exe/window name ("R.E.P.O." over "REPO").
 /// - `iconPath`: lets the rail show the real app icon when the game isn't
 ///   running — except for Riot games, whose icon IS Riot's official logo
-///   (policy-forbidden; see `usesOfficialLogo`). Null for Wine apps (no
-///   bundle → no icon) is correct, not a bug.
-String learnAppAsGame(AppSettings settings, AppInfo a) {
+///   (policy-forbidden; see `usesOfficialLogo`). Wine apps have no bundle
+///   icon, but a Steam game's cached art ([art], see `SteamIconResolver`)
+///   fills that gap; the letter monogram is the last resort.
+String learnAppAsGame(AppSettings settings, AppInfo a, {SteamGameArt? art}) {
   final gameId = gameIdForApp(a);
   final cfg = settings.configFor(gameId);
   cfg.processMatch ??= a.name;
   if (gameId.startsWith('app:') && matchingCatalogGame(a) == null) {
-    cfg.displayName ??= a.name;
+    cfg.displayName ??= art?.name ?? a.name;
   }
   if (!usesOfficialLogo(gameId: gameId, bundleId: a.bundleId)) {
-    cfg.iconPath ??= a.iconPath;
+    cfg.iconPath ??= a.iconPath ?? art?.iconPath;
   }
   settings.setConfig(cfg);
   return gameId;
