@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../icns.dart';
@@ -48,19 +50,48 @@ class GameTileAvatar extends StatelessWidget {
     final radius = BorderRadius.circular(tokens.radiusControl);
 
     final path = iconPath;
-    final png = (path != null && path.isNotEmpty) ? loadAppIconPng(path) : null;
-    if (png != null) {
-      return ClipRRect(
-        borderRadius: radius,
-        child: Image.memory(
-          png,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-        ),
-      );
+    if (path != null && path.isNotEmpty) {
+      // `.icns` bundle icons decode through the pure-Dart reader; anything
+      // else (a jpg/png cached from the local Steam library — see
+      // `SteamIconResolver`) renders straight off disk. A missing/broken
+      // file falls back to the monogram via the image error builder.
+      if (path.toLowerCase().endsWith('.icns')) {
+        final png = loadAppIconPng(path);
+        if (png != null) {
+          return ClipRRect(
+            borderRadius: radius,
+            child: Image.memory(
+              png,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            ),
+          );
+        }
+      } else if (File(path).existsSync()) {
+        return ClipRRect(
+          borderRadius: radius,
+          child: Image.file(
+            File(path),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            // Guarded by existsSync above, so this only catches a present-
+            // but-corrupt file — still never a broken-image glyph.
+            errorBuilder: (context, _, __) => _fallback(context),
+          ),
+        );
+      }
     }
+
+    return _fallback(context);
+  }
+
+  Widget _fallback(BuildContext context) {
+    final tokens = context.rewindTokens;
+    final radius = BorderRadius.circular(tokens.radiusControl);
 
     // The manual-capture pseudo-game has no display name worth abbreviating
     // ("Desktop" -> "DE" reads as a typo) and no per-game tint would mean

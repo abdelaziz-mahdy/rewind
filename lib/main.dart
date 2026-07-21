@@ -21,6 +21,7 @@ import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
 import 'src/games/league/ddragon.dart';
+import 'src/games/steam_icon_resolver.dart';
 import 'src/hotkey/hotkey_service.dart';
 import 'src/log/file_log.dart';
 import 'src/log/log.dart';
@@ -476,6 +477,12 @@ Future<void> main() async {
     onOpenClipsFolder: () => _openClipsFolder(clipsDir.path),
     settingsRevision: settingsRevision,
     steamStatus: steamStatus,
+    // Real game icons/names from the local Steam library, cached in a dot-dir
+    // the clip scanner ignores (NOT `.thumbs` — that dir is swept of any jpg
+    // without a matching clip by `removeOrphanThumbnails`, which would delete
+    // these).
+    steamResolver:
+        SteamIconResolver(cacheDir: Directory('${clipsDir.path}/.icons')),
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -604,6 +611,11 @@ class RewindApp extends StatefulWidget {
   /// Forwarded to `Shell.steamStatus` — see that field's doc.
   final ValueListenable<String?>? Function()? steamStatus;
 
+  /// Forwarded to `Shell.steamResolver` — resolves real game icons/names
+  /// from the local Steam library for the Running-now list and home
+  /// detected-game suggestions.
+  final SteamIconResolver? steamResolver;
+
   const RewindApp({
     required this.coordinator,
     required this.library,
@@ -629,6 +641,7 @@ class RewindApp extends StatefulWidget {
     this.onRelaunch,
     this.onboardingActive,
     this.steamStatus,
+    this.steamResolver,
     super.key,
   });
 
@@ -706,6 +719,7 @@ class _RewindAppState extends State<RewindApp> {
               thumbnails: widget.thumbnails,
               ddragon: widget.ddragon,
               steamStatus: widget.steamStatus,
+              steamResolver: widget.steamResolver,
               initialDestination: _shellInitialDestination,
             ),
     );

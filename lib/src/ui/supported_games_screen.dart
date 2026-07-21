@@ -6,6 +6,7 @@ import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../obs/app_info.dart';
 import '../games/game_descriptor.dart';
+import '../games/steam_icon_resolver.dart';
 import '../settings/app_settings.dart';
 import 'capture_app_match.dart';
 import 'theme.dart';
@@ -116,12 +117,18 @@ class SupportedGamesScreen extends StatefulWidget {
   /// section.
   final List<AppInfo> Function()? listApps;
 
+  /// Resolves a real game icon + name from the local Steam library for
+  /// running apps that have no macOS bundle icon (Steam/Wine games). Null
+  /// (tests, no Steam) leaves those rows on the letter monogram.
+  final SteamIconResolver? steamResolver;
+
   const SupportedGamesScreen({
     required this.coordinator,
     required this.library,
     required this.onSettingsChanged,
     required this.onOpenGame,
     this.listApps,
+    this.steamResolver,
     super.key,
   });
 
@@ -138,13 +145,26 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
     widget.onSettingsChanged(settings);
   }
 
+  /// The real Steam art for a running app that has no OS bundle icon — the
+  /// robot for R.E.P.O. and friends. Resolved by the app's window/exe name
+  /// against the local Steam library. Null when there's no resolver, the app
+  /// already has a bundle icon, or it isn't a Steam game. Memoized inside the
+  /// resolver, so calling it per build is cheap.
+  SteamGameArt? _artFor(AppInfo a) {
+    final resolver = widget.steamResolver;
+    if (resolver == null) return null;
+    if (a.iconPath != null && a.iconPath!.isNotEmpty) return null;
+    return resolver.resolveByInstallDir(a.name);
+  }
+
   /// "Running now" Add: same learn path as picking the app as a capture
   /// source (`learnAppAsGame` — processMatch/displayName/iconPath rules),
   /// WITHOUT switching the capture target; auto-switch takes over next
-  /// time the game is detected running.
-  void _addRunningApp(AppInfo a) {
+  /// time the game is detected running. Any resolved Steam [art] is stored
+  /// so the rail/hub keep the real icon after the game stops running.
+  void _addRunningApp(AppInfo a, SteamGameArt? art) {
     final settings = widget.coordinator.settings;
-    learnAppAsGame(settings, a);
+    learnAppAsGame(settings, a, art: art);
     setState(() {});
     widget.onSettingsChanged(settings);
   }
@@ -218,11 +238,13 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
                   ],
                 final apps => [
                     for (final a in apps)
-                      _RunningAppRow(
-                        key: ValueKey('runningAppRow:${gameIdForApp(a)}'),
-                        app: a,
-                        onAdd: () => _addRunningApp(a),
-                      ),
+                      if (_artFor(a) case final art)
+                        _RunningAppRow(
+                          key: ValueKey('runningAppRow:${gameIdForApp(a)}'),
+                          app: a,
+                          art: art,
+                          onAdd: () => _addRunningApp(a, art),
+                        ),
                   ],
               },
             ],
@@ -351,19 +373,27 @@ class _StateIndicator extends StatelessWidget {
 }
 
 
-/// One "Running now" row: the app's real icon (when macOS gave us one),
-/// name, a Wine marker where relevant, and an Add button. Mirrors
-/// _CatalogRowTile's geometry so the two lists read as one screen.
+/// One "Running now" row: the app's real icon (a macOS bundle icon, or a
+/// game icon resolved from the local Steam library via [art]), name, a Wine
+/// marker where relevant, and an Add button. Mirrors _CatalogRowTile's
+/// geometry so the two lists read as one screen.
 class _RunningAppRow extends StatelessWidget {
   final AppInfo app;
+  final SteamGameArt? art;
   final VoidCallback onAdd;
 
-  const _RunningAppRow({required this.app, required this.onAdd, super.key});
+  const _RunningAppRow({
+    required this.app,
+    required this.onAdd,
+    this.art,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
+    final displayName = art?.name ?? app.name;
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -377,14 +407,14 @@ class _RunningAppRow extends StatelessWidget {
         children: [
           GameTileAvatar(
             gameId: gameIdForApp(app),
-            displayName: app.name,
-            iconPath: app.iconPath,
+            displayName: displayName,
+            iconPath: app.iconPath ?? art?.iconPath,
             size: 32,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              app.name,
+              displayName,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.body,
             ),
