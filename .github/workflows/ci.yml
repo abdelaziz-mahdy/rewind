@@ -37,6 +37,17 @@ jobs:
           channel: stable
       - run: flutter config --enable-${{ matrix.target }}-desktop
       - run: flutter pub get
+      # ffmpeg_kit_flutter_new's Windows CMake downloads FFmpeg and `tar xf`s
+      # it INTO its plugin dir, which Flutter reaches via a symlink under
+      # windows/flutter/ephemeral/.plugin_symlinks — and CMake's libarchive
+      # refuses to "extract through symlink", failing the build. The package
+      # has an escape hatch: FFMPEGKIT_LOCAL_DIR makes it `file(COPY)` a
+      # locally-prepared bundle instead of extracting. Prefetch + extract it
+      # to a real (non-symlinked) dir and point the env var at it.
+      - name: Prefetch FFmpegKit (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./tools/prefetch_ffmpegkit_windows.ps1
       - run: flutter test
         if: matrix.target == 'windows'
       - run: flutter build ${{ matrix.target }} --debug
@@ -90,6 +101,11 @@ jobs:
         shell: pwsh
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
+      # See the matrix build job's note — avoids ffmpeg_kit's
+      # extract-through-symlink failure via FFMPEGKIT_LOCAL_DIR.
+      - name: Prefetch FFmpegKit (Windows)
+        shell: pwsh
+        run: ./tools/prefetch_ffmpegkit_windows.ps1
       # This compiles the real Windows shim path (REWIND_USE_LIBOBS) —
       # the whole point of this job, unlike the stub-mode `build
       # (windows-latest)` leg above.
