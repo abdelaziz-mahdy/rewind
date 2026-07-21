@@ -20,6 +20,7 @@ import 'src/events/game_catalog.dart';
 import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
+import 'src/games/exe_icon_resolver.dart';
 import 'src/games/league/ddragon.dart';
 import 'src/games/steam_icon_backfill.dart';
 import 'src/games/steam_icon_resolver.dart';
@@ -134,6 +135,10 @@ Future<void> main() async {
   // which `removeOrphanThumbnails` sweeps of any unmatched jpg).
   final steamResolver =
       SteamIconResolver(cacheDir: Directory('${clipsDir.path}/.icons'));
+  // Fallback icon source for a non-Steam Wine game: its own exe's embedded
+  // icon, cached beside the Steam icons.
+  final exeResolver =
+      ExeIconResolver(cacheDir: Directory('${clipsDir.path}/.icons'));
   // One-time backfill: games added before Steam-icon resolution existed have
   // no iconPath — fill it from the Steam library where it maps, so the rail
   // shows the real icon instead of a monogram. Persist only if it changed
@@ -491,6 +496,7 @@ Future<void> main() async {
     settingsRevision: settingsRevision,
     steamStatus: steamStatus,
     steamResolver: steamResolver,
+    exeResolver: exeResolver,
     onSettingsChanged: (s) async {
       await store.save(s);
       // Apply the (possibly per-game) buffer length to the live engine —
@@ -624,6 +630,9 @@ class RewindApp extends StatefulWidget {
   /// detected-game suggestions.
   final SteamIconResolver? steamResolver;
 
+  /// Forwarded to `Shell.exeResolver` — the non-Steam Wine game icon fallback.
+  final ExeIconResolver? exeResolver;
+
   const RewindApp({
     required this.coordinator,
     required this.library,
@@ -650,6 +659,7 @@ class RewindApp extends StatefulWidget {
     this.onboardingActive,
     this.steamStatus,
     this.steamResolver,
+    this.exeResolver,
     super.key,
   });
 
@@ -728,6 +738,7 @@ class _RewindAppState extends State<RewindApp> {
               ddragon: widget.ddragon,
               steamStatus: widget.steamStatus,
               steamResolver: widget.steamResolver,
+              exeResolver: widget.exeResolver,
               initialDestination: _shellInitialDestination,
             ),
     );

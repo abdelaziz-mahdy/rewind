@@ -5,6 +5,7 @@ import '../clip/clip_library.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
 import '../obs/app_info.dart';
+import '../games/exe_icon_resolver.dart';
 import '../games/game_descriptor.dart';
 import '../games/steam_icon_resolver.dart';
 import '../settings/app_settings.dart';
@@ -122,6 +123,11 @@ class SupportedGamesScreen extends StatefulWidget {
   /// (tests, no Steam) leaves those rows on the letter monogram.
   final SteamIconResolver? steamResolver;
 
+  /// Fallback icon resolver for a non-Steam Wine game — reads the icon from
+  /// the game's own `.exe`. Tried only when the Steam lookup misses. Null
+  /// leaves those rows on the monogram.
+  final ExeIconResolver? exeResolver;
+
   const SupportedGamesScreen({
     required this.coordinator,
     required this.library,
@@ -129,6 +135,7 @@ class SupportedGamesScreen extends StatefulWidget {
     required this.onOpenGame,
     this.listApps,
     this.steamResolver,
+    this.exeResolver,
     super.key,
   });
 
@@ -160,11 +167,17 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
   /// "Running now" Add: same learn path as picking the app as a capture
   /// source (`learnAppAsGame` — processMatch/displayName/iconPath rules),
   /// WITHOUT switching the capture target; auto-switch takes over next
-  /// time the game is detected running. Any resolved Steam [art] is stored
-  /// so the rail/hub keep the real icon after the game stops running.
-  void _addRunningApp(AppInfo a, SteamGameArt? art) {
+  /// time the game is detected running. Any resolved Steam [art] (or, failing
+  /// that, the game's own exe icon) is stored so the rail/hub keep the real
+  /// icon after the game stops running.
+  Future<void> _addRunningApp(AppInfo a, SteamGameArt? art) async {
     final settings = widget.coordinator.settings;
-    learnAppAsGame(settings, a, art: art);
+    String? exeIcon;
+    if (art == null && (a.iconPath == null || a.iconPath!.isEmpty)) {
+      exeIcon = await widget.exeResolver?.iconForApp(a);
+    }
+    if (!mounted) return;
+    learnAppAsGame(settings, a, art: art, iconPath: exeIcon);
     setState(() {});
     widget.onSettingsChanged(settings);
   }
@@ -243,7 +256,10 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
                           key: ValueKey('runningAppRow:${gameIdForApp(a)}'),
                           app: a,
                           art: art,
-                          onAdd: () => _addRunningApp(a, art),
+                          exeResolver: widget.exeResolver,
+                          onAdd: () {
+                            _addRunningApp(a, art);
+                          },
                         ),
                   ],
               },
@@ -380,14 +396,41 @@ class _StateIndicator extends StatelessWidget {
 class _RunningAppRow extends StatelessWidget {
   final AppInfo app;
   final SteamGameArt? art;
+  final ExeIconResolver? exeResolver;
   final VoidCallback onAdd;
 
   const _RunningAppRow({
     required this.app,
     required this.onAdd,
     this.art,
+    this.exeResolver,
     super.key,
   });
+
+  /// The row's avatar. A known icon (bundle or Steam) renders directly; a
+  /// bundle-less Wine game with no Steam art asks the exe resolver (async) for
+  /// its embedded icon and swaps the monogram for it when it lands. The
+  /// resolver memoizes, so the future is stable across rebuilds.
+  Widget _avatar(String displayName) {
+    final known = app.iconPath ?? art?.iconPath;
+    if (known != null || app.bundleId.isNotEmpty || exeResolver == null) {
+      return GameTileAvatar(
+        gameId: gameIdForApp(app),
+        displayName: displayName,
+        iconPath: known,
+        size: 32,
+      );
+    }
+    return FutureBuilder<String?>(
+      future: exeResolver!.iconForApp(app),
+      builder: (context, snap) => GameTileAvatar(
+        gameId: gameIdForApp(app),
+        displayName: displayName,
+        iconPath: snap.data,
+        size: 32,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -405,12 +448,7 @@ class _RunningAppRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          GameTileAvatar(
-            gameId: gameIdForApp(app),
-            displayName: displayName,
-            iconPath: app.iconPath ?? art?.iconPath,
-            size: 32,
-          ),
+          _avatar(displayName),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

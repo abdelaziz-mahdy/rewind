@@ -10,6 +10,7 @@ import '../clip/clip_library.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
+import '../games/exe_icon_resolver.dart';
 import '../games/league/ddragon.dart';
 import '../games/steam_icon_resolver.dart';
 import '../obs/app_info.dart';
@@ -135,6 +136,9 @@ class Shell extends StatefulWidget {
   /// (Steam/Wine games have no macOS bundle icon). Null in tests / no Steam.
   final SteamIconResolver? steamResolver;
 
+  /// Fallback for a non-Steam Wine game: its icon read from its own `.exe`.
+  final ExeIconResolver? exeResolver;
+
   const Shell({
     required this.coordinator,
     required this.library,
@@ -159,6 +163,7 @@ class Shell extends StatefulWidget {
     this.steamStatus,
     this.initialDestination,
     this.steamResolver,
+    this.exeResolver,
     super.key,
   });
 
@@ -317,6 +322,7 @@ class _ShellState extends State<Shell> {
           onOpenGame: (gameId) => _select(GameDestination(gameId)),
           listApps: widget.listApps,
           steamResolver: widget.steamResolver,
+          exeResolver: widget.exeResolver,
         ),
       SettingsDestination(initialGameId: final gameId, initialTab: final tab) =>
         SettingsScreen(

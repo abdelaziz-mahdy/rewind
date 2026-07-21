@@ -116,7 +116,11 @@ String gameIdForApp(AppInfo app,
 ///   (policy-forbidden; see `usesOfficialLogo`). Wine apps have no bundle
 ///   icon, but a Steam game's cached art ([art], see `SteamIconResolver`)
 ///   fills that gap; the letter monogram is the last resort.
-String learnAppAsGame(AppSettings settings, AppInfo a, {SteamGameArt? art}) {
+/// [iconPath] is a last-resort icon (the game's own exe icon, see
+/// `ExeIconResolver`) used when there's no bundle icon and no Steam art —
+/// covers a non-Steam Wine game.
+String learnAppAsGame(AppSettings settings, AppInfo a,
+    {SteamGameArt? art, String? iconPath}) {
   final gameId = gameIdForApp(a);
   final cfg = settings.configFor(gameId);
   cfg.processMatch ??= a.name;
@@ -124,7 +128,7 @@ String learnAppAsGame(AppSettings settings, AppInfo a, {SteamGameArt? art}) {
     cfg.displayName ??= art?.name ?? a.name;
   }
   if (!usesOfficialLogo(gameId: gameId, bundleId: a.bundleId)) {
-    cfg.iconPath ??= a.iconPath ?? art?.iconPath;
+    cfg.iconPath ??= a.iconPath ?? art?.iconPath ?? iconPath;
   }
   settings.setConfig(cfg);
   return gameId;
