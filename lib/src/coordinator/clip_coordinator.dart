@@ -258,7 +258,18 @@ class ClipCoordinator {
         final cfg = settings.configFor(a.gameId);
         engine?.setBufferSeconds(cfg.bufferSeconds);
         _autoSwitchCaptureFor(a);
+        // Full-session recording (opt-in per game): record the whole play
+        // session to one file alongside the buffer. Gated on countsAsPlaying
+        // so a launcher/client activation (League's client) doesn't record a
+        // lobby as a "session".
+        if (a.countsAsPlaying) _maybeStartAutoSession(a.gameId);
       } else {
+        // Stop+index a full-session recording this game started, BEFORE the
+        // session stamp is cleared below (the VOD must carry it to group with
+        // the match's clips). Fire-and-forget: stopRecording + indexing is
+        // slow/async and must not block this synchronous handler.
+        final sessionAt = _sessionStartedAt[a.gameId];
+        unawaited(_stopAutoSessionFor(a.gameId, sessionAt));
         // The match ended with events still pending? Save them before the
         // buffer moves on to desktop footage.
         _flushBurst(a.gameId);
@@ -660,6 +671,10 @@ class ClipCoordinator {
     // leave the deck stuck showing "recording".
     isRecording.value = false;
     recordingStartedAt.value = null;
+    // If this manual stop is ending a full-session recording the user chose
+    // to cut short, drop the auto flag so the eventual game exit doesn't try
+    // to stop an already-stopped slot.
+    _autoSessionGameId = null;
     try {
       final path = capture.stopRecording();
       if (path == null) {
@@ -681,6 +696,65 @@ class ClipCoordinator {
     } catch (err, stack) {
       talker.handle(err, stack);
       _reportSaveError(err.toString());
+    }
+  }
+
+  /// The game whose full play session is being auto-recorded (see
+  /// [GameConfig.recordFullSession]), or null. Distinct from a manual
+  /// recording so a game exit only stops what a game activation started —
+  /// never a manual recording — and a manual stop of the auto-session
+  /// (the user overriding) clears it so the exit doesn't double-stop.
+  String? _autoSessionGameId;
+
+  /// Starts a full-session recording for [gameId] when the game opts in and
+  /// nothing is already recording. Shares the single shim recording slot and
+  /// [isRecording] state with manual recording, so a manual recording in
+  /// progress (or another game's session) simply blocks this — no double
+  /// start. The rolling buffer keeps running regardless.
+  void _maybeStartAutoSession(String gameId) {
+    final capture = engine;
+    if (capture == null) return;
+    if (!settings.configFor(gameId).recordFullSession) return;
+    if (isRecording.value || _togglingRecording) return; // slot busy
+    try {
+      if (!capture.startRecording(outDir)) {
+        talker.error('Full-session recording failed to start: '
+            '${capture.lastError}');
+        return;
+      }
+      isRecording.value = true;
+      recordingStartedAt.value = DateTime.now();
+      _autoSessionGameId = gameId;
+      talker.info('Full-session recording started for $gameId');
+    } catch (err, stack) {
+      talker.handle(err, stack);
+    }
+  }
+
+  /// Stops and indexes the auto-session ONLY if it belongs to [gameId] (its
+  /// game exited). [sessionAt] is the match stamp captured before it was
+  /// cleared, so the session VOD groups with the match's other clips.
+  Future<void> _stopAutoSessionFor(String gameId, DateTime? sessionAt) async {
+    if (_autoSessionGameId != gameId) return;
+    final capture = engine;
+    if (capture == null) return;
+    final startedAt = recordingStartedAt.value;
+    _autoSessionGameId = null;
+    isRecording.value = false;
+    recordingStartedAt.value = null;
+    try {
+      final path = capture.stopRecording();
+      if (path == null) {
+        talker.error('Full-session recording save failed: '
+            '${capture.lastError}');
+        return;
+      }
+      talker.info('Full-session recording saved for $gameId');
+      await _indexClip(
+          path, GameEvent(gameId: gameId, kind: GameEventKind.recording),
+          windowStart: startedAt, sessionAt: sessionAt);
+    } catch (err, stack) {
+      talker.handle(err, stack);
     }
   }
 
@@ -787,7 +861,7 @@ class ClipCoordinator {
   /// kill counting (a manual recording's session start); buffer clips
   /// default to the game's replay-buffer length before the event.
   Future<void> _indexClip(String path, GameEvent e,
-      {DateTime? windowStart}) async {
+      {DateTime? windowStart, DateTime? sessionAt}) async {
     final file = File(path);
     // The shim's save can report the path slightly before the mux helper
     // finishes writing the file, especially with the encoder under load —
@@ -831,7 +905,10 @@ class ClipCoordinator {
       event: e.kind,
       createdAt: e.time,
       sizeBytes: size < 0 ? 0 : size,
-      sessionAt: _sessionStartedAt[e.gameId],
+      // Explicit override for a full-session VOD, whose match stamp was
+      // captured before deactivation cleared it; every other caller lets the
+      // live session map answer.
+      sessionAt: sessionAt ?? _sessionStartedAt[e.gameId],
       killCount: _killsInWindow(e.gameId, start, windowEnd),
       // A per-instance label (e.g. a Steam achievement's real display
       // name — see `SteamAchievementWatcher`) when the source supplied
