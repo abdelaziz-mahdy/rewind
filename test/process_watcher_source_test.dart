@@ -27,12 +27,46 @@ void main() {
       expect(await source.isGameRunning(), isTrue);
     });
 
-    test('matches a substring of a process name', () async {
-      final lister = FakeProcessLister()..names = ['MyGameLauncher.exe'];
+    test('matches the needle at a separator boundary (…-Win64-Shipping)',
+        () async {
+      final lister = FakeProcessLister()..names = ['VALORANT-Win64-Shipping.exe'];
       final source = ProcessWatcherSource(
-        gameId: 'app:mygame',
-        displayName: 'My Game',
-        processMatch: 'MyGame',
+        gameId: 'app:valorant',
+        displayName: 'VALORANT',
+        processMatch: 'VALORANT-Win64-Shipping',
+        lister: lister,
+      );
+
+      expect(await source.isGameRunning(), isTrue);
+    });
+
+    test(
+        'does NOT match a needle glued mid-word: REPO vs the always-running '
+        'macOS ReportCrash daemon (regression, 2026-07-21)', () async {
+      final lister = FakeProcessLister()
+        ..names = [
+          '/System/Library/CoreServices/ReportCrash',
+          '/usr/libexec/rtcreportingd',
+          'CrashReporterSupportHelper',
+        ];
+      final source = ProcessWatcherSource(
+        gameId: 'app:repo',
+        displayName: 'R.E.P.O.',
+        processMatch: 'REPO',
+        lister: lister,
+      );
+
+      expect(await source.isGameRunning(), isFalse);
+    });
+
+    test('a learned game needle matches its own exe (REPO -> REPO.exe)',
+        () async {
+      final lister = FakeProcessLister()
+        ..names = [r'C:\Program Files (x86)\Steam\steamapps\common\REPO\REPO.exe'];
+      final source = ProcessWatcherSource(
+        gameId: 'app:repo',
+        displayName: 'R.E.P.O.',
+        processMatch: 'REPO',
         lister: lister,
       );
 
