@@ -111,6 +111,42 @@ class CachingProcessLister implements ProcessLister {
   }
 }
 
+/// Whether [processName] matches the detection [needle] as a whole token:
+/// the (case-insensitive) needle must appear in the name bounded by a
+/// non-alphanumeric character or a string edge on BOTH sides.
+///
+/// This is deliberately stricter than a raw substring. A short game needle
+/// like "REPO" is a substring of the always-running macOS daemons
+/// "ReportCrash" / "rtcreportingd" ("repo" ⊂ "repo…rt"), which made
+/// R.E.P.O. — and any game with a short needle colliding with a system
+/// process — read as perpetually running even after it closed (2026-07-21).
+/// Real needles never lose here: catalog needles are the exe stem or a
+/// separator-bounded prefix (`cs2` in `cs2.exe`, `VALORANT-Win64-Shipping`,
+/// `FortniteClient` in `FortniteClient-Win64-Shipping.exe`), and a learned
+/// game stores the exe's own basename as its needle (`REPO` for `REPO.exe`),
+/// so the needle sits exactly at a boundary. `<needle>.exe` / `<needle>` at a
+/// path end both match; `<needle>` glued mid-word (report) does not.
+bool processNameMatches(String processName, String needle) {
+  final hay = processName.toLowerCase();
+  final n = needle.toLowerCase();
+  if (n.isEmpty) return false;
+  var from = 0;
+  while (true) {
+    final i = hay.indexOf(n, from);
+    if (i < 0) return false;
+    final beforeOk = i == 0 || !_isAlnum(hay.codeUnitAt(i - 1));
+    final end = i + n.length;
+    final afterOk = end >= hay.length || !_isAlnum(hay.codeUnitAt(end));
+    if (beforeOk && afterOk) return true;
+    from = i + 1;
+  }
+}
+
+/// True for ASCII `0-9` or `a-z` — [processNameMatches] lowercases first, so
+/// uppercase never reaches here.
+bool _isAlnum(int c) =>
+    (c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x7a);
+
 /// Detects a user-chosen application by checking the OS process list.
 ///
 /// This exists purely for *detection* (so Rewind can auto-apply a saved
@@ -151,8 +187,7 @@ class ProcessWatcherSource implements GameEventSource {
   Future<bool> isGameRunning() async {
     try {
       final names = await _lister.runningProcessNames();
-      final needle = processMatch.toLowerCase();
-      return names.any((n) => n.toLowerCase().contains(needle));
+      return names.any((n) => processNameMatches(n, processMatch));
     } catch (_) {
       return false; // Never let a listing failure surface as "running".
     }
