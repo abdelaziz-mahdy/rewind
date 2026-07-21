@@ -104,6 +104,18 @@ rewind/
   windows after the exe and emits them with an EMPTY bundle id; Dart
   treats `AppInfo.bundleId == ''` as "capture the display instead" (picker
   and auto-switch revert to display — never pass `''` to `setCaptureApp`).
+- **An app's representative window must be its BEST one, not its first.**
+  `rw_plat_list_capturable_apps_json` emits ONE window per app (its
+  `window_id`, what window-capture targets). A CrossOver/Wine game has small
+  OFF-screen helper windows (a 500×500 splash, thin title bars) alongside
+  its real game surface, and `CGWindowListCopyWindowInfo`'s front-to-back
+  order is NOT reliably the game window — the helper can precede it. Emitting
+  the first window captured a dead off-screen window → BLACK clips (verified
+  live 2026-07-21, R.E.P.O.: helper `17468` 500×500 off-screen beat the
+  layer-26 full-display game window `17481`; output was 1680×1050 of empty
+  content). Fix: pick the display-covering window (`rw_rect_covers_a_display`)
+  per app, then largest area. A black clip whose dimensions match neither the
+  display nor the intended window is the signature of this bug.
 
 **League Live Client Data API gotchas (each verified against a live match,
 2026-07-14 — see `LeagueEventWatcher` and its hermetic tests):**
