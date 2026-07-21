@@ -639,7 +639,10 @@ class _DetectedGameBanner extends StatelessWidget {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: onRecord,
-              child: const Text('Record'),
+              // "Add game", not "Record": the action learns the game so
+              // Rewind auto-captures it (capture then follows) — it does not
+              // start a one-off recording.
+              child: const Text('Add game'),
             ),
           ),
           IconButton(
