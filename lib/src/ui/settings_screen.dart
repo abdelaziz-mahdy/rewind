@@ -2291,25 +2291,27 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
           ),
           _sectionDivider(context),
         ],
-        // Games with NO auto-clip event source (process-detected, desktop)
-        // get no Capture-mode choice at all: offering "Highlights — auto-clip
-        // the moments you pick below" for a game that can never produce an
-        // event was a lie (and Highlights even rendered pre-selected, since
-        // autoClip defaults true). A plain statement of how the game IS
-        // captured replaces it.
-        if (groups.isEmpty)
-          Text(
-            'Clips for this game are saved with your hotkey — no in-game '
-            'event feed exists to auto-clip from yet.',
-            key: const ValueKey('noAutoClipEventsNote'),
-            style: Theme.of(context).textTheme.bodyMuted,
-          )
-        else
-          _SettingsSection(
-            title: 'Capture mode',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        // One "Capture mode" section for every game — how it's captured. A
+        // game with an event feed gets the Manual/Highlights choice + event
+        // matrix; a process-detected/desktop game (no feed) gets a plain
+        // statement instead (offering "Highlights — auto-clip the moments you
+        // pick" for a game that can never produce an event was a lie, and
+        // Highlights even rendered pre-selected since autoClip defaults true).
+        // Both then get the full-session toggle — it applies to any game, and
+        // is most useful for exactly the process-only games (full-match VODs).
+        _SettingsSection(
+          title: 'Capture mode',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (groups.isEmpty)
+                Text(
+                  'Clips for this game are saved with your hotkey — no in-game '
+                  'event feed exists to auto-clip from yet.',
+                  key: const ValueKey('noAutoClipEventsNote'),
+                  style: Theme.of(context).textTheme.bodyMuted,
+                )
+              else ...[
                 _captureModeCards(context),
                 if (_autoClip) ...[
                   const SizedBox(height: 12),
@@ -2332,8 +2334,20 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                   _postEventDelayRow(context),
                 ],
               ],
-            ),
+              const SizedBox(height: 16),
+              _ToggleRow(
+                label: 'Record the whole session',
+                hint: 'Record the entire play session to one continuous video '
+                    'while this game is running — in addition to your buffer '
+                    'clips. Great for full-match VODs. Note: session files are '
+                    'large and count toward your storage limit like any clip.',
+                value: _recordFullSession,
+                onChanged: _setRecordFullSession,
+                switchKey: const ValueKey('recordFullSessionToggle'),
+              ),
+            ],
           ),
+        ),
         _sectionDivider(context),
         _FieldRow(
           label: 'Buffer length',
@@ -2359,20 +2373,6 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                     value: _bufferSeconds, child: Text('$_bufferSeconds s')),
             ],
             onChanged: (value) => _setBuffer(value ?? defaultSeconds),
-          ),
-        ),
-        _sectionDivider(context),
-        _SettingsSection(
-          title: 'Full session',
-          child: _ToggleRow(
-            label: 'Record the whole session',
-            hint: 'Record the entire play session to one continuous video '
-                'while this game is running — in addition to your buffer '
-                'clips. Great for full-match VODs. Note: session files are '
-                'large and count toward your storage limit like any clip.',
-            value: _recordFullSession,
-            onChanged: _setRecordFullSession,
-            switchKey: const ValueKey('recordFullSessionToggle'),
           ),
         ),
         const SizedBox(height: 4),
