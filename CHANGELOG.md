@@ -7,6 +7,17 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Added
+- **Real game icons + trustworthy "game is running" suggestions**: Steam
+  games run through CrossOver/Wine (e.g. R.E.P.O.) have no macOS app icon,
+  so they used to show a two-letter placeholder. Rewind now reads the real
+  icon (and the game's proper name — "R.E.P.O." over "REPO") from the local
+  Steam library that's already on disk, showing it in the "Running now" list
+  and on the home screen's detected-game banner. Crucially, the home banner
+  now decides "is this app a game?" from Steam's own installed-games list
+  rather than guessing — so it suggests the game you launched, not
+  `explorer.exe` or `steamwebhelper`. Cross-platform (native Windows/Linux
+  Steam paths and macOS CrossOver bottles); games from other sources still
+  fall back to the letter tile.
 - **Win/Loss on match cards**: League match cards and the match screen now
   show a WIN (green) or LOSS (red) badge once the game reports the result
   at match end (read from the Live Client `GameEnd` event, which Rewind

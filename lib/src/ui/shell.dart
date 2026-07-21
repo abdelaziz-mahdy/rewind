@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -204,6 +205,21 @@ class _ShellState extends State<Shell> {
     _select(GameDestination(game.gameId));
   }
 
+  /// The Steam-detected banner's Record button: learns the running [app] as a
+  /// game (storing the resolved Steam [art]'s icon + name, see
+  /// `learnAppAsGame`), then opens its hub. Unlike [_recordDetectedGame] it
+  /// does NOT force the capture target for a bundle-less Wine game
+  /// (`bundleId == ''` must never reach `setCaptureApp`, per `AppInfo`) — now
+  /// that the game is configured, the coordinator's auto-switch targets its
+  /// window on its own. A real bundled app is still pointed at immediately.
+  void _recordDetectedApp(AppInfo app, SteamGameArt? art) {
+    final settings = widget.coordinator.settings;
+    final gameId = learnAppAsGame(settings, app, art: art);
+    widget.onSettingsChanged(settings);
+    if (app.bundleId.isNotEmpty) widget.onSetCaptureApp?.call(app.bundleId);
+    _select(GameDestination(gameId));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -377,6 +393,9 @@ class _ShellState extends State<Shell> {
                   dismissed: _dismissedBanners,
                   onDismiss: _dismissBanner,
                   onRecord: _recordDetectedGame,
+                  listApps: widget.listApps,
+                  steamResolver: widget.steamResolver,
+                  onRecordApp: _recordDetectedApp,
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
@@ -402,16 +421,44 @@ class _ShellState extends State<Shell> {
 /// the app and click switch/record, and next time we know". An
 /// already-configured game never appears here; the rail's live dot plus
 /// auto-follow (`ClipCoordinator._autoSwitchCaptureFor`) already covers it.
+/// A "⟨game⟩ is running — Record?" suggestion, from either of two sources:
+/// a catalog game Rewind detected in [ClipCoordinator.activeGameIds], or a
+/// running app confirmed to be an installed Steam game (see
+/// [SteamIconResolver.steamGameByInstallDir]). The Steam source is what lets
+/// a game Rewind doesn't ship a catalog entry for — R.E.P.O. via CrossOver —
+/// surface here at all: "is this a game?" is answered by Steam's own
+/// installed-games list, not the noisy "bundle-less app = probably a game"
+/// guess (which would suggest explorer.exe / steamwebhelper).
+class _Suggestion {
+  final String gameId;
+  final String displayName;
+  final String? iconPath;
+  final VoidCallback onRecord;
+
+  const _Suggestion({
+    required this.gameId,
+    required this.displayName,
+    required this.iconPath,
+    required this.onRecord,
+  });
+}
+
 /// Rebuilds off [ClipCoordinator.activeGameIds] and [settingsRevision] (a
 /// per-game config write elsewhere, e.g. Supported Games' Add, must also
-/// make this list disappear).
-class _DetectedGameBanners extends StatelessWidget {
+/// make this list disappear). When a [steamResolver] + [listApps] are wired,
+/// also polls the running-app list on a low cadence — a Steam game that
+/// isn't a registered detection source (so it never enters `activeGameIds`)
+/// otherwise wouldn't trigger a rebuild when it launches.
+class _DetectedGameBanners extends StatefulWidget {
   final ClipCoordinator coordinator;
   final List<AppInfo> capturableApps;
   final ValueListenable<int>? settingsRevision;
   final Set<String> dismissed;
   final ValueChanged<String> onDismiss;
   final ValueChanged<CatalogGame> onRecord;
+  final List<AppInfo> Function()? listApps;
+  final SteamIconResolver? steamResolver;
+  final void Function(AppInfo app, SteamGameArt? art) onRecordApp;
 
   const _DetectedGameBanners({
     required this.coordinator,
@@ -420,39 +467,111 @@ class _DetectedGameBanners extends StatelessWidget {
     required this.dismissed,
     required this.onDismiss,
     required this.onRecord,
+    required this.listApps,
+    required this.steamResolver,
+    required this.onRecordApp,
   });
 
   @override
+  State<_DetectedGameBanners> createState() => _DetectedGameBannersState();
+}
+
+class _DetectedGameBannersState extends State<_DetectedGameBanners> {
+  /// At most this many suggestions at once, so a machine with several games
+  /// open doesn't bury the home screen under a stack of banners.
+  static const _maxBanners = 3;
+
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    // Only poll when there's a Steam source to discover non-registered games
+    // with — every existing Shell test wires neither, so no timer starts and
+    // none of them hang on a perpetual poll.
+    if (widget.steamResolver != null && widget.listApps != null) {
+      _poll = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  /// Running apps that Steam confirms are installed games, not yet configured
+  /// or dismissed — the trustworthy half of the suggestions.
+  List<_Suggestion> _steamSuggestions(Set<String> configuredIds) {
+    final resolver = widget.steamResolver;
+    final apps = widget.listApps;
+    if (resolver == null || apps == null) return const [];
+    final out = <_Suggestion>[];
+    for (final app in apps()) {
+      final game = resolver.steamGameByInstallDir(app.name);
+      if (game == null) continue; // Not an installed Steam game — skip.
+      final gameId = gameIdForApp(app);
+      if (configuredIds.contains(gameId) ||
+          widget.dismissed.contains(gameId)) {
+        continue;
+      }
+      final art = resolver.resolveByInstallDir(app.name);
+      out.add(_Suggestion(
+        gameId: gameId,
+        displayName: game.name,
+        iconPath: art?.iconPath,
+        onRecord: () => widget.onRecordApp(app, art),
+      ));
+    }
+    return out;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final revision = settingsRevision;
+    final revision = widget.settingsRevision;
     final listenable = Listenable.merge([
-      coordinator.activeGameIds,
+      widget.coordinator.activeGameIds,
       if (revision != null) revision,
     ]);
     return ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
-        final activeIds = coordinator.activeGameIds.value;
+        final activeIds = widget.coordinator.activeGameIds.value;
         final configuredIds = {
-          for (final c in coordinator.settings.allConfigs) c.gameId,
+          for (final c in widget.coordinator.settings.allConfigs) c.gameId,
         };
-        final candidates = [
-          for (final g in popularGamesCatalog)
-            if (activeIds.contains(g.gameId) &&
-                !configuredIds.contains(g.gameId) &&
-                !dismissed.contains(g.gameId))
-              g,
-        ];
-        if (candidates.isEmpty) return const SizedBox.shrink();
+        final seen = <String>{};
+        final suggestions = <_Suggestion>[];
+        for (final g in popularGamesCatalog) {
+          if (activeIds.contains(g.gameId) &&
+              !configuredIds.contains(g.gameId) &&
+              !widget.dismissed.contains(g.gameId) &&
+              seen.add(g.gameId)) {
+            suggestions.add(_Suggestion(
+              gameId: g.gameId,
+              displayName: g.displayName,
+              iconPath: null,
+              onRecord: () => widget.onRecord(g),
+            ));
+          }
+        }
+        for (final s in _steamSuggestions(configuredIds)) {
+          if (seen.add(s.gameId)) suggestions.add(s);
+        }
+        if (suggestions.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final g in candidates)
+            for (final s in suggestions.take(_maxBanners))
               _DetectedGameBanner(
-                key: ValueKey('detectedGameBanner:${g.gameId}'),
-                game: g,
-                onDismiss: () => onDismiss(g.gameId),
-                onRecord: () => onRecord(g),
+                key: ValueKey('detectedGameBanner:${s.gameId}'),
+                gameId: s.gameId,
+                displayName: s.displayName,
+                iconPath: s.iconPath,
+                onDismiss: () => widget.onDismiss(s.gameId),
+                onRecord: s.onRecord,
               ),
           ],
         );
@@ -465,12 +584,16 @@ class _DetectedGameBanners extends StatelessWidget {
 /// Record button, and a dismiss (X) that hides it for this game for the
 /// rest of the session — see [_DetectedGameBanners].
 class _DetectedGameBanner extends StatelessWidget {
-  final CatalogGame game;
+  final String gameId;
+  final String displayName;
+  final String? iconPath;
   final VoidCallback onDismiss;
   final VoidCallback onRecord;
 
   const _DetectedGameBanner({
-    required this.game,
+    required this.gameId,
+    required this.displayName,
+    required this.iconPath,
     required this.onDismiss,
     required this.onRecord,
     super.key,
@@ -481,7 +604,7 @@ class _DetectedGameBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     return Container(
-      key: ValueKey('detectedGameBannerRow:${game.gameId}'),
+      key: ValueKey('detectedGameBannerRow:$gameId'),
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -491,14 +614,15 @@ class _DetectedGameBanner extends StatelessWidget {
       child: Row(
         children: [
           GameTileAvatar(
-            gameId: game.gameId,
-            displayName: game.displayName,
+            gameId: gameId,
+            displayName: displayName,
+            iconPath: iconPath,
             size: 24,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '${game.displayName} is running',
+              '$displayName is running',
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
               style: theme.textTheme.body,
@@ -508,7 +632,7 @@ class _DetectedGameBanner extends StatelessWidget {
           SizedBox(
             height: 28,
             child: FilledButton(
-              key: ValueKey('detectedGameBannerRecord:${game.gameId}'),
+              key: ValueKey('detectedGameBannerRecord:$gameId'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 minimumSize: Size.zero,
@@ -519,7 +643,7 @@ class _DetectedGameBanner extends StatelessWidget {
             ),
           ),
           IconButton(
-            key: ValueKey('detectedGameBannerDismiss:${game.gameId}'),
+            key: ValueKey('detectedGameBannerDismiss:$gameId'),
             icon: const Icon(Icons.close, size: 16),
             color: tokens.textMuted,
             // Names the scope: dismissal is session-only, the banner comes

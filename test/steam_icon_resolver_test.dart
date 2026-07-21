@@ -176,6 +176,35 @@ void main() {
     expect(art?.appId, '200');
   });
 
+  test('steamGameByInstallDir confirms installed games, even without art', () {
+    final root = Directory(p.join(tmp.path, 'root'))..createSync();
+    final steamapps = Directory(p.join(root.path, 'steamapps'))
+      ..createSync(recursive: true);
+    // A manifest but NO librarycache art at all.
+    File(p.join(steamapps.path, 'appmanifest_9.acf')).writeAsStringSync(
+        '"AppState"{"appid" "9" "name" "NoArt Game" "installdir" "NoArt"}');
+    final r = resolverFor([steamapps]);
+
+    final game = r.steamGameByInstallDir('noart');
+    expect(game, isNotNull);
+    expect(game!.appId, '9');
+    expect(game.name, 'NoArt Game');
+    // It's a confirmed game (the "is this a game?" signal) even though there's
+    // no icon to resolve.
+    expect(r.resolveByInstallDir('noart'), isNull);
+  });
+
+  test('steamGameByInstallDir returns null for a non-game process', () {
+    final steamapps = _fakeSteam(
+      Directory(p.join(tmp.path, 'root'))..createSync(),
+      appId: '1',
+      name: 'A',
+      installDir: 'A',
+    );
+    // explorer.exe / steamwebhelper.exe have no manifest -> not a game.
+    expect(resolverFor([steamapps]).steamGameByInstallDir('explorer'), isNull);
+  });
+
   test('memoizes: repeated resolves return the same cached path', () {
     final steamapps = _fakeSteam(
       Directory(p.join(tmp.path, 'root'))..createSync(),

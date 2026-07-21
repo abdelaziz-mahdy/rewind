@@ -8,6 +8,7 @@ import 'package:rewind/src/clip/storage_manager.dart';
 import 'package:rewind/src/coordinator/clip_coordinator.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/events/game_registry.dart';
+import 'package:rewind/src/games/steam_icon_resolver.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
@@ -55,6 +56,8 @@ void main() {
     List<AppInfo> capturableApps = const [],
     Future<void> Function(AppSettings)? onSettingsChanged,
     void Function(String bundleId)? onSetCaptureApp,
+    List<AppInfo> Function()? listApps,
+    SteamIconResolver? steamResolver,
   }) =>
       Shell(
         coordinator: coordinator,
@@ -70,7 +73,22 @@ void main() {
         onSettingsChanged: onSettingsChanged ?? (_) async {},
         onOpenClipsFolder: onOpenClipsFolder ?? () {},
         onSetCaptureApp: onSetCaptureApp,
+        listApps: listApps,
+        steamResolver: steamResolver,
       );
+
+  // A minimal on-disk Steam layout for one game; returns its steamapps dir.
+  Directory fakeSteamGame(String appId, String name, String installDir) {
+    final root = Directory('${tmp.path}/steamhome')..createSync();
+    final steamapps = Directory('${root.path}/steamapps')
+      ..createSync(recursive: true);
+    File('${steamapps.path}/appmanifest_$appId.acf').writeAsStringSync(
+        '"AppState"{"appid" "$appId" "name" "$name" "installdir" "$installDir"}');
+    final lc = Directory('${root.path}/appcache/librarycache/$appId')
+      ..createSync(recursive: true);
+    File('${lc.path}/icon.jpg').writeAsBytesSync(const [1, 2, 3, 4]);
+    return steamapps;
+  }
 
   Clip clip(String path, String gameId, GameEventKind event, DateTime createdAt,
           {int sizeBytes = 1024}) =>
@@ -462,6 +480,71 @@ void main() {
 
       expect(banner('app:cs2'), findsNothing);
       expect(banner('app:dota2'), findsOneWidget);
+    });
+
+    testWidgets(
+        'appears for a running Steam game that Steam confirms, with its real '
+        'name', (t) async {
+      final steamapps = fakeSteamGame('3241660', 'R.E.P.O.', 'REPO');
+      await _pumpTall(
+          t,
+          _app(shell(
+            listApps: () => const [AppInfo(bundleId: '', name: 'REPO', pid: 1)],
+            steamResolver: SteamIconResolver(
+              cacheDir: Directory('${tmp.path}/icons'),
+              steamappsRoots: () => [steamapps],
+            ),
+          )));
+
+      expect(banner('app:repo'), findsOneWidget);
+      expect(find.textContaining('R.E.P.O. is running'), findsOneWidget);
+    });
+
+    testWidgets('does NOT appear for a running non-game (no Steam manifest)',
+        (t) async {
+      final steamapps = fakeSteamGame('3241660', 'R.E.P.O.', 'REPO');
+      await _pumpTall(
+          t,
+          _app(shell(
+            // explorer.exe is bundle-less like a Wine game but has no Steam
+            // manifest — the old "bundle-less = a game" guess would have
+            // suggested it; Steam confirmation must not.
+            listApps: () =>
+                const [AppInfo(bundleId: '', name: 'explorer', pid: 2)],
+            steamResolver: SteamIconResolver(
+              cacheDir: Directory('${tmp.path}/icons'),
+              steamappsRoots: () => [steamapps],
+            ),
+          )));
+
+      expect(find.textContaining(' is running'), findsNothing);
+    });
+
+    testWidgets('Steam banner Record learns the game and opens its hub',
+        (t) async {
+      final steamapps = fakeSteamGame('3241660', 'R.E.P.O.', 'REPO');
+      final settingsCalls = <AppSettings>[];
+      await _pumpTall(
+          t,
+          _app(shell(
+            listApps: () => const [AppInfo(bundleId: '', name: 'REPO', pid: 1)],
+            steamResolver: SteamIconResolver(
+              cacheDir: Directory('${tmp.path}/icons'),
+              steamappsRoots: () => [steamapps],
+            ),
+            onSettingsChanged: (s) async => settingsCalls.add(s),
+          )));
+
+      await t.tap(
+          find.byKey(const ValueKey('detectedGameBannerRecord:app:repo')));
+      await t.pump();
+
+      expect(settingsCalls, isNotEmpty);
+      final cfg = coordinator.settings.configFor('app:repo');
+      expect(cfg.processMatch, 'REPO');
+      expect(cfg.displayName, 'R.E.P.O.');
+      expect(cfg.iconPath, isNotNull);
+      expect(navGame('app:repo'), findsOneWidget);
     });
   });
 }
