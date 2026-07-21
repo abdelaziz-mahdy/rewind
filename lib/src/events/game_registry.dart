@@ -61,7 +61,14 @@ class GameRegistry {
   Iterable<GameEventSource> get sources => _sources;
   Set<String> get activeGameIds => Set.unmodifiable(_active);
 
-  void startSupervising({Duration interval = const Duration(seconds: 3)}) {
+  /// Polls every source's `isGameRunning` on [interval]. 2 s (not 3) so a
+  /// game's transitions — especially a mid-match app appearing, like League's
+  /// GameClient that triggers the capture re-aim onto the on-screen game
+  /// window — are detected ~1 s sooner, shrinking the black frames between the
+  /// client hiding and the game window being captured. Detection is one
+  /// shared, cached process-list read per tick ([CachingProcessLister]), so a
+  /// tighter cadence is cheap.
+  void startSupervising({Duration interval = const Duration(seconds: 2)}) {
     _supervisor ??= Timer.periodic(interval, (_) => _tick());
   }
 
