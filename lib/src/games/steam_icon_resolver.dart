@@ -78,6 +78,22 @@ class SteamIconResolver {
     return dir == null ? null : resolveByInstallDir(dir);
   }
 
+  /// The Steam appid + name for [installDir] if it's an INSTALLED Steam game
+  /// (there's an `appmanifest` for it under `steamapps/common`), regardless
+  /// of whether any art has been cached. This is the authoritative "this
+  /// running app IS a game" signal — a running window owner like
+  /// `explorer.exe` or `steamwebhelper.exe` has no manifest and returns
+  /// null, so suggestions can trust it where the "bundle-less = probably a
+  /// game" heuristic guesses. Use [resolveByInstallDir] when you also want
+  /// the icon.
+  ({String appId, String name})? steamGameByInstallDir(String installDir) {
+    final key = _norm(installDir);
+    if (key.isEmpty) return null;
+    final index = _index ??= _buildIndex();
+    final m = index[key];
+    return m == null ? null : (appId: m.appId, name: m.name);
+  }
+
   SteamGameArt? _resolve(String normalizedInstallDir) {
     final index = _index ??= _buildIndex();
     final manifest = index[normalizedInstallDir];
