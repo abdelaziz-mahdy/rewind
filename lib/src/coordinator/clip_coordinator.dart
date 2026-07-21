@@ -135,8 +135,26 @@ class ClipCoordinator {
   /// enumerating the game app's window during the loading screen (verified
   /// live, 2026-07-18: capture stayed bound to the hidden League client and
   /// recorded 28.7 s of black frames because there was no retry at all).
+  /// This is the STEADY interval; the first [_fastHuntAttempts] attempts poll
+  /// at a quarter of it (see [_huntInterval]) so the game window is locked
+  /// within ~½ s of appearing — shrinking the black frames at match start
+  /// (verified 2026-07-21: a League match hunt took 6 s to find the window at
+  /// a 2 s cadence, black until then) — then relaxing so a game that never
+  /// surfaces a window doesn't poll fast for its whole session.
   /// Injectable so tests don't sleep for real seconds.
   final Duration autoSwitchRetryInterval;
+
+  /// How many opening hunt attempts poll at the fast cadence (a quarter of
+  /// [autoSwitchRetryInterval]) before relaxing to the steady interval.
+  static const _fastHuntAttempts = 8;
+
+  /// The wait before the next hunt attempt: fast for the opening burst (to
+  /// catch the game window the instant the loading screen yields it), then
+  /// the steady [autoSwitchRetryInterval]. Scales with the configured value
+  /// so an injected tiny test interval stays tiny.
+  Duration _huntInterval(int attempt) => attempt <= _fastHuntAttempts
+      ? autoSwitchRetryInterval ~/ 4
+      : autoSwitchRetryInterval;
 
   ClipCoordinator({
     required this.registry,
@@ -429,7 +447,7 @@ class ClipCoordinator {
         talker.info('Auto-switch: no running window matched ${a.displayName} '
             'yet (attempt $attempt, retrying until the game exits)');
       }
-      _autoSwitchRetryTimers[a.gameId] = Timer(autoSwitchRetryInterval, () {
+      _autoSwitchRetryTimers[a.gameId] = Timer(_huntInterval(attempt), () {
         _autoSwitchRetryTimers.remove(a.gameId);
         _tryAutoSwitch(a, attempt: attempt + 1);
       });
