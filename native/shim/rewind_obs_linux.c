@@ -23,6 +23,12 @@
  */
 #if defined(REWIND_USE_LIBOBS) && defined(__linux__)
 
+/* dladdr()/Dl_info are glibc extensions gated behind _GNU_SOURCE — NOT plain
+ * POSIX (they compile without it on macOS, which is why this went unnoticed
+ * until the Linux build ran). Must be defined before ANY system header pulls
+ * in <features.h> and locks the feature-test macros. */
+#define _GNU_SOURCE
+
 #include "rewind_obs.h"
 #include "rewind_obs_internal.h"
 
