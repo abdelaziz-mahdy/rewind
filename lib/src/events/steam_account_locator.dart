@@ -96,8 +96,12 @@ Future<List<SteamAccountEntry>> locateSteamAccounts({
 }) async {
   final candidates = <String>[];
   if (isMacOS) {
-    candidates.add(p.join(homeDir, 'Library', 'Application Support', 'Steam',
-        'config', 'loginusers.vdf'));
+    // p.posix.join, not the ambient p.join: this is a macOS path regardless
+    // of the host running the locator (e.g. Windows CI), and the ambient
+    // joiner would emit backslashes there — same reasoning as the Steam-root
+    // resolver below.
+    candidates.add(p.posix.join(homeDir, 'Library', 'Application Support',
+        'Steam', 'config', 'loginusers.vdf'));
     candidates.addAll(listCrossOverBottleVdfPaths?.call() ?? const []);
   } else if (isWindows) {
     candidates.add(r'C:\Program Files (x86)\Steam\config\loginusers.vdf');
