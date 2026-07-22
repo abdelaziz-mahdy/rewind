@@ -141,7 +141,7 @@ jobs:
             libpipewire-0.3-dev libglib2.0-dev \
             libpulse-dev libx264-dev libva-dev libpci-dev libffmpeg-nvenc-dev \
             clang libgtk-3-dev \
-            libkeybinder-3.0-dev
+            libkeybinder-3.0-dev libayatana-appindicator3-dev
       - name: Cache libobs SDK
         uses: actions/cache@v4
         with:
