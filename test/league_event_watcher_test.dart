@@ -266,6 +266,44 @@ void main() {
     ]);
   });
 
+  test('matchInfo reports when the match began, derived from gameTime',
+      () async {
+    // `gameTime` resets to 0 each match, so "now minus gameTime" is the only
+    // authoritative match identity the API offers — the coordinator keys the
+    // session on it so a mid-match app restart rejoins the same match while
+    // two consecutive matches (even on one champion) stay separate.
+    responses['/liveclientdata/gamestats'] =
+        jsonEncode({'gameMode': 'CHERRY', 'gameTime': 754.5});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Singed', 'team': 'ORDER'},
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    final before = DateTime.now();
+    await watcher.pollNow(); // seed
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    final started = DateTime.parse(info.meta['matchStartedAt'] as String);
+    final expected = before.subtract(const Duration(milliseconds: 754500));
+    expect(started.difference(expected).abs(),
+        lessThan(const Duration(seconds: 5)));
+  });
+
+  test('matchInfo omits the match start when gameTime is absent', () async {
+    responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
+    responses['/liveclientdata/playerlist'] = jsonEncode([
+      {'riotId': 'Me#EUW', 'championName': 'Sona', 'team': 'ORDER'},
+    ]);
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow();
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+
+    final info = emitted.singleWhere((e) => e.kind == GameEventKind.matchInfo);
+    expect(info.meta['matchStartedAt'], isNull);
+  });
+
   test('matchInfo is emitted only once per match', () async {
     responses['/liveclientdata/gamestats'] = jsonEncode({'gameMode': 'ARAM'});
     responses['/liveclientdata/playerlist'] = jsonEncode([

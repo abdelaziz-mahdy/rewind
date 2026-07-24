@@ -216,6 +216,13 @@ class ClipCoordinator {
   /// deactivation.
   final Set<String> _unconfirmedResumes = {};
 
+  /// How far the session's stamp may sit from the match start a source
+  /// reports before [_recordMatchInfo] treats them as different matches.
+  /// Wide enough to absorb poll-time sampling of League's `gameTime` and the
+  /// gap between a match going live and its first `matchInfo`; far narrower
+  /// than the time between two consecutive matches.
+  static const matchIdentityWindow = Duration(minutes: 3);
+
   /// The session stamp for a fresh activation of [a]: normally now. But on
   /// the FIRST activation of this game after app launch, if the game's most
   /// recent persisted match was still being updated moments ago
@@ -494,7 +501,12 @@ class ClipCoordinator {
     // SCK window capture of native League's fullscreen window records black
     // too (verified live 2026-07-24 mid-match — while display capture in the
     // very same seconds of the same clip recorded real frames).
-    final fullscreen = match.onScreen && match.displayUuid.isNotEmpty;
+    //
+    // Deliberately NOT gated on [AppInfo.onScreen]: `kCGWindowIsOnscreen` is
+    // false whenever the game's Space isn't the active one, and a fullscreen
+    // game always has its own Space. Requiring it made a live match fall
+    // straight back out of display capture (2026-07-24 19:59:58).
+    final fullscreen = match.displayUuid.isNotEmpty;
 
     // Nothing changed since the last bind — re-issuing the same target would
     // rebuild the SCK stream for nothing (and a target the user picked by
@@ -505,6 +517,19 @@ class ClipCoordinator {
             ? 'w:${match.windowId}'
             : 'a:${match.bundleId}';
     if (target == _autoSwitchedTarget && _autoSwitchedGameId == a.gameId) {
+      return;
+    }
+
+    // Never DOWNGRADE a live binding to app capture. SCK app capture
+    // composites onto one anchor display and is the route every black-clip
+    // investigation has ended at; a game that momentarily stops reporting a
+    // covering or on-screen window (moved, resized, alt-tabbed) must keep
+    // the display/window target that was working, not fall back to it.
+    final held = _autoSwitchedTarget;
+    if (target.startsWith('a:') &&
+        _autoSwitchedGameId == a.gameId &&
+        held != null &&
+        !held.startsWith('a:')) {
       return;
     }
     _autoSwitchedTarget = target;
@@ -869,15 +894,35 @@ class ClipCoordinator {
     if (sessionStart == null || stats == null) return;
     final champion = e.meta['champion'] as String?;
 
-    // A resumed session is a GUESS ([_sessionStampFor] only knows the old
-    // match's stats were moving recently, not that it's the same match).
-    // The first matchInfo is where the guess gets checked: a different
-    // champion means a genuinely new match, and keeping the resumed stamp
-    // merges the two into one card — the older match's champion is
-    // overwritten and its K/D summed into the new one, so it vanishes from
-    // the library (observed live 2026-07-24: a Singed match started 19:14
-    // was consumed by the Master Yi match that started 19:37).
-    if (_unconfirmedResumes.remove(e.gameId) && champion != null) {
+    // The session stamp so far is a GUESS: either this activation's clock
+    // time, or — after a restart — the previous match's stamp, resumed on
+    // nothing more than "its stats were moving recently" ([_sessionStampFor]).
+    // A source that reports when the match ACTUALLY began (League derives it
+    // from the Live Client Data API's `gameTime`, which resets every match)
+    // settles it outright: keep the current stamp when it's the same match,
+    // otherwise re-key to the reported start.
+    //
+    // This is what separates two consecutive matches ON THE SAME CHAMPION,
+    // which the champion comparison below cannot see. Without it a stale
+    // resume merges them into one card — the earlier match's champion
+    // overwritten, both scorelines summed, its card gone (observed live
+    // 2026-07-24: a Singed match started 19:14 was consumed by the Master Yi
+    // match that started 19:37).
+    final reportedStart =
+        DateTime.tryParse(e.meta['matchStartedAt'] as String? ?? '');
+    if (reportedStart != null) {
+      _unconfirmedResumes.remove(e.gameId);
+      // Tolerance, not equality: `gameTime` is sampled at poll time, so the
+      // same match resolves a second or two apart across restarts, while a
+      // genuinely new match is a whole match-length away.
+      if (sessionStart.difference(reportedStart).abs() > matchIdentityWindow) {
+        talker.info('Match start reported as '
+            '${reportedStart.toIso8601String()} — re-keying the session from '
+            '${sessionStart.toIso8601String()}');
+        sessionStart = reportedStart;
+        _sessionStartedAt[e.gameId] = sessionStart;
+      }
+    } else if (_unconfirmedResumes.remove(e.gameId) && champion != null) {
       final resumed = stats.statsFor(e.gameId, sessionStart);
       final was = resumed?.champion;
       if (was != null && was != champion) {

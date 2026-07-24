@@ -249,11 +249,23 @@ class LeagueEventWatcher implements GameEventSource {
   Future<void> _emitMatchInfo(
       List<Map<String, dynamic>> players, Map<String, dynamic> me) async {
     String? rawMode;
+    DateTime? matchStartedAt;
     final statsBody = await _fetch('/liveclientdata/gamestats');
     if (statsBody != null) {
       try {
         final stats = jsonDecode(statsBody) as Map<String, dynamic>;
         rawMode = stats['gameMode'] as String?;
+        // `gameTime` is seconds since THIS match began and resets to 0 for
+        // the next one — the only authoritative match identity the API
+        // offers. Anchoring the session on it is what lets a mid-match app
+        // restart rejoin the same match while two consecutive matches (even
+        // on the same champion) stay separate; without it the coordinator
+        // could only guess from how recently the last match was updated.
+        final gameTime = (stats['gameTime'] as num?)?.toDouble();
+        if (gameTime != null && gameTime >= 0) {
+          matchStartedAt = DateTime.now()
+              .subtract(Duration(milliseconds: (gameTime * 1000).round()));
+        }
       } catch (_) {}
     }
     try {
@@ -308,6 +320,10 @@ class LeagueEventWatcher implements GameEventSource {
         // than every poll like [_emitStatsUpdate]'s fields.
         'rawChampionName': me['rawChampionName'] as String?,
         'skinName': me['skinName'] as String?,
+        // When this match actually began, derived from `gameTime` above —
+        // the coordinator keys the session (and therefore the match card)
+        // on it. ISO-8601 so the meta map stays plain JSON values.
+        'matchStartedAt': matchStartedAt?.toIso8601String(),
       }));
       _infoSent = true;
     } catch (err, stack) {

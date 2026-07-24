@@ -1174,11 +1174,67 @@ void main() {
       );
     }
 
-    GameEvent matchInfo(String champion) => GameEvent(
+    GameEvent matchInfo(String champion, {DateTime? startedAt}) => GameEvent(
           gameId: 'league_of_legends',
           kind: GameEventKind.matchInfo,
-          meta: {'gameMode': 'Arena', 'champion': champion},
+          meta: {
+            'gameMode': 'Arena',
+            'champion': champion,
+            if (startedAt != null)
+              'matchStartedAt': startedAt.toIso8601String(),
+          },
         );
+
+    // The champion comparison below cannot separate two matches played on
+    // the SAME champion back to back. League's Live Client Data API reports
+    // `gameTime`, which resets every match, so the watcher can say when the
+    // match actually began — that is the real identity.
+    test(
+        'a reported match start re-keys a resumed session even when the '
+        'champion is identical', () async {
+      final priorStart = DateTime.now().subtract(const Duration(minutes: 40));
+      final h =
+          buildResumeHarness(priorChampion: 'Singed', priorStart: priorStart);
+
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+          h.coordinator.sessionStartedAtFor('league_of_legends'), priorStart);
+
+      // A NEW Singed match, three minutes in.
+      final realStart = DateTime.now().subtract(const Duration(minutes: 3));
+      h.source.emitEvent(matchInfo('Singed', startedAt: realStart));
+      await settleBurst();
+
+      expect(h.stats.statsFor('league_of_legends', priorStart)!.kills, 1,
+          reason: 'the old match keeps its own scoreline');
+      expect(h.coordinator.sessionStartedAtFor('league_of_legends'), realStart);
+      expect(
+          h.stats.statsFor('league_of_legends', realStart)!.champion, 'Singed');
+    });
+
+    test(
+        'a reported match start within the identity window leaves a genuine '
+        'mid-match resume alone', () async {
+      final priorStart = DateTime.now().subtract(const Duration(minutes: 8));
+      final h =
+          buildResumeHarness(priorChampion: 'Singed', priorStart: priorStart);
+
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      // Same match: `gameTime` resolves its start a couple of seconds off
+      // the stamp the interrupted session was keyed on.
+      h.source.emitEvent(matchInfo('Singed',
+          startedAt: priorStart.add(const Duration(seconds: 2))));
+      await settleBurst();
+
+      expect(
+          h.coordinator.sessionStartedAtFor('league_of_legends'), priorStart);
+      expect(h.stats.statsFor('league_of_legends', priorStart)!.kills, 1);
+    });
 
     test(
         'a resumed session whose champion turns out DIFFERENT splits off a '
@@ -2011,6 +2067,45 @@ void main() {
       expect(h.engine.captureWindowCalls, isEmpty);
       expect(h.engine.captureAppCalls, [null],
           reason: 'clears the app/window target so the display route wins');
+    });
+
+    test(
+        'a live display binding is never downgraded to app capture when the '
+        'game stops reporting a window', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 20));
+      h.engine.apps = const [
+        clientApp,
+        AppInfo(
+          bundleId: gameBundleId,
+          name: 'LeagueofLegends',
+          pid: 7002,
+          onScreen: true,
+          windowId: 4242,
+          displayUuid: 'display-1',
+        ),
+      ];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.engine.captureDisplayCalls, ['display-1']);
+
+      // The game moves/resizes mid-match: no covering window, nothing
+      // on-screen. App capture here is the known-black route.
+      h.engine.apps = const [
+        clientApp,
+        AppInfo(
+          bundleId: gameBundleId,
+          name: 'LeagueofLegends',
+          pid: 7002,
+          onScreen: false,
+        ),
+      ];
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureAppCalls, [null],
+          reason: 'only the display route\'s own clearing call — no '
+              'downgrade to bundle-id app capture');
+      expect(h.engine.captureDisplayCalls, ['display-1']);
     });
 
     // Native League does not keep the window it starts a match with: the

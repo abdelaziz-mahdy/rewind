@@ -141,10 +141,13 @@ All notable changes to Rewind are documented here. Format based on
   changes. It also picks the newest on-screen full-screen window when a game
   leaves several behind, instead of whichever the system listed first.
 - **Two matches no longer merge into one**: restarting Rewind while a game
-  is running resumes the match it interrupted — but that guess is now
-  checked against the champion the game reports. A different champion means
-  a new match, so it gets its own card instead of overwriting the previous
-  match's and summing both scorelines.
+  is running resumes the match it interrupted, which used to be guessed from
+  how recently the last match was updated — so the NEXT match could be
+  swallowed by the previous one's card, overwriting its champion and summing
+  both scorelines. League now reports when the match actually began (the
+  live API's own match clock), and the session is keyed on that, so a
+  restart rejoins the right match and two matches stay separate even when
+  they're played on the same champion.
 - **League multikills now clip at their real tier**: the Multikill handler
   always emitted a "double kill" regardless of the actual streak. It now
   reads the event's `KillStreak` (2→double, 3→triple, 4→quadra, 5→penta),
