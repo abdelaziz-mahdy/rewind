@@ -129,6 +129,22 @@ All notable changes to Rewind are documented here. Format based on
   instead of the first-run empty state.
 
 ### Fixed
+- **Fullscreen games no longer record black**: a fullscreen game is now
+  captured as the display it covers. Capturing it as a window (or as an
+  app) returns black frames from ScreenCaptureKit, which is how a whole
+  League session's clips came out completely black.
+- **Capture keeps following a game that swaps its window**: the "follow the
+  game" aim used to be decided once, when the game was detected. League
+  replaces its window between the loading screen and gameplay, so that
+  one-shot aim ended up pointed at a dead window for the rest of the match.
+  Rewind now re-checks while the game runs and re-aims when the window
+  changes. It also picks the newest on-screen full-screen window when a game
+  leaves several behind, instead of whichever the system listed first.
+- **Two matches no longer merge into one**: restarting Rewind while a game
+  is running resumes the match it interrupted — but that guess is now
+  checked against the champion the game reports. A different champion means
+  a new match, so it gets its own card instead of overwriting the previous
+  match's and summing both scorelines.
 - **League multikills now clip at their real tier**: the Multikill handler
   always emitted a "double kill" regardless of the actual streak. It now
   reads the event's `KillStreak` (2→double, 3→triple, 4→quadra, 5→penta),

@@ -113,6 +113,14 @@ class ClipCoordinator {
   /// replaces (cancels) an older retry rather than stacking two loops.
   final Map<String, Timer> _autoSwitchRetryTimers = {};
 
+  /// The capture target [_tryAutoSwitch] last bound, as `w:<windowId>` or
+  /// `a:<bundleId>`. The supervision loop re-binds only when the game's
+  /// resolved target DIFFERS from this — re-issuing the same target every
+  /// couple of seconds would tear down and rebuild the ScreenCaptureKit
+  /// stream for nothing, and leaving a manual mid-game source pick alone
+  /// (the user's explicit choice) falls out of the same check.
+  String? _autoSwitchedTarget;
+
   /// How long [_indexClip] waits for a save-reported file to appear on disk
   /// before dropping it (the mux helper can lag the shim's path report
   /// under load). Tests that deliberately report paths with no file (stub
@@ -201,6 +209,13 @@ class ClipCoordinator {
   /// first one; every later activation is a genuinely new session.
   final Set<String> _sessionResumeChecked = {};
 
+  /// GameIds whose current session was RESUMED onto an older match by
+  /// [_sessionStampFor] rather than started fresh, pending confirmation from
+  /// the first [GameEventKind.matchInfo] that it really is the same match —
+  /// see [_recordMatchInfo]. Cleared once that arrives (either way) and on
+  /// deactivation.
+  final Set<String> _unconfirmedResumes = {};
+
   /// The session stamp for a fresh activation of [a]: normally now. But on
   /// the FIRST activation of this game after app launch, if the game's most
   /// recent persisted match was still being updated moments ago
@@ -220,6 +235,7 @@ class ClipCoordinator {
     talker.info('Resuming ${a.displayName} match session from '
         '${latest.startedAt.toIso8601String()} (still updating '
         '${sinceUpdate.inSeconds}s ago — app restarted mid-match)');
+    _unconfirmedResumes.add(a.gameId);
     return latest.startedAt;
   }
 
@@ -302,6 +318,7 @@ class ClipCoordinator {
         // deactivation anyway.
         playingGameIds.value = {...playingGameIds.value}..remove(a.gameId);
         _sessionStartedAt.remove(a.gameId);
+        _unconfirmedResumes.remove(a.gameId);
         // A retry loop still hunting for this game's window is pointless
         // once the game itself is gone — cancel it regardless of whether it
         // ever found a match (a bare cancel here, separate from
@@ -380,31 +397,48 @@ class ClipCoordinator {
   /// not by a counted budget (see the comment in [_tryAutoSwitch]). A fresh
   /// activation of the same game cancels any retry already in flight for it
   /// (a later activation replaces an older one, never stacks).
+  ///
+  /// The loop does not stop once a target is found — it keeps re-resolving
+  /// and re-binds whenever the answer CHANGES. A one-shot bind goes stale:
+  /// native League swaps in a new display-covering window between loading
+  /// screen and gameplay, and SCK window capture of the abandoned one emits
+  /// pure black for the rest of the match (verified live 2026-07-24).
   void _autoSwitchCaptureFor(GameActivity a) {
-    // A launcher/client-only activation (countsAsPlaying false) must never
-    // STEAL the capture target from its own game's match-live binding.
-    // Normally the client activates first and the vendor watcher re-aims
-    // second, so ordering hides this — but an app (re)start MID-MATCH races
-    // both activations in the same tick, and the client won by 80 ms in a
-    // live match (2026-07-19 19:14), stomping the game window with the
-    // hidden client app and recording black again. The reverse direction
-    // (vendor re-aim overriding the client's earlier switch) stays allowed —
-    // that's the Task 15 fix working as designed.
-    if (!a.countsAsPlaying) {
-      final holder = _autoSwitchedGameId;
-      if (holder != null &&
-          holder != a.gameId &&
-          descriptorFor(a.gameId).mergedGameIds.contains(holder)) {
-        return;
-      }
-    }
     _cancelAutoSwitchRetry(a.gameId);
     _tryAutoSwitch(a, attempt: 1);
   }
 
-  /// One attempt of [_autoSwitchCaptureFor]'s retry loop. [attempt] is
-  /// 1-based; on the last allowed attempt with still no match, the loop
-  /// gives up instead of scheduling another retry.
+  /// Whether [a]'s loop is allowed to bind the capture target right now.
+  ///
+  /// A launcher/client-only activation (countsAsPlaying false) must never
+  /// STEAL the capture target from its own game's match-live binding.
+  /// Normally the client activates first and the vendor watcher re-aims
+  /// second, so ordering hides this — but an app (re)start MID-MATCH races
+  /// both activations in the same tick, and the client won by 80 ms in a
+  /// live match (2026-07-19 19:14), stomping the game window with the
+  /// hidden client app and recording black again. The reverse direction
+  /// (vendor re-aim overriding the client's earlier switch) stays allowed.
+  ///
+  /// Checked on EVERY tick, not just at activation: League's client and
+  /// its match watcher are separate merged game ids, so each runs its own
+  /// supervision loop, and once those loops stopped terminating on a
+  /// successful bind the two re-aimed over each other every couple of
+  /// seconds — a live match rebound the SCK stream 60 times in 90 s
+  /// (2026-07-24 19:37). The client's loop stays alive but idle while its
+  /// sibling holds the aim, and takes over again once the match ends and
+  /// [_revertAutoSwitchFor] releases it.
+  bool _mayAim(GameActivity a) {
+    if (a.countsAsPlaying) return true;
+    final holder = _autoSwitchedGameId;
+    return holder == null ||
+        holder == a.gameId ||
+        !descriptorFor(a.gameId).mergedGameIds.contains(holder);
+  }
+
+  /// One attempt of [_autoSwitchCaptureFor]'s loop. [attempt] is 1-based and
+  /// only drives the hunt cadence ([_huntInterval]); the loop itself runs
+  /// until the game deactivates, whether or not a target was found, so a
+  /// window the game replaces mid-match is re-aimed rather than left stale.
   void _tryAutoSwitch(GameActivity a, {required int attempt}) {
     final capture = engine;
     final processMatch = a.processMatch;
@@ -447,13 +481,33 @@ class ClipCoordinator {
         talker.info('Auto-switch: no running window matched ${a.displayName} '
             'yet (attempt $attempt, retrying until the game exits)');
       }
-      _autoSwitchRetryTimers[a.gameId] = Timer(_huntInterval(attempt), () {
-        _autoSwitchRetryTimers.remove(a.gameId);
-        _tryAutoSwitch(a, attempt: attempt + 1);
-      });
+      _scheduleAutoSwitch(a, attempt: attempt);
       return;
     }
-    _cancelAutoSwitchRetry(a.gameId);
+    _scheduleAutoSwitch(a, attempt: attempt);
+    if (!_mayAim(a)) return;
+
+    // A FULLSCREEN match is captured as its DISPLAY. Its window covers the
+    // whole screen, so the display's content is exactly the game — and it is
+    // the only route that actually delivers frames for one: SCK app capture
+    // composites onto one anchor display and records black (2026-07-19), and
+    // SCK window capture of native League's fullscreen window records black
+    // too (verified live 2026-07-24 mid-match — while display capture in the
+    // very same seconds of the same clip recorded real frames).
+    final fullscreen = match.onScreen && match.displayUuid.isNotEmpty;
+
+    // Nothing changed since the last bind — re-issuing the same target would
+    // rebuild the SCK stream for nothing (and a target the user picked by
+    // hand mid-game is left alone for the same reason).
+    final target = fullscreen
+        ? 'd:${match.displayUuid}'
+        : match.windowId != 0 && (match.onScreen || match.bundleId.isEmpty)
+            ? 'w:${match.windowId}'
+            : 'a:${match.bundleId}';
+    if (target == _autoSwitchedTarget && _autoSwitchedGameId == a.gameId) {
+      return;
+    }
+    _autoSwitchedTarget = target;
 
     // Prefer capturing the matched WINDOW whenever it's actually on screen
     // and has a real window id — window capture is display-agnostic. SCK
@@ -466,14 +520,20 @@ class ClipCoordinator {
     // A hidden match (e.g. the League client pre-match, not on screen)
     // keeps app capture: window-capturing an off-screen window shows
     // nothing, while app capture at least follows it when it appears.
-    if (match.windowId != 0 && (match.onScreen || match.bundleId.isEmpty)) {
+    if (fullscreen) {
+      capture.setCaptureDisplay(match.displayUuid);
+      // Clears any window id AND the app target, leaving the display route
+      // selected — see `rewind_set_capture_app`'s doc in the shim.
+      capture.setCaptureApp(null);
+    } else if (match.windowId != 0 &&
+        (match.onScreen || match.bundleId.isEmpty)) {
       capture.setCaptureWindow(match.windowId);
     } else {
       capture.setCaptureApp(match.bundleId.isEmpty ? null : match.bundleId);
     }
     _autoSwitchedGameId = a.gameId;
     autoSwitchedAppName.value = match.name;
-    talker.info('Auto-switched capture to ${match.name}');
+    talker.info('Auto-switched capture to ${match.name} ($target)');
 
     // First real-app match for this game: capture its icon for the rail
     // logo (`GameTileAvatar`), same "capture once, never overwrite" rule as
@@ -491,9 +551,20 @@ class ClipCoordinator {
     }
   }
 
-  /// Cancels [gameId]'s pending [_autoSwitchCaptureFor] retry, if any —
-  /// called on a successful switch, a fresh activation superseding an older
-  /// retry, the game's deactivation, and [dispose].
+  /// Books the next [_tryAutoSwitch] tick for [a], replacing any tick
+  /// already pending for that game. Runs whether or not this attempt found
+  /// a target: the loop is the game's aim supervision, not just its hunt.
+  void _scheduleAutoSwitch(GameActivity a, {required int attempt}) {
+    _autoSwitchRetryTimers.remove(a.gameId)?.cancel();
+    _autoSwitchRetryTimers[a.gameId] = Timer(_huntInterval(attempt), () {
+      _autoSwitchRetryTimers.remove(a.gameId);
+      _tryAutoSwitch(a, attempt: attempt + 1);
+    });
+  }
+
+  /// Cancels [gameId]'s pending [_autoSwitchCaptureFor] tick, if any —
+  /// called on a fresh activation superseding an older loop, the game's
+  /// deactivation, and [dispose].
   void _cancelAutoSwitchRetry(String gameId) {
     _autoSwitchRetryTimers.remove(gameId)?.cancel();
   }
@@ -510,6 +581,7 @@ class ClipCoordinator {
     if (capture == null || app.windowId == 0) return;
     capture.setCaptureWindow(app.windowId);
     _autoSwitchedGameId = gameId;
+    _autoSwitchedTarget = 'w:${app.windowId}';
     autoSwitchedAppName.value = app.name;
     talker.info('Capturing ${app.name} (window ${app.windowId})');
   }
@@ -520,7 +592,13 @@ class ClipCoordinator {
   void _revertAutoSwitchFor(GameActivity a) {
     if (_autoSwitchedGameId != a.gameId) return;
     _autoSwitchedGameId = null;
+    _autoSwitchedTarget = null;
     autoSwitchedAppName.value = null;
+    // A fullscreen auto-switch also moved the capture DISPLAY (see
+    // [_tryAutoSwitch]); put the user's persisted choice back before the
+    // app/display route is re-selected below.
+    final savedDisplay = settings.captureDisplayUuid;
+    if (savedDisplay != null) engine?.setCaptureDisplay(savedDisplay);
     engine?.setCaptureApp(settings.captureAppBundleId);
     talker.info('Reverted capture after ${a.displayName} exited');
   }
@@ -786,14 +864,36 @@ class ClipCoordinator {
   /// Writes a [GameEventKind.matchInfo] event's metadata onto the active
   /// session's MatchStats (same session key its clips/kills share).
   void _recordMatchInfo(GameEvent e) {
-    final sessionStart = _sessionStartedAt[e.gameId];
+    var sessionStart = _sessionStartedAt[e.gameId];
     final stats = matchStats;
     if (sessionStart == null || stats == null) return;
+    final champion = e.meta['champion'] as String?;
+
+    // A resumed session is a GUESS ([_sessionStampFor] only knows the old
+    // match's stats were moving recently, not that it's the same match).
+    // The first matchInfo is where the guess gets checked: a different
+    // champion means a genuinely new match, and keeping the resumed stamp
+    // merges the two into one card — the older match's champion is
+    // overwritten and its K/D summed into the new one, so it vanishes from
+    // the library (observed live 2026-07-24: a Singed match started 19:14
+    // was consumed by the Master Yi match that started 19:37).
+    if (_unconfirmedResumes.remove(e.gameId) && champion != null) {
+      final resumed = stats.statsFor(e.gameId, sessionStart);
+      final was = resumed?.champion;
+      if (was != null && was != champion) {
+        sessionStart = DateTime.now();
+        _sessionStartedAt[e.gameId] = sessionStart;
+        talker.info('Resumed session was a DIFFERENT match ($was, not '
+            '$champion) — starting a fresh one at '
+            '${sessionStart.toIso8601String()}');
+      }
+    }
+
     stats.recordMatchInfo(
       e.gameId,
       sessionStart,
       gameMode: e.meta['gameMode'] as String?,
-      champion: e.meta['champion'] as String?,
+      champion: champion,
       allies: _parsePlayers(e.meta['allies']),
       enemies: _parsePlayers(e.meta['enemies']),
       rawChampionName: e.meta['rawChampionName'] as String?,

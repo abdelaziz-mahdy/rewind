@@ -1135,6 +1135,94 @@ void main() {
       expect(engine.calls.where((cc) => cc == 'save'), isEmpty);
     });
 
+    // The restart-resume check only knows the previous match's stats were
+    // moving recently — not that it's the SAME match. A League client that
+    // keeps polling after a match ends can hold that record "fresh" long
+    // enough for the NEXT match to be resumed onto it, which overwrites the
+    // old match's champion and sums both K/Ds into one card, so the earlier
+    // match disappears from the library (observed live 2026-07-24: a Singed
+    // match started 19:14 was consumed by the Master Yi match at 19:37).
+    ({
+      ClipCoordinator coordinator,
+      GameRegistry registry,
+      FakeGameSource source,
+      MatchStatsStore stats
+    }) buildResumeHarness(
+        {required String priorChampion, required DateTime priorStart}) {
+      final statsStore = MatchStatsStore(dir: tmp);
+      statsStore.recordMatchInfo('league_of_legends', priorStart,
+          champion: priorChampion, gameMode: 'Arena');
+      statsStore.recordKill('league_of_legends', priorStart);
+      final localLib = ClipLibrary(clipsDir: tmp);
+      final localLeague = FakeGameSource('league_of_legends', 'League');
+      final localRegistry = GameRegistry(sources: [localLeague]);
+      final c = ClipCoordinator(
+        registry: localRegistry,
+        library: localLib,
+        storage: StorageManager(localLib),
+        settings: AppSettings(),
+        outDir: tmp.path,
+        engine: engine,
+        matchStats: statsStore,
+      )..start(supervise: false);
+      addTearDown(c.dispose);
+      return (
+        coordinator: c,
+        registry: localRegistry,
+        source: localLeague,
+        stats: statsStore,
+      );
+    }
+
+    GameEvent matchInfo(String champion) => GameEvent(
+          gameId: 'league_of_legends',
+          kind: GameEventKind.matchInfo,
+          meta: {'gameMode': 'Arena', 'champion': champion},
+        );
+
+    test(
+        'a resumed session whose champion turns out DIFFERENT splits off a '
+        'new match instead of consuming the old one', () async {
+      final priorStart = DateTime.now().subtract(const Duration(minutes: 20));
+      final h =
+          buildResumeHarness(priorChampion: 'Singed', priorStart: priorStart);
+
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.coordinator.sessionStartedAtFor('league_of_legends'), priorStart,
+          reason: 'the prior match still looks live, so it is resumed');
+
+      h.source.emitEvent(matchInfo('Master Yi'));
+      await settleBurst();
+
+      final prior = h.stats.statsFor('league_of_legends', priorStart)!;
+      expect(prior.champion, 'Singed', reason: 'the old card must survive');
+      expect(prior.kills, 1);
+
+      final fresh = h.coordinator.sessionStartedAtFor('league_of_legends')!;
+      expect(fresh, isNot(priorStart));
+      expect(
+          h.stats.statsFor('league_of_legends', fresh)!.champion, 'Master Yi');
+    });
+
+    test('a resumed session with the SAME champion keeps accumulating',
+        () async {
+      final priorStart = DateTime.now().subtract(const Duration(minutes: 20));
+      final h =
+          buildResumeHarness(priorChampion: 'Singed', priorStart: priorStart);
+
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      h.source.emitEvent(matchInfo('Singed'));
+      await settleBurst();
+
+      expect(
+          h.coordinator.sessionStartedAtFor('league_of_legends'), priorStart);
+      expect(h.stats.statsFor('league_of_legends', priorStart)!.kills, 1);
+    });
+
     test(
         'a matchInfo event with legacy bare champion-name strings still '
         'parses (defensive: real sources always send the object shape)',
@@ -1898,6 +1986,198 @@ void main() {
               'black for a fullscreen game on any other display — the '
               'on-screen window is the display-agnostic target');
       expect(h.engine.captureAppCalls, isEmpty);
+    });
+
+    test(
+        'a FULLSCREEN match (its window covers a display) is captured as '
+        'that DISPLAY, not as a window', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 5));
+      const fullscreenGameApp = AppInfo(
+        bundleId: gameBundleId,
+        name: 'LeagueofLegends',
+        pid: 7002,
+        onScreen: true,
+        windowId: 4242,
+        displayUuid: 'display-1',
+      );
+      h.engine.apps = const [clientApp, fullscreenGameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(h.engine.captureDisplayCalls, ['display-1'],
+          reason: 'SCK window capture of League\'s fullscreen window records '
+              'black; display capture of the same seconds records frames');
+      expect(h.engine.captureWindowCalls, isEmpty);
+      expect(h.engine.captureAppCalls, [null],
+          reason: 'clears the app/window target so the display route wins');
+    });
+
+    // Native League does not keep the window it starts a match with: the
+    // game process creates a fresh display-covering window as it moves
+    // from loading screen to gameplay (verified live 2026-07-24, pid
+    // 84990 — window 21595 and its replacement 21724 both present, both
+    // reporting on-screen, only the newer one rendering). A one-shot bind
+    // made at activation therefore ends up pointed at a dead surface, and
+    // SCK window capture on a dead window emits pure black for the rest of
+    // the match (whole session's clips came out YAVG=16.0). The aim has to
+    // be re-checked for as long as the game runs.
+    const windowedGameApp = AppInfo(
+      bundleId: gameBundleId,
+      name: 'LeagueofLegends',
+      pid: 7002,
+      onScreen: true,
+      windowId: 4242,
+    );
+
+    test('the game replacing its window mid-match is re-aimed at the new one',
+        () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 20));
+      h.engine.apps = const [clientApp, windowedGameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(h.engine.captureWindowCalls, [4242]);
+
+      // Loading screen ends; the game swaps in a new window.
+      h.engine.apps = const [
+        clientApp,
+        AppInfo(
+          bundleId: gameBundleId,
+          name: 'LeagueofLegends',
+          pid: 7002,
+          onScreen: true,
+          windowId: 5555,
+        ),
+      ];
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureWindowCalls, [4242, 5555]);
+    });
+
+    test('a stable window is not re-bound on every supervision tick', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 5));
+      h.engine.apps = const [clientApp, windowedGameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureWindowCalls, [4242],
+          reason: 're-binding an unchanged target would tear down and '
+              'rebuild the SCK stream every couple of seconds');
+    });
+
+    test('re-aiming stops when the game exits', () async {
+      final h = buildHarness(interval: const Duration(milliseconds: 20));
+      h.engine.apps = const [clientApp, windowedGameApp];
+      h.source.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.source.running = false;
+      await h.registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      h.engine.apps = const [
+        clientApp,
+        AppInfo(
+          bundleId: gameBundleId,
+          name: 'LeagueofLegends',
+          pid: 7002,
+          onScreen: true,
+          windowId: 5555,
+        ),
+      ];
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureWindowCalls, [4242]);
+    });
+
+    // League detects as TWO merged game ids — the catalog process watch
+    // (`app:league_of_legends`, countsAsPlaying false, the client) and the
+    // vendor watcher (`league_of_legends`, the live match) — so each runs
+    // its own supervision loop. Once those loops stopped terminating on a
+    // successful bind, they re-aimed over each other every couple of
+    // seconds: a live match rebuilt the SCK stream 60 times in 90 s
+    // (2026-07-24 19:37). The client's loop must idle while the match
+    // holds the aim, then take over once the match ends.
+    ({
+      GameRegistry registry,
+      FakeGameSource client,
+      FakeGameSource game,
+      FakeCaptureEngine engine
+    }) buildSiblingHarness() {
+      final harnessTmp = Directory.systemTemp.createTempSync('rewind_sibling');
+      addTearDown(() {
+        try {
+          harnessTmp.deleteSync(recursive: true);
+        } on FileSystemException {
+          // best-effort cleanup, same as the outer tearDown
+        }
+      });
+      final harnessEngine = FakeCaptureEngine();
+      final client = FakeGameSource('app:league_of_legends',
+          'League of Legends (Client)', false, 'LeagueClientUx');
+      final game = FakeGameSource(
+          'league_of_legends', 'League of Legends', true, 'GameClient');
+      final harnessRegistry = GameRegistry(sources: [client, game]);
+      final harnessLibrary = ClipLibrary(clipsDir: harnessTmp);
+      final harnessCoordinator = ClipCoordinator(
+        registry: harnessRegistry,
+        library: harnessLibrary,
+        storage: StorageManager(harnessLibrary),
+        settings: AppSettings(),
+        outDir: harnessTmp.path,
+        engine: harnessEngine,
+        autoSwitchRetryInterval: const Duration(milliseconds: 20),
+      )..start(supervise: false);
+      addTearDown(harnessCoordinator.dispose);
+      return (
+        registry: harnessRegistry,
+        client: client,
+        game: game,
+        engine: harnessEngine,
+      );
+    }
+
+    const clientWindowApp = AppInfo(
+      bundleId: clientBundleId,
+      name: 'League of Legends LeagueClientUx',
+      pid: 7001,
+      onScreen: true,
+      windowId: 1111,
+    );
+
+    test(
+        "the client's loop does not re-aim over the live match it shares a "
+        'game with', () async {
+      final h = buildSiblingHarness();
+      h.engine.apps = const [clientWindowApp, windowedGameApp];
+      h.client.running = true;
+      h.game.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      // The client activates first in the same tick (holder still null, so
+      // its bind is legitimate), the match immediately overrides it — and
+      // then nothing more happens for as long as both stay up.
+      expect(h.engine.captureWindowCalls, [1111, 4242]);
+    });
+
+    test("the client's loop takes the aim back once the match ends", () async {
+      final h = buildSiblingHarness();
+      h.engine.apps = const [clientWindowApp, windowedGameApp];
+      h.client.running = true;
+      h.game.running = true;
+      await h.registry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(h.engine.captureWindowCalls.last, 4242);
+
+      h.game.running = false;
+      await h.registry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(h.engine.captureWindowCalls.last, 1111);
     });
   });
 

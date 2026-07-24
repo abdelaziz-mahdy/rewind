@@ -389,7 +389,8 @@ static int is_windows_exe_name(const char *name) {
  * rather than exact equality: some games letterbox or overhang by a few
  * pixels, and a window parked on a non-active Space still reports its
  * display-relative frame. */
-static int rw_rect_covers_a_display(CGRect r) {
+static int rw_rect_covers_a_display(CGRect r, char *uuid_out, size_t uuid_cap) {
+    if (uuid_out && uuid_cap) uuid_out[0] = '\0';
     CGDirectDisplayID ids[8];
     uint32_t n = 0;
     if (CGGetActiveDisplayList(8, ids, &n) != kCGErrorSuccess) return 0;
@@ -399,7 +400,10 @@ static int rw_rect_covers_a_display(CGRect r) {
         if (display_area <= 0) continue;
         CGRect inter = CGRectIntersection(r, d);
         double covered = inter.size.width * inter.size.height;
-        if (covered / display_area >= 0.9) return 1;
+        if (covered / display_area >= 0.9) {
+            if (uuid_out && uuid_cap) display_uuid_for_id(ids[i], uuid_out, uuid_cap);
+            return 1;
+        }
     }
     return 0;
 }
@@ -436,14 +440,27 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
      * emitting the FIRST window per app captured that dead helper and recorded
      * BLACK (2026-07-21, R.E.P.O. via CrossOver: window 17468, a 500x500
      * off-screen window, preceded the layer-26 full-display game window
-     * 17481). Collect candidates, then per app keep the best: a display-
-     * covering window (the game surface) beats a smaller one, larger area
-     * breaks the rest; first-seen app order is preserved for the output. */
+     * 17481). Collect candidates, then per app keep the best, ranked:
+     * display-covering (the game surface) > on-screen > larger area >
+     * HIGHER window id. First-seen app order is preserved for the output.
+     *
+     * The last two keys are not tie-breaker padding — native League needs
+     * both. Its game process keeps SEVERAL display-covering windows of the
+     * IDENTICAL size alive at once (verified live 2026-07-24, pid 84990 on
+     * a 3024x1890 display: 21595 and 21724 both 3024x1890 and both
+     * reporting on-screen, plus 21725 the same size but off-screen). Only
+     * the newest on-screen one renders; the older ones are abandoned
+     * surfaces left over from the loading-screen-to-gameplay transition,
+     * and capturing one yields pure black (a whole session of clips came
+     * out at YAVG=16.0). CGWindowIDs increase monotonically within a
+     * session, so "highest id" is "most recently created" — but it must
+     * rank BELOW on-screen, or the off-screen 21725 would win. */
     struct rw_cand {
         char key[384];
         char bundle_id[128];
         char name[256];
         char icon[512];
+        char display_uuid[128];
         pid_t pid;
         uint32_t window_id;
         int on_screen;
@@ -480,7 +497,7 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         int layer = 0;
         if (!layer_num || !CFNumberGetValue(layer_num, kCFNumberIntType, &layer))
             continue;
-        if (layer != 0 && !rw_rect_covers_a_display(bounds)) continue;
+        if (layer != 0 && !rw_rect_covers_a_display(bounds, NULL, 0)) continue;
 
         /* The owner name decides the route: Wine exes never resolve through
          * the bundle walk (proc_pidpath fails / winetemp stub), so it must
@@ -530,10 +547,11 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
             (CFBooleanRef)CFDictionaryGetValue(entry, kCGWindowIsOnscreen);
         int on_screen = onscreen_ref && CFBooleanGetValue(onscreen_ref);
 
-        /* Upsert as this app's representative, keeping the best window (see the
-         * rw_cand note): a display-covering window wins, then the larger; the
-         * app's first-seen slot (and thus output order) is preserved. */
-        int covers = rw_rect_covers_a_display(bounds);
+        /* Upsert as this app's representative, keeping the best window (see
+         * the rw_cand note for the ranking); the app's first-seen slot (and
+         * thus output order) is preserved. */
+        char covered_display[128] = "";
+        int covers = rw_rect_covers_a_display(bounds, covered_display, sizeof(covered_display));
         double area = (double)bounds.size.width * (double)bounds.size.height;
         int idx = -1;
         for (int c = 0; c < cand_count; c++) {
@@ -543,8 +561,12 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
             if (cand_count >= (int)(sizeof(cands) / sizeof(cands[0]))) continue;
             idx = cand_count++;
         } else {
-            int better = (covers > cands[idx].covers_display) ||
-                (covers == cands[idx].covers_display && area > cands[idx].area);
+            struct rw_cand *cur = &cands[idx];
+            int better;
+            if (covers != cur->covers_display)      better = covers > cur->covers_display;
+            else if (on_screen != cur->on_screen)   better = on_screen > cur->on_screen;
+            else if (area != cur->area)             better = area > cur->area;
+            else                                    better = window_id > cur->window_id;
             if (!better) continue;
         }
         struct rw_cand *e = &cands[idx];
@@ -557,6 +579,7 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         e->on_screen = on_screen;
         e->covers_display = covers;
         e->area = area;
+        snprintf(e->display_uuid, sizeof(e->display_uuid), "%s", covered_display);
     }
 
     size_t pos = 0;
@@ -577,9 +600,9 @@ int rw_plat_list_capturable_apps_json(char *json_out, int json_cap) {
         json_escape_append(e->name, escaped_name, sizeof(escaped_name));
         json_escape_append(e->icon, escaped_icon, sizeof(escaped_icon));
         APPEND("%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"%s\","
-               "\"window_id\":%u,\"on_screen\":%s}",
+               "\"window_id\":%u,\"on_screen\":%s,\"display_uuid\":\"%s\"}",
                c == 0 ? "" : ",", escaped_id, escaped_name, (int)e->pid, escaped_icon,
-               (unsigned)e->window_id, e->on_screen ? "true" : "false");
+               (unsigned)e->window_id, e->on_screen ? "true" : "false", e->display_uuid);
     }
     APPEND("]");
 #undef APPEND

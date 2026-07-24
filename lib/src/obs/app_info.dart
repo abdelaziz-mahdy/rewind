@@ -40,6 +40,18 @@ class AppInfo {
   /// callers that don't care see no behaviour change.
   final bool onScreen;
 
+  /// The UUID of the display this app's emitted window essentially COVERS
+  /// (>=90% of the display's area) — the signature of a fullscreen-exclusive
+  /// game — or empty when it covers none.
+  ///
+  /// A fullscreen game's window IS the display's content, and capturing the
+  /// display is the only route that actually works for it: SCK app capture
+  /// composites onto one anchor display and records black for a fullscreen
+  /// game (2026-07-19), and SCK WINDOW capture of native League's fullscreen
+  /// window records black too — verified live 2026-07-24 mid-match, where
+  /// display capture in the same seconds recorded real frames.
+  final String displayUuid;
+
   const AppInfo({
     required this.bundleId,
     required this.name,
@@ -47,6 +59,7 @@ class AppInfo {
     this.iconPath,
     this.windowId = 0,
     this.onScreen = true,
+    this.displayUuid = '',
   });
 
   factory AppInfo.fromJson(Map<String, dynamic> j) {
@@ -58,6 +71,7 @@ class AppInfo {
       iconPath: (icon == null || icon.isEmpty) ? null : icon,
       windowId: j['window_id'] as int? ?? 0,
       onScreen: j['on_screen'] as bool? ?? true,
+      displayUuid: j['display_uuid'] as String? ?? '',
     );
   }
 
