@@ -140,6 +140,11 @@ All notable changes to Rewind are documented here. Format based on
   Rewind now re-checks while the game runs and re-aims when the window
   changes. It also picks the newest on-screen full-screen window when a game
   leaves several behind, instead of whichever the system listed first.
+- **Manual clips taken during a match now sit with that match**: pressing
+  the hotkey (or "Save clip", or stopping a manual recording) mid-game could
+  file the clip under the game's launcher instead of the match, so it landed
+  in its own group in the library rather than alongside the match's other
+  clips. Manual captures now attribute to the game actually being played.
 - **Two matches no longer merge into one**: restarting Rewind while a game
   is running resumes the match it interrupted, which used to be guessed from
   how recently the last match was updated — so the NEXT match could be

@@ -929,6 +929,58 @@ void main() {
     });
   });
 
+  group('manual clip attribution', () {
+    // League detects as two merged ids, and `activeGame` is only whichever
+    // activated LAST. When the client won that race, every manual clip taken
+    // during a match was filed under the client with the client's activation
+    // stamp — its own group in the library, separate from the match it came
+    // from (observed live 2026-07-24).
+    test('a manual save during a match belongs to the MATCH, not the client',
+        () async {
+      league.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      // The client activates after the match — the losing order.
+      leagueClient.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.activeGame.value, 'app:league_of_legends');
+
+      await coordinator.onHotkey();
+
+      final clip = library.all.last;
+      expect(clip.gameId, 'league_of_legends');
+      expect(
+          clip.sessionAt, coordinator.sessionStartedAtFor('league_of_legends'));
+    });
+
+    test('with only the client open, a manual save stays on the client',
+        () async {
+      leagueClient.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+
+      await coordinator.onHotkey();
+
+      expect(library.all.last.gameId, 'app:league_of_legends');
+    });
+
+    test('an unrelated running game never steals a manual save', () async {
+      gameLister.names = ['stub.one.exe'];
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      leagueClient.running = true;
+      await registry.tickNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(coordinator.activeGame.value, 'app:league_of_legends');
+
+      await coordinator.onHotkey();
+
+      expect(library.all.last.gameId, 'app:league_of_legends',
+          reason: 'only a MERGED sibling of the active game may take over');
+    });
+  });
+
   group('session stamping (Clip.sessionAt)', () {
     test(
         'clips saved during one activation share the activation stamp; a '

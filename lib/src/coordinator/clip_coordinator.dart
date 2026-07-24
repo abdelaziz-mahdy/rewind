@@ -683,7 +683,7 @@ class ClipCoordinator {
       return inFlight ?? Future.value();
     }
     _lastManualPressAt = now;
-    final gameId = activeGame.value ?? 'desktop';
+    final gameId = _manualGameId;
     final save = _save(GameEvent(gameId: gameId, kind: GameEventKind.manual))
         .whenComplete(() {
       _manualSaveInFlight = null;
@@ -693,6 +693,31 @@ class ClipCoordinator {
     });
     _manualSaveInFlight = save;
     return save;
+  }
+
+  /// Which game a MANUAL capture (hotkey, "Save clip", a manual recording)
+  /// belongs to.
+  ///
+  /// Not simply [activeGame]: that is whichever game activated most
+  /// recently, and a game can detect as several merged ids — League's client
+  /// (`app:league_of_legends`) alongside its live match
+  /// (`league_of_legends`). When the client activates last, every manual
+  /// clip taken mid-match was filed under the CLIENT, carrying the client's
+  /// activation stamp instead of the match's, so it sat in its own group
+  /// instead of with the match it came from (observed live 2026-07-24: four
+  /// manual clips, all on `app:league_of_legends`). Prefer the id that
+  /// counts as actually PLAYING, and only ever swap to a sibling of the
+  /// active game — never to some unrelated game that happens to be running.
+  String get _manualGameId {
+    final active = activeGame.value;
+    if (active == null) return 'desktop';
+    final playing = playingGameIds.value;
+    if (playing.contains(active)) return active;
+    final merged = descriptorFor(active).mergedGameIds;
+    for (final id in playing) {
+      if (merged.contains(id)) return id;
+    }
+    return active;
   }
 
   Future<void> _save(GameEvent e) async {
@@ -783,7 +808,7 @@ class ClipCoordinator {
       return;
     }
 
-    final gameId = activeGame.value ?? 'desktop';
+    final gameId = _manualGameId;
     // The recording's kill count spans its whole session, not the buffer
     // window — grab the start before clearing it below.
     final startedAt = recordingStartedAt.value;
