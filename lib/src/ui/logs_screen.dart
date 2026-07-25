@@ -54,7 +54,7 @@ class _LogsScreenState extends State<LogsScreen> {
   Color _color(BuildContext context, TalkerData e) {
     final scheme = Theme.of(context).colorScheme;
     if (_isError(e)) return scheme.error;
-    if (_isWarning(e)) return context.rewindTokens.accent; // amber-ish accent
+    if (_isWarning(e)) return context.rewindTokens.warn;
     return context.rewindTokens.textMuted;
   }
 

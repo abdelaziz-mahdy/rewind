@@ -500,7 +500,7 @@ class _Controls extends StatelessWidget {
               key: const ValueKey('trimButton'),
               icon: const Icon(Icons.content_cut),
               tooltip: trimming ? 'Close trim' : 'Trim clip',
-              color: trimming ? context.rewindTokens.accent : null,
+              color: trimming ? context.rewindTokens.armed : null,
               onPressed: onToggleTrim,
             ),
           IconButton(
@@ -671,14 +671,14 @@ class _TrimBar extends StatelessWidget {
                     width: 2,
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(color: tokens.accent),
+                    child: ColoredBox(color: tokens.interactive),
                   ),
                   Positioned(
                     left: (endX - 1).clamp(0.0, w - 2),
                     width: 2,
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(color: tokens.accent),
+                    child: ColoredBox(color: tokens.interactive),
                   ),
                   // The interactive layer: a full-width RangeSlider with a
                   // transparent track — the filmstrip IS the track.

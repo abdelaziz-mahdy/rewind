@@ -120,7 +120,7 @@ class NavRail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
             child: Text(
               'GAMES',
-              style: theme.textTheme.micro.copyWith(color: tokens.textMuted),
+              style: theme.textTheme.micro.copyWith(color: tokens.textDim),
             ),
           ),
           Expanded(
@@ -179,7 +179,7 @@ class NavRail extends StatelessWidget {
 }
 
 /// One 48 px rail row shared by the fixed nav items (All Clips, + Add game,
-/// Settings, Logs): icon + label, a 2 px accent left bar and raised-surface
+/// Settings, Logs): icon + label, a 2 px interactive left bar and raised-surface
 /// fill when selected — no pill (§2 shape rules).
 class _NavItem extends StatelessWidget {
   final IconData icon;
@@ -199,7 +199,7 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final color = selected ? tokens.accent : tokens.textMuted;
+    final color = selected ? tokens.interactive : tokens.textMuted;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -211,7 +211,7 @@ class _NavItem extends StatelessWidget {
             color: selected ? tokens.surfaceRaised : null,
             border: Border(
               left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
+                color: selected ? tokens.interactive : Colors.transparent,
                 width: tokens.radiusRailIndicator,
               ),
             ),
@@ -223,7 +223,8 @@ class _NavItem extends StatelessWidget {
               Text(
                 label,
                 style: (selected ? theme.textTheme.title : theme.textTheme.body)
-                    .copyWith(color: selected ? tokens.accent : tokens.text),
+                    .copyWith(
+                        color: selected ? tokens.interactive : tokens.text),
               ),
             ],
           ),
@@ -233,7 +234,7 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-/// One rail row for a [GameEntry]: name, a live mint dot when [GameEntry.
+/// One rail row for a [GameEntry]: name, a live  dot when [GameEntry.
 /// active], and its clip count (tabular, muted) — see §3.1.
 class _GameRow extends StatelessWidget {
   final GameEntry entry;
@@ -268,7 +269,7 @@ class _GameRow extends StatelessWidget {
               color: selected ? tokens.surfaceRaised : null,
               border: Border(
                 left: BorderSide(
-                  color: selected ? tokens.accent : Colors.transparent,
+                  color: selected ? tokens.interactive : Colors.transparent,
                   width: tokens.radiusRailIndicator,
                 ),
               ),
@@ -290,25 +291,39 @@ class _GameRow extends StatelessWidget {
                     // Selected reads prominent via color + weight, NOT a
                     // larger font — a bigger font just truncated sooner.
                     style: theme.textTheme.body.copyWith(
-                      color: selected ? tokens.accent : tokens.text,
+                      color: selected ? tokens.interactive : tokens.text,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ),
                 if (entry.active) ...[
                   const SizedBox(width: 6),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                        color: tokens.accent, shape: BoxShape.circle),
-                    child: const SizedBox(width: 6, height: 6),
+                  // `armed`, not the selection color: this dot reports that
+                  // the GAME is running, which is machine state — the row's
+                  // own highlight already says where you are. Painting both
+                  // with one color is exactly the conflation the broadcast-
+                  // deck spec (§0) exists to remove.
+                  Semantics(
+                    label: '${entry.displayName} is running',
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                          color: tokens.armed, shape: BoxShape.circle),
+                      child: const SizedBox(width: 6, height: 6),
+                    ),
                   ),
                 ],
                 const SizedBox(width: 8),
-                Text(
-                  '${entry.clipCount}',
-                  style: theme.textTheme.label.copyWith(
-                    color: tokens.textMuted,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                Semantics(
+                  label: '${entry.clipCount} '
+                      '${entry.clipCount == 1 ? 'clip' : 'clips'}',
+                  child: ExcludeSemantics(
+                    child: Text(
+                      '${entry.clipCount}',
+                      style: theme.textTheme.numeral.copyWith(
+                        fontSize: 12,
+                        color: tokens.textMuted,
+                      ),
+                    ),
                   ),
                 ),
               ],

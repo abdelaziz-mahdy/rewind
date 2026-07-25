@@ -643,7 +643,7 @@ class _RecordButtonState extends State<_RecordButton> {
         child: FilledButton.icon(
           key: const ValueKey('recordButton'),
           style: FilledButton.styleFrom(
-            backgroundColor: context.rewindTokens.rec,
+            backgroundColor: context.rewindTokens.onAir,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
           ),
@@ -713,7 +713,7 @@ class _PulseDot extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: context.rewindTokens.rec,
+        color: context.rewindTokens.onAir,
         shape: BoxShape.circle,
       ),
       child: const SizedBox(width: 10, height: 10),

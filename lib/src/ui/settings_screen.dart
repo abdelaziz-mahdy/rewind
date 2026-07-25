@@ -1205,7 +1205,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: const Icon(Icons.headphones),
                         tooltip: 'Listen to this mic',
                         color:
-                            _micListening ? context.rewindTokens.accent : null,
+                            _micListening ? context.rewindTokens.armed : null,
                         onPressed: _handleMicListenToggle,
                       ),
                     ],
@@ -2009,7 +2009,7 @@ class _SidebarGameItem extends StatelessWidget {
             color: selected ? tokens.surfaceRaised : null,
             border: Border(
               left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
+                color: selected ? tokens.interactive : Colors.transparent,
                 width: tokens.radiusRailIndicator,
               ),
             ),
@@ -2031,7 +2031,8 @@ class _SidebarGameItem extends StatelessWidget {
                   style: (selected
                           ? theme.textTheme.title
                           : theme.textTheme.body)
-                      .copyWith(color: selected ? tokens.accent : tokens.text),
+                      .copyWith(
+                          color: selected ? tokens.interactive : tokens.text),
                 ),
               ),
             ],
@@ -2510,7 +2511,7 @@ class _SidebarItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final color = selected ? tokens.accent : tokens.textMuted;
+    final color = selected ? tokens.interactive : tokens.textMuted;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -2522,7 +2523,7 @@ class _SidebarItem extends StatelessWidget {
             color: selected ? tokens.surfaceRaised : null,
             border: Border(
               left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
+                color: selected ? tokens.interactive : Colors.transparent,
                 width: tokens.radiusRailIndicator,
               ),
             ),
@@ -2534,7 +2535,8 @@ class _SidebarItem extends StatelessWidget {
               Text(
                 label,
                 style: (selected ? theme.textTheme.title : theme.textTheme.body)
-                    .copyWith(color: selected ? tokens.accent : tokens.text),
+                    .copyWith(
+                        color: selected ? tokens.interactive : tokens.text),
               ),
             ],
           ),
@@ -2604,7 +2606,7 @@ class _SettingsSection extends StatelessWidget {
             width: 3,
             height: 14,
             decoration: BoxDecoration(
-              color: tokens.accent,
+              color: tokens.interactive,
               borderRadius: BorderRadius.circular(tokens.radiusRailIndicator),
             ),
           ),
@@ -2830,7 +2832,7 @@ class _PresetCard extends StatelessWidget {
     final tokens = context.rewindTokens;
     return Material(
       color: selected
-          ? tokens.accent.withValues(alpha: 0.07)
+          ? tokens.interactive.withValues(alpha: 0.07)
           : tokens.surfaceRaised,
       borderRadius: BorderRadius.circular(tokens.radiusControl),
       child: InkWell(
@@ -2841,7 +2843,7 @@ class _PresetCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(tokens.radiusControl),
             border: Border.all(
-                color: selected ? tokens.accent : Colors.transparent),
+                color: selected ? tokens.interactive : Colors.transparent),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2851,7 +2853,7 @@ class _PresetCard extends StatelessWidget {
                 child: Icon(
                   selected ? Icons.radio_button_checked : Icons.circle_outlined,
                   size: 14,
-                  color: selected ? tokens.accent : tokens.textMuted,
+                  color: selected ? tokens.interactive : tokens.textMuted,
                 ),
               ),
               const SizedBox(width: 12),
@@ -2883,7 +2885,8 @@ class _PresetCard extends StatelessWidget {
                         style: theme.textTheme.label.copyWith(
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w500,
-                          color: selected ? tokens.accent : tokens.textMuted,
+                          color:
+                              selected ? tokens.interactive : tokens.textMuted,
                         ),
                       ),
                     ],
@@ -2908,13 +2911,13 @@ class _RecommendedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: tokens.accent),
+        border: Border.all(color: tokens.interactive),
         borderRadius: BorderRadius.circular(tokens.radiusChip),
       ),
       child: Text(
         'RECOMMENDED',
-        style: theme.textTheme.micro
-            .copyWith(color: tokens.accent, fontSize: 8.5, letterSpacing: 1),
+        style: theme.textTheme.micro.copyWith(
+            color: tokens.interactive, fontSize: 8.5, letterSpacing: 1),
       ),
     );
   }

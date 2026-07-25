@@ -26,8 +26,8 @@ Reference for what each hue is allowed to mean:
 | `interactive` | `#DCE3EC` | Selection, primary fill, focus ring, active segment. Carries no state. |
 | `armed` | `#F5A524` | The buffer is running / a game is live / auto-clip is on. Broadcast standby tally. |
 | `onAir` | `#FF4D4F` | A manual recording is actively running. Nothing else. |
-| `positive` | `#37D39B` | Match outcome (WIN) and kill counts. The old mint, demoted to one job. |
-| `danger` | `#E5484D` | Destructive confirmation and capture errors. Distinct from `onAir` on purpose — "you are recording" and "this will delete a file" must not be the same red. |
+| `positive` | `#37D39B` | A good outcome: match WIN, kill counts, a granted permission, a healthy mic level. The old mint, demoted to one job. |
+| `danger` | `#EA5257` | Destructive confirmation and capture errors. Distinct from `onAir` on purpose — "you are recording" and "this will delete a file" must not be the same red. |
 | `warn` | `#F5A524` | Permission/error banner. Same value as `armed`; separate name because they are separate concepts and may diverge. |
 | `eventSeed` | `#F0B429` | The base hue every event-badge color is rotated from (see §1.3). |
 
@@ -60,8 +60,8 @@ surface         #14171C -> #101216
 surfaceRaised   #1A1E24 -> #181B21
 hairline        0x14FFFFFF (unchanged)
 text            #E6EAEF -> #E8EBEF
-textMuted       #8B94A1 -> #7C8797
-textDim         (new)      #525C6B     -- micro-labels; stops them fighting body copy for one grey
+textMuted       #8B94A1 -> #9AA3B0     -- lifted to open a gap above textDim
+textDim         (new)      #7E8794     -- micro-labels; stops them fighting body copy for one grey
 accent          #3DDC97 -> REMOVED
 accentPressed   #2FB37C -> REMOVED
 interactive     (new)      #DCE3EC
@@ -69,7 +69,7 @@ interactivePressed (new)   #B9C4D2
 armed           (new)      #F5A524
 onAir           #FF4757 -> #FF4D4F   (renamed from `rec`, meaning narrowed)
 positive        (new)      #37D39B
-danger          (new)      #E5484D
+danger          (new)      #EA5257
 warn            #FFB74D -> #F5A524
 eventSeed       (new)      #F0B429
 ```
@@ -81,8 +81,12 @@ WCAG AA (4.5:1) against `bg`, `surface` and `surfaceRaised`. A test (`test/theme
 now enforces this instead of a comment, so a future retune cannot silently go sub-AA.
 
 `interactive #DCE3EC` is a near-white fill; the primary button's foreground flips to `bg` (near
-black) for a ~15:1 pair. `textDim #525C6B` is only ever used on `bg`/`surface` for micro-labels at
-w700 — it clears 4.5:1 on both.
+black) for a ~15:1 pair.
+
+The three-step text ladder is deliberately shallow. AA against `surfaceRaised` is the binding
+constraint (an 11px w700 micro-label is not "large text" under WCAG, so 4.5:1 applies), and the
+dimmest grey that clears it sits close to `textMuted`. Rather than ship a sub-AA third step,
+`textMuted` was lifted from `#8B94A1` to `#9AA3B0` to open the gap from above.
 
 ### 1.2 Type
 

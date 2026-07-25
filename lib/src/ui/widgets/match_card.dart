@@ -253,7 +253,7 @@ class _KdLine extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text('${stats.kills}', style: num.copyWith(color: tokens.accent)),
+        Text('${stats.kills}', style: num.copyWith(color: tokens.positive)),
         Text(' K', style: label),
         const SizedBox(width: 8),
         Text('${stats.deaths}',
@@ -297,7 +297,7 @@ class _KdBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('${stats.kills}',
-              style: numStyle.copyWith(color: tokens.accent)),
+              style: numStyle.copyWith(color: tokens.positive)),
           Text('/', style: slash),
           Text('${stats.deaths}',
               style: numStyle.copyWith(color: theme.colorScheme.error)),
@@ -329,7 +329,7 @@ class MatchResultBadge extends StatelessWidget {
     final tokens = context.rewindTokens;
     final theme = Theme.of(context);
     final isWin = result == MatchResult.win;
-    final color = isWin ? tokens.accent : tokens.rec;
+    final color = isWin ? tokens.positive : tokens.danger;
     return Container(
       padding: EdgeInsets.symmetric(
           horizontal: large ? 10 : 8, vertical: large ? 4 : 3),

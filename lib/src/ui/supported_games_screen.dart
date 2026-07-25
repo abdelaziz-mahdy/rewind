@@ -367,12 +367,12 @@ class _StateIndicator extends StatelessWidget {
           children: [
             DecoratedBox(
               decoration:
-                  BoxDecoration(color: tokens.accent, shape: BoxShape.circle),
+                  BoxDecoration(color: tokens.armed, shape: BoxShape.circle),
               child: const SizedBox(width: 6, height: 6),
             ),
             const SizedBox(width: 6),
             Text('RUNNING',
-                style: theme.textTheme.micro.copyWith(color: tokens.accent)),
+                style: theme.textTheme.micro.copyWith(color: tokens.armed)),
           ],
         );
       case _RowState.inLibrary:

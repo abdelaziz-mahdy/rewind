@@ -79,7 +79,7 @@ class EventToggleChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final accent = tokens.accent;
+    final accent = tokens.interactive;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(

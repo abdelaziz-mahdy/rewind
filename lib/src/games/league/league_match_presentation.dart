@@ -334,7 +334,7 @@ class _RosterDisclosureState extends State<_RosterDisclosure> {
         // data (see LeagueEventWatcher), so allies is empty and every other
         // champion lands in one neutral list.
         if (stats.allies.isNotEmpty) ...[
-          team('YOUR TEAM', stats.allies, tokens.accent),
+          team('YOUR TEAM', stats.allies, tokens.positive),
           if (stats.enemies.isNotEmpty) ...[
             const SizedBox(height: 16),
             team('ENEMIES', stats.enemies, theme.colorScheme.error),

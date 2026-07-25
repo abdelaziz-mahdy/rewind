@@ -289,8 +289,9 @@ class _MatchTimelineBar extends StatelessWidget {
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   color: i == currentSegment
-                                      ? tokens.accent
-                                      : tokens.accent.withValues(alpha: 0.35),
+                                      ? tokens.interactive
+                                      : tokens.interactive
+                                          .withValues(alpha: 0.35),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                               ),

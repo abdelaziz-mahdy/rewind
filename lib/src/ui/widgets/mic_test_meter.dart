@@ -216,11 +216,11 @@ class _MicTestMeterState extends State<MicTestMeter> {
               targetMinDb: -22,
               targetMaxDb: -5,
               color: switch (micTestVerdict(_micPeakHold)) {
-                MicTestVerdict.clipping => tokens.rec,
+                MicTestVerdict.clipping => tokens.danger,
                 MicTestVerdict.tooLoud ||
                 MicTestVerdict.tooQuiet =>
                   tokens.warn,
-                _ => tokens.accent,
+                _ => tokens.positive,
               },
             ),
             if (_levels!.gameActive) ...[
@@ -242,8 +242,8 @@ class _MicTestMeterState extends State<MicTestMeter> {
               ),
               style: textTheme.bodyMuted.copyWith(
                 color: switch (micTestVerdict(_micPeakHold)) {
-                  MicTestVerdict.good => tokens.accent,
-                  MicTestVerdict.clipping => tokens.rec,
+                  MicTestVerdict.good => tokens.positive,
+                  MicTestVerdict.clipping => tokens.danger,
                   MicTestVerdict.waiting => tokens.textMuted,
                   _ => tokens.warn,
                 },
@@ -312,10 +312,11 @@ class _LevelBar extends StatelessWidget {
                         bottom: 0,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: tokens.accent.withValues(alpha: 0.18),
+                            color: tokens.positive.withValues(alpha: 0.18),
                             border: Border.symmetric(
                               vertical: BorderSide(
-                                  color: tokens.accent.withValues(alpha: 0.5)),
+                                  color:
+                                      tokens.positive.withValues(alpha: 0.5)),
                             ),
                           ),
                         ),

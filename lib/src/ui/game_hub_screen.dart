@@ -495,8 +495,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
                                 label: cfg.autoClip
                                     ? 'Auto-clip ON'
                                     : 'Auto-clip OFF',
+                                // `armed`: auto-clip being on is a standing
+                                // machine state, not a selection.
                                 color: cfg.autoClip
-                                    ? tokens.accent
+                                    ? tokens.armed
                                     : tokens.textMuted,
                               ),
                             if (showAutoClip && cfg.autoClip)
@@ -569,7 +571,7 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final color = entry.active ? tokens.accent : tokens.textMuted;
+    final color = entry.active ? tokens.armed : tokens.textDim;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
