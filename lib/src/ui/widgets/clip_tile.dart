@@ -330,7 +330,7 @@ class _ClipTileState extends State<ClipTile> {
                                 // Pinned against auto-cleanup (see the
                                 // overflow menu's Protect action).
                                 Icon(
-                                  Icons.bookmark,
+                                  Icons.bookmark_outlined,
                                   key: const ValueKey('protectedLock'),
                                   size: 11,
                                   color: tokens.textMuted,
@@ -523,6 +523,6 @@ class ClipThumbnail extends StatelessWidget {
   }
 
   Widget _playGlyph(Color color) => Center(
-        child: Icon(Icons.play_arrow_rounded, size: 36, color: color),
+        child: Icon(Icons.play_arrow, size: 36, color: color),
       );
 }

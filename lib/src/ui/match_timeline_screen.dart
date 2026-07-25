@@ -234,8 +234,7 @@ class _MatchTimelineBar extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon:
-                Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
             tooltip: playing ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
           ),

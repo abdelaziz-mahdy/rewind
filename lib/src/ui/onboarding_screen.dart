@@ -507,7 +507,7 @@ class _PermissionStepView extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.warning_amber_rounded, color: tokens.warn),
+                Icon(Icons.warning_amber_outlined, color: tokens.warn),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text('Granted. Relaunch Rewind to start capturing.',

@@ -6,6 +6,59 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+- **New design system: "Broadcast Deck."** Rewind now reads like the video
+  deck it is. The one rule is that **hue is reserved for state** — the mint
+  accent had come to mean seven unrelated things at once (rail selection,
+  primary buttons, the live-game dot, the focus ring, kill counts, the WIN
+  badge, auto-clip on), so a glance could not separate *where you are* from
+  *what the machine is doing*. Selection and buttons are now a neutral steel;
+  amber means the buffer is armed, red means a recording is running, green
+  means a good outcome, and nothing else carries colour.
+- **The recorder moved out of the sidebar into a transport deck** across the
+  top of every screen: a broadcast-style tally light, a ring showing how much
+  rolling buffer is actually held right now, the timecode, what capture is
+  pointed at, and Save clip / Record. It is visible on **Settings** too —
+  opening Settings mid-match used to hide the REC state, the elapsed timer and
+  the Save clip button entirely.
+- **Fonts ship with the app** (Archivo, Inter Tight, IBM Plex Mono). Rewind
+  previously rendered in whatever the OS provided, so it was literally a
+  different design on Windows than on macOS. Every number in the app —
+  timecodes, durations, sizes, K/D/A, counts — is now set in a real monospace.
+- **All Clips and each game hub show the same session card.** They present the
+  same thing at the same level and used to do it two different ways, with two
+  different card sizes. All Clips also gains sorting (newest / largest / most
+  clips), and card size now follows window width instead of being fixed, so a
+  large display shows bigger clips rather than more of them.
+- **A game hub leads with how you have been playing**: matches, win rate,
+  average KDA and disk use, replacing the old "42 clips · 2.4 GB · last clip
+  2 h ago" line. Nothing is invented — a figure that was never recorded is
+  left out rather than shown as zero.
+- **Plainer language.** A hub's status now reads "IN MATCH · CLIPS ITSELF",
+  "KNOWS WHEN YOU PLAY" or "HOTKEY ONLY" instead of "LIVE CLIENT API",
+  "PROCESS DETECTION" and "MANUAL CAPTURE", which described how Rewind is
+  built rather than what you get.
+- **First run teaches the buffer** instead of describing it: a diagram of the
+  rolling window ending at NOW, and the point everything else depends on —
+  Rewind is already rolling, so you don't press record, you press rewind.
+- **Saving a clip says what it saved**: the confirmation now names the moment,
+  its game and its size, and offers "Show me". It was a bare "Clip saved".
+- The player leads with the moment ("Penta Kill") rather than the game name,
+  and its event markers gained a readable legend beneath the seek bar instead
+  of being 3px ticks you had to hover one at a time.
+
+### Accessibility
+- Screen readers can now read the recorder state, the live-game dot, clip
+  counts, K/D/A, match results, event badges, the buffer diagram and every
+  timeline marker — all of which previously conveyed their meaning through
+  colour and position alone.
+- WCAG AA contrast is enforced by a test across every colour pair rather than
+  documented in a comment, so a future palette change cannot silently regress
+  it.
+- The "⟨game⟩ is running" banner's buttons grew to a comfortable target size;
+  they were small enough, and close enough to the dismiss ✕, to invite
+  misclicks at exactly the moment a game launches.
+
 ### Added
 - **Record the whole play session (per game)**: a new "Full session" toggle
   on each game's settings page records the entire session to one continuous

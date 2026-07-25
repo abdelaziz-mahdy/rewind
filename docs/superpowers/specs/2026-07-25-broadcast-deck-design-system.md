@@ -254,6 +254,14 @@ Each step is independently shippable and independently reviewable.
 6. **Polish** — one icon family (outlined), control heights, directional transitions, title-bar drag
    region.
 
+**Status after implementation (2026-07-25):** steps 1-6 landed, with two deviations, both recorded
+above rather than silently dropped:
+
+- The `bufferFillFraction` coordinator seam proved unnecessary (§5).
+- **The title-bar drag region was NOT done.** It needs a window-management package
+  (`window_manager` or equivalent) plus per-platform runner changes, which is a dependency decision
+  outside this spec's "no new packages" scope. Audit finding F-14 stays open.
+
 ## 7. Non-goals
 
 - No light theme. `RewindTokens.dark` remains the only instance.

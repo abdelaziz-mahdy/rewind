@@ -162,14 +162,42 @@ playback and any future headless media_kit use):**
   doesn't need real capture, e.g. testing thumbnail generation against an
   already-recorded clip).
 
-**UI layer rules (post game-centric redesign — spec:
-`docs/superpowers/specs/2026-07-13-game-centric-redesign.md`):**
+**UI layer rules (IA from `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`;
+visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md`):**
 - All styling flows through `RewindTokens` / the text-theme extension in
   `lib/src/ui/theme.dart`. NO glow/BoxShadow, no gradients, no pill radii
   (`circular(999)`), no raw hex in widgets. Hover/press overlays must
   LIGHTEN (low-alpha white) — dark-on-dark overlays are invisible.
-- Navigation: `shell.dart` (rail + recorder deck + destinations) on a sealed
-  `shell_destination.dart` value. No router/state-management packages.
+- **Hue is reserved for state; chrome is achromatic.** `interactive` (a
+  neutral steel) paints every selection, primary fill and focus ring.
+  `armed` = buffer running / game live / auto-clip on. `onAir` = a manual
+  recording. `positive` = a good outcome. `danger` = destructive or failed.
+  Never paint a nav row with a state color, or a state with `interactive`.
+  `test/theme_contrast_test.dart` enforces WCAG AA on every token pair AND
+  that `interactive` stays achromatic — retune tokens, never the test.
+- **Every digit uses the numeral role** (`textTheme.numeral` /
+  `numeralLarge`, IBM Plex Mono): timecodes, durations, sizes, K/D/A, buffer
+  seconds, counts. Never `copyWith(fontFeatures: tabularFigures)` by hand.
+- Fonts are BUNDLED (`assets/fonts/`, see `docs/THIRD_PARTY.md`). Archivo =
+  display, Inter Tight = UI, IBM Plex Mono = numerals. The first two are
+  VARIABLE: any non-default weight must set `fontVariations` as well as
+  `fontWeight`, or the engine synthesizes a fake bold instead.
+- One icon family: `*_outlined` for interface icons. The three transport
+  glyphs (`play_arrow`, `pause`, `stop`) stay filled — a hollow play
+  triangle is illegible at 20px.
+- Navigation: `shell.dart` = `TransportDeck` across the top, then rail +
+  destination, on a sealed `shell_destination.dart` value. No
+  router/state-management packages. The deck renders on EVERY destination
+  including Settings — that is deliberate and load-bearing (Settings is the
+  screen most likely to be opened mid-match; without it, REC state and Save
+  clip disappear).
+- **Zero idle animation.** Nothing may animate while the app sits in the
+  background — a never-ending animation once measured ~45% app + ~45%
+  WindowServer CPU. The deck's 1s ticker is the only repeating timer and is
+  bounded on both sides (stops when a recording ends and when the buffer
+  ring fills).
+- All Clips and every game hub render the SAME `SessionCard`; they differ
+  only in scope. Don't add a second card shape for either.
 - Beware Flutter's flex-allocation trap: several loose `Flexible(flex: 1)`
   children + a `Spacer` in one Row each get an equal SHARE of free space
   whether used or not — trailing buttons end up stranded mid-row. One

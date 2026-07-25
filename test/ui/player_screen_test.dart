@@ -42,21 +42,21 @@ void main() {
 
   group('volumeIcon', () {
     test('zero is muted', () {
-      expect(volumeIcon(0), Icons.volume_off_rounded);
+      expect(volumeIcon(0), Icons.volume_off_outlined);
     });
 
     test('below the halfway mark is the low glyph', () {
-      expect(volumeIcon(1), Icons.volume_down_rounded);
-      expect(volumeIcon(49), Icons.volume_down_rounded);
+      expect(volumeIcon(1), Icons.volume_down_outlined);
+      expect(volumeIcon(49), Icons.volume_down_outlined);
     });
 
     test('at or above the halfway mark is the full glyph', () {
-      expect(volumeIcon(50), Icons.volume_up_rounded);
-      expect(volumeIcon(100), Icons.volume_up_rounded);
+      expect(volumeIcon(50), Icons.volume_up_outlined);
+      expect(volumeIcon(100), Icons.volume_up_outlined);
     });
 
     test('a negative volume (defensive) still reads as muted', () {
-      expect(volumeIcon(-1), Icons.volume_off_rounded);
+      expect(volumeIcon(-1), Icons.volume_off_outlined);
     });
   });
 }

@@ -698,7 +698,7 @@ class _DetectedGameBanner extends StatelessWidget {
     final tokens = context.rewindTokens;
     return Container(
       key: ValueKey('detectedGameBannerRow:$gameId'),
-      height: 44,
+      height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: tokens.surfaceRaised,
@@ -723,13 +723,17 @@ class _DetectedGameBanner extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           SizedBox(
-            height: 28,
+            // 32, not 28, and no shrink-wrapped hit test: this row appears
+            // the moment a game launches — i.e. when the user is least
+            // careful — and sits a few px from a small dismiss ✕. A
+            // shrink-wrapped 28px target beside a 16px glyph is a misclick
+            // generator.
+            height: 32,
             child: FilledButton(
               key: ValueKey('detectedGameBannerRecord:$gameId'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(0, 32),
               ),
               onPressed: onRecord,
               // "Add game", not "Record": the action learns the game so
@@ -740,7 +744,8 @@ class _DetectedGameBanner extends StatelessWidget {
           ),
           IconButton(
             key: ValueKey('detectedGameBannerDismiss:$gameId'),
-            icon: const Icon(Icons.close, size: 16),
+            icon: const Icon(Icons.close, size: 18),
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
             color: tokens.textMuted,
             // Names the scope: dismissal is session-only, the banner comes
             // back next launch/game — without this the icon-only ✕ can read
@@ -790,7 +795,7 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, color: amber),
+          Icon(Icons.warning_amber_outlined, color: amber),
           const SizedBox(width: 8),
           Expanded(
             child: Column(

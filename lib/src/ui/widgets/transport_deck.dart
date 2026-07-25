@@ -714,7 +714,7 @@ class _RecordButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: _controlPaddingH),
           ),
           onPressed: onPressed,
-          icon: const Icon(Icons.stop_outlined, size: _controlIconSize),
+          icon: const Icon(Icons.stop, size: _controlIconSize),
           label: Text(elapsed, style: Theme.of(context).textTheme.numeral),
         ),
       );

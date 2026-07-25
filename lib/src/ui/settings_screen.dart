@@ -1202,7 +1202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       IconButton(
                         key: const ValueKey('micListenButton'),
-                        icon: const Icon(Icons.headphones),
+                        icon: const Icon(Icons.headphones_outlined),
                         tooltip: 'Listen to this mic',
                         color:
                             _micListening ? context.rewindTokens.armed : null,
@@ -1916,7 +1916,7 @@ class _SettingsSidebar extends StatelessWidget {
       'Steam',
       Icons.emoji_events_outlined
     ),
-    (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outline),
+    (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outlined),
   ];
 
   @override

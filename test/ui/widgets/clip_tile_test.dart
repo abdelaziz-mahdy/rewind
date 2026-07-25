@@ -132,7 +132,7 @@ void main() {
       await t.pumpWidget(app(ClipTile(clip: clip, library: library)));
       await t.pump();
 
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
       expect(find.byType(Image), findsNothing);
     });
 
@@ -150,7 +150,7 @@ void main() {
       // Generation is still in flight the very first frame (even a fully
       // synchronous fake still needs a microtask to resolve its Future) —
       // the placeholder glyph shows, no image yet.
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
       expect(find.byType(Image), findsNothing);
 
       // Bounded pumps flush the queued microtasks that let the fake's
@@ -160,7 +160,7 @@ void main() {
 
       expect(find.byType(Image), findsOneWidget);
       // The play-glyph overlay stays visible on top of the image.
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
     });
 
     testWidgets('a failed generation leaves the placeholder showing',
@@ -173,7 +173,7 @@ void main() {
       await t.pump();
       await t.pump();
 
-      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
       expect(find.byType(Image), findsNothing);
     });
   });

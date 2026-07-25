@@ -16,17 +16,22 @@ This document describes how Rewind is put together and why.
 
 Owns everything the user sees and most of the logic:
 
-- **UI** (`lib/src/ui/`) — a game-centric shell: a persistent left rail
-  (games as first-class destinations, built by `game_directory.dart`), a
-  recorder deck (buffer state, capture-source picker, save), per-game hub
-  screens (clips, matches, detection status, and a glanceable
-  capture-settings summary card), a supported-games catalog, in-app player
-  (media_kit), and tray presence. Settings is a **full-page screen** with
-  its own sidebar (GENERAL pages + a MY GAMES page per configured game —
-  all per-game editing lives there; the hub card links into it). Design
-  system: `RewindTokens` in `theme.dart`; base spec in
-  `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`, settings
-  redesign rationale in the 2026-07-18 research pass (variants artifact).
+- **UI** (`lib/src/ui/`) — a game-centric shell: a **transport deck**
+  (`widgets/transport_deck.dart`) spanning the top of every destination
+  (tally light, buffer ring + timecode, capture-source picker, Save clip /
+  Record), a persistent left rail beneath it for navigation only (games as
+  first-class destinations, built by `game_directory.dart`), per-game hub
+  screens (a score band, matches as `SessionCard`s, detection status, and a
+  glanceable capture-settings summary), a cross-game All Clips grid of the
+  same `SessionCard`, a supported-games catalog, in-app player (media_kit),
+  and tray presence. Settings is a **full-page screen** with its own sidebar
+  (GENERAL pages + a MY GAMES page per configured game — all per-game
+  editing lives there; the hub card links into it) — but the deck still
+  renders above it, so recording state is never hidden. Design system:
+  `RewindTokens` + the bundled type roles in `theme.dart`; IA spec in
+  `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`, visual
+  system in `docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md`,
+  settings redesign rationale in the 2026-07-18 research pass.
 - **Event watchers** (`lib/src/events/`) — per-game sources that emit `GameEvent`s. THREE source SHAPES exist so far: `LeagueEventWatcher`, which polls a **local, cert-pinned** HTTPS endpoint at `https://127.0.0.1:2999/liveclientdata/eventdata` (no credentials, only exists mid-match); `SteamAchievementWatcher`, which polls the **public, credentialed** Steam Web API (`api.steampowered.com`) for achievement unlocks — kept in the tree but no longer constructed, see below; and `SteamStatsWatcher` (maintainer decision 2026-07-19, replacing the Web API watcher as `source_builder.dart`'s actual Steam source), a **local file watcher**: no credentials, no network, discovers every Steam install on the machine and watches its `appcache/stats/` cache directly for achievement unlocks. All three are generic across EVERY Steam/League game rather than one title where applicable, and (Steam sources only) deliberately never "activate" through `GameRegistry`'s normal `isGameRunning` tick (they drive no capture/buffer-policy signal of their own; events are attributed to whatever game is otherwise detected active). See each class's doc for the full contrast.
 - **Clip coordinator** — subscribes to watchers and the global hotkey; decides when to call the capture engine to save a clip; records metadata into the clip library.
 - **FFI bindings** (`lib/src/obs/`) — thin Dart wrappers over the C shim,

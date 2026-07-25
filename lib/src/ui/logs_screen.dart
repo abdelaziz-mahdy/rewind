@@ -118,7 +118,7 @@ class _LogsScreenState extends State<LogsScreen> {
             ),
           IconButton(
             tooltip: 'Clear',
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Icons.delete_outlined),
             onPressed: _entries.isEmpty ? null : _clear,
           ),
         ],

@@ -90,7 +90,7 @@ class MatchClipsScreen extends StatelessWidget {
                   if (prober != null && session.clips.isNotEmpty)
                     FilledButton.icon(
                       key: const ValueKey('watchMatchButton'),
-                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      icon: const Icon(Icons.play_circle_outlined, size: 18),
                       label: const Text('Watch match'),
                       onPressed: () {
                         Navigator.of(context).push(MaterialPageRoute<void>(

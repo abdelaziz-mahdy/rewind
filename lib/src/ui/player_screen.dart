@@ -33,9 +33,9 @@ const playerScreenRouteName = '/player';
 /// media_kit [Player] (player_screen_test.dart cannot build [PlayerScreen]
 /// itself — see that file's header comment).
 IconData volumeIcon(double volume) {
-  if (volume <= 0) return Icons.volume_off_rounded;
-  if (volume < 50) return Icons.volume_down_rounded;
-  return Icons.volume_up_rounded;
+  if (volume <= 0) return Icons.volume_off_outlined;
+  if (volume < 50) return Icons.volume_down_outlined;
+  return Icons.volume_up_outlined;
 }
 
 /// In-app playback view for a single clip. Owns a media_kit [Player] /
@@ -390,7 +390,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Icons.arrow_back),
             tooltip: 'Close',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
@@ -487,8 +487,7 @@ class _Controls extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon:
-                Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
             tooltip: playing ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
           ),
