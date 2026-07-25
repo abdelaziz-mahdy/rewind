@@ -15,12 +15,16 @@ All notable changes to Rewind are documented here. Format based on
   *what the machine is doing*. Selection and buttons are now a neutral steel;
   amber means the buffer is armed, red means a recording is running, green
   means a good outcome, and nothing else carries colour.
-- **The recorder moved out of the sidebar into a transport deck** across the
-  top of every screen: a broadcast-style tally light, a ring showing how much
-  rolling buffer is actually held right now, the timecode, what capture is
-  pointed at, and Save clip / Record. It is visible on **Settings** too —
-  opening Settings mid-match used to hide the REC state, the elapsed timer and
-  the Save clip button entirely.
+- **The recorder is one button in the sidebar that opens a panel** — capture
+  source, buffer length, Save clip and Record — instead of a row of controls
+  taking up permanent space. The button itself reports the state (armed,
+  recording, waiting for a game, unavailable) and how long the buffer is. It
+  appears on **Settings** too; opening Settings mid-match used to hide whether
+  anything was recording at all.
+- **The menu-bar icon now says when you're recording.** While you're gaming
+  Rewind's window is behind the game, so the menu bar is the only place that
+  can actually tell you anything — and it was staying silent, spending what it
+  knew on menu labels you had to open the menu to read.
 - **Fonts ship with the app** (Archivo, Inter Tight, IBM Plex Mono). Rewind
   previously rendered in whatever the OS provided, so it was literally a
   different design on Windows than on macOS. Every number in the app —

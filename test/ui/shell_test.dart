@@ -118,14 +118,25 @@ void main() {
     expect(find.text('All clips'), findsNothing); // empty state, no header
   });
 
-  testWidgets('capture error reads UNAVAILABLE on the deck tally', (t) async {
+  testWidgets('capture error reads UNAVAILABLE on the recorder chip',
+      (t) async {
+    // The chip prints its state only on the EXPANDED rail; below
+    // navRailCompactBelow it collapses to the ring alone.
+    t.view.physicalSize = const Size(1400, 900);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
     await t.pumpWidget(_app(shell(error: 'libobs init failed')));
     expect(find.text('ARMED'), findsNothing);
     expect(find.text('UNAVAILABLE'), findsOneWidget);
   });
 
-  testWidgets('pausing the buffer flips the tally from ARMED to PAUSED',
+  testWidgets('pausing the buffer flips the chip from ARMED to PAUSED',
       (t) async {
+    // The chip prints its state only on the EXPANDED rail; below
+    // navRailCompactBelow it collapses to the ring alone.
+    t.view.physicalSize = const Size(1400, 900);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
     final active = ValueNotifier<bool>(true);
     await t.pumpWidget(_app(shell(bufferActive: active)));
     expect(find.text('ARMED'), findsOneWidget);
@@ -135,28 +146,33 @@ void main() {
     expect(find.text('PAUSED'), findsOneWidget);
   });
 
-  testWidgets('the deck stays visible on the Settings destination', (t) async {
-    // Settings used to take over the whole window, taking the recorder with
-    // it: opening Settings mid-match hid the REC state, the elapsed timer
-    // and the Save clip button until the user navigated back. That is the
-    // one screen most likely to be opened DURING a game.
+  testWidgets('the recorder stays visible on the Settings destination',
+      (t) async {
+    // Settings takes over the whole window, and used to take the recorder
+    // with it: opening Settings mid-match hid the REC state entirely until
+    // the user navigated back. That is the one screen most likely to be
+    // opened DURING a game. It keeps its own sidebar and no rail — the
+    // recorder chip is handed to that sidebar instead.
     await t.pumpWidget(_app(shell()));
-    expect(find.byKey(const ValueKey('transportDeck')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recorderButton')), findsOneWidget);
 
     await t.tap(find.byKey(const ValueKey('navItem:settings')));
     await t.pump(const Duration(milliseconds: 200));
 
     expect(find.byKey(const ValueKey('settingsScreen')), findsOneWidget);
     expect(find.byKey(const ValueKey('navRail')), findsNothing);
-    expect(find.byKey(const ValueKey('transportDeck')), findsOneWidget);
-    expect(find.byKey(const ValueKey('deckSaveClip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('recorderButton')), findsOneWidget);
   });
 
   testWidgets('capture error shows banner and disables Save', (t) async {
     await t.pumpWidget(_app(shell(error: 'libobs init failed')));
     expect(find.textContaining('libobs init failed'), findsOneWidget);
+    // Save lives in the recorder popover now (see RecorderButton's doc).
+    await t.tap(find.byKey(const ValueKey('recorderButton')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
     final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save clip'));
+        t.widget<FilledButton>(find.byKey(const ValueKey('deckSaveClip')));
     expect(btn.onPressed, isNull);
   });
 

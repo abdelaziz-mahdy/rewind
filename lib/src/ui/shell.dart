@@ -29,7 +29,7 @@ import 'theme.dart';
 import 'widgets/clip_tile.dart' show eventBadge, formatSize;
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
-import 'widgets/transport_deck.dart';
+import 'widgets/recorder_panel.dart';
 
 /// The app's persistent scaffold (§3.1): a 220 px left rail — ending in the
 /// `RecorderCluster`, a Discord-style Save/Record/status block pinned to its
@@ -400,20 +400,22 @@ class _ShellState extends State<Shell> {
             activeIds: widget.coordinator.activeGameIds.value,
           ),
           steamStatus: widget.steamStatus?.call(),
+          recorder: _recorder(),
         ),
     };
   }
 
-  /// The transport deck, rendered above EVERY destination — including
-  /// Settings, which used to take over the whole window and with it every
-  /// signal that a recording was running (see `TransportDeck`'s doc and the
-  /// broadcast-deck spec §2).
-  Widget _deck() => TransportDeck(
+  /// The recorder, as one button at the top of the rail (see
+  /// `RecorderButton`). Built here rather than inside `NavRail` so the
+  /// Settings destination — which keeps its own sidebar and no rail — can be
+  /// handed the same widget.
+  Widget _recorder({bool compact = false}) => RecorderButton(
         coordinator: widget.coordinator,
         captureError: widget.captureError,
         bufferActive: widget.bufferActive,
         bufferAutoPaused: widget.bufferAutoPaused,
         hotkeyLabel: widget.hotkeyLabel,
+        compact: compact,
         displays: widget.displays,
         capturableApps: widget.capturableApps,
         listApps: widget.listApps,
@@ -424,85 +426,69 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
-    // Settings still covers the window below the deck: its own sidebar is
-    // the ONLY nav while it is open, so the app rail (and the error/
-    // detected-game banners that sit above the normal content area) are not
-    // shown — same rule a full-screen route would follow, just without an
-    // actual Navigator push. The deck is the exception, deliberately: losing
-    // the REC state and the Save clip button on the one screen a user opens
-    // MID-MATCH was the whole point of moving it out of the rail.
+    final compactRail = MediaQuery.sizeOf(context).width < navRailCompactBelow;
+    // Settings keeps its own sidebar as the only nav while open — but it now
+    // carries the recorder at the top of that sidebar, so the one screen a
+    // user is most likely to open MID-MATCH no longer hides whether anything
+    // is being recorded. That was the real defect; it never needed a bar.
     if (_destination is SettingsDestination) {
-      return Scaffold(
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [_deck(), Expanded(child: _content(context))],
-        ),
-      );
+      return Scaffold(body: _content(context));
     }
     return Scaffold(
-      body: Column(
+      body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _deck(),
+          NavRail(
+            coordinator: widget.coordinator,
+            library: widget.library,
+            // A 220px rail is 27% of an 820px window, and this app is meant
+            // to sit BESIDE a game — a half-screen window is a normal way to
+            // use it, not an edge case.
+            compact: compactRail,
+            recorder: _recorder(compact: compactRail),
+            settingsRevision: widget.settingsRevision,
+            selected: _destination,
+            onSelect: _select,
+            onOpenLogs: _openLogs,
+          ),
           Expanded(
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                NavRail(
+                if (widget.captureError != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: _ErrorBanner(message: widget.captureError!),
+                  ),
+                _DetectedGameBanners(
                   coordinator: widget.coordinator,
-                  library: widget.library,
-                  // A 220px rail is 27% of an 820px window, and this app is
-                  // meant to sit BESIDE a game — a half-screen window is a
-                  // normal way to use it, not an edge case.
-                  compact:
-                      MediaQuery.sizeOf(context).width < navRailCompactBelow,
+                  capturableApps: widget.capturableApps,
                   settingsRevision: widget.settingsRevision,
-                  selected: _destination,
-                  onSelect: _select,
-                  onOpenLogs: _openLogs,
+                  dismissed: _dismissedBanners,
+                  onDismiss: _dismissBanner,
+                  onRecord: _recordDetectedGame,
+                  listApps: widget.listApps,
+                  steamResolver: widget.steamResolver,
+                  onRecordApp: _recordDetectedApp,
                 ),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (widget.captureError != null)
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: _ErrorBanner(message: widget.captureError!),
-                        ),
-                      _DetectedGameBanners(
-                        coordinator: widget.coordinator,
-                        capturableApps: widget.capturableApps,
-                        settingsRevision: widget.settingsRevision,
-                        dismissed: _dismissedBanners,
-                        onDismiss: _dismissBanner,
-                        onRecord: _recordDetectedGame,
-                        listApps: widget.listApps,
-                        steamResolver: widget.steamResolver,
-                        onRecordApp: _recordDetectedApp,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 160),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.02),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                            parent: animation, curve: Curves.easeOut)),
+                        child: child,
                       ),
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 160),
-                          transitionBuilder: (child, animation) =>
-                              FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.02),
-                                end: Offset.zero,
-                              ).animate(CurvedAnimation(
-                                  parent: animation, curve: Curves.easeOut)),
-                              child: child,
-                            ),
-                          ),
-                          child: KeyedSubtree(
-                            key: ValueKey(_destinationKey(_destination)),
-                            child: _content(context),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey(_destinationKey(_destination)),
+                      child: _content(context),
+                    ),
                   ),
                 ),
               ],

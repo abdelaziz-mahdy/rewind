@@ -142,6 +142,12 @@ class SettingsScreen extends StatefulWidget {
   /// either way (see `_steamPage`'s doc).
   final ValueListenable<String?>? steamStatus;
 
+  /// The recorder chip (see `RecorderButton`), pinned at the top of this
+  /// screen's own sidebar. Settings covers the whole window, so without it
+  /// the one screen most likely to be opened MID-MATCH would be the one
+  /// screen that hides whether anything is recording.
+  final Widget? recorder;
+
   /// Looks up this machine's local Steam accounts (`loginusers.vdf`), for
   /// the Steam page's SteamID auto-detect -- see `steam_account_locator.
   /// dart`. Defaults to the real, this-machine lookup
@@ -165,6 +171,7 @@ class SettingsScreen extends StatefulWidget {
     this.initialGameId,
     this.initialTab,
     this.steamStatus,
+    this.recorder,
     this.steamAccountLocator,
     super.key,
   });
@@ -936,6 +943,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onSelectGeneral: _selectGeneralPage,
                 onSelectGame: _selectGame,
                 onClose: widget.onClose,
+                recorder: widget.recorder,
               ),
               Expanded(child: _selectedBody(context)),
             ],
@@ -1882,6 +1890,9 @@ class _SettingsSidebar extends StatelessWidget {
   /// "out of the normal").
   final VoidCallback? onClose;
 
+  /// See `SettingsScreen.recorder`.
+  final Widget? recorder;
+
   const _SettingsSidebar({
     required this.selectedGeneralPage,
     required this.selectedGameId,
@@ -1889,6 +1900,7 @@ class _SettingsSidebar extends StatelessWidget {
     required this.onSelectGeneral,
     required this.onSelectGame,
     this.onClose,
+    this.recorder,
   });
 
   static const _items = [
@@ -1934,12 +1946,13 @@ class _SettingsSidebar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(10, 14, 16, 12),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: _CloseButton(onClose: onClose),
               ),
             ),
+            if (recorder case final r?) r,
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Text(

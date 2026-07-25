@@ -34,6 +34,11 @@ class NavRail extends StatelessWidget {
   /// Icons only, no labels — see [navRailCompactBelow].
   final bool compact;
 
+  /// The recorder chip, pinned under the wordmark (see `RecorderButton`).
+  /// Built by `Shell` rather than here so the Settings destination — which
+  /// has its own sidebar and no rail — can be handed the same widget.
+  final Widget? recorder;
+
   /// See [ClipCoordinator]'s settings-mutated-in-place callers — bumped
   /// whenever a game gets configured (e.g. a per-game buffer edit), which the
   /// rail's game list must reflect even though `library`/`activeGameIds`
@@ -49,6 +54,7 @@ class NavRail extends StatelessWidget {
     required this.coordinator,
     required this.library,
     this.compact = false,
+    this.recorder,
     this.settingsRevision,
     required this.selected,
     required this.onSelect,
@@ -103,6 +109,7 @@ class NavRail extends StatelessWidget {
               ),
             ),
           ),
+          if (recorder case final r?) r,
           _NavItem(
             key: const ValueKey('navItem:allClips'),
             icon: Icons.video_library_outlined,

@@ -215,6 +215,15 @@ void main() {
     await shoot('01-shell-all-clips');
   });
 
+  testWidgets('shell — recorder panel open', (t) async {
+    await t.pumpWidget(frame(shell(seeded())));
+    await t.pump(const Duration(milliseconds: 400));
+    await t.tap(find.byKey(const ValueKey('recorderButton')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    await shoot('06-recorder-panel');
+  });
+
   testWidgets('shell — game hub', (t) async {
     await t.pumpWidget(frame(shell(seeded())));
     await t.pump(const Duration(milliseconds: 400));

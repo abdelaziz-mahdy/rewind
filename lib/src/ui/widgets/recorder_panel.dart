@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,40 +12,41 @@ import '../icns.dart';
 import '../theme.dart';
 import 'game_tile_avatar.dart';
 
-/// Height of the deck. Fixed: it is chrome, and content below it must not
-/// reflow when the tally changes width.
-const double transportDeckHeight = 44;
-
-const double _controlHeight = 28;
+const double _controlHeight = 30;
 const double _controlIconSize = 14;
 const double _controlPaddingH = 10;
 
 /// Square size of the real-app-icon / monogram leading a source-menu row.
 const double _menuIconSize = 20;
 
-/// The transport deck: a full-width bar above the rail and content, present
-/// on EVERY destination including Settings.
+/// The recorder: one button in the rail that opens a panel.
 ///
-/// This replaces `RecorderCluster`, which lived at the bottom of the nav rail
-/// (see docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md §2).
-/// Two defects drove the move, both from the 2026-07-25 audit:
+/// Not a bar. Two earlier attempts put this on a persistent strip — first
+/// across the top, then across the bottom — and both were rejected on sight.
+/// Checking what comparable apps actually do says the same thing:
 ///
-/// * The buffer state — the single thing a user wants to know mid-game — was
-///   10px muted text at the bottom of a sidebar, under three stacked buttons.
-/// * `Shell` renders the Settings destination full-page with no rail, so
-///   opening Settings mid-match hid the REC state, the elapsed timer AND the
-///   Save clip button until the user navigated back.
+/// * **NVIDIA ShadowPlay** puts NOTHING in its desktop window. Capture state
+///   lives in the in-game overlay and a status indicator drawn over the game.
+/// * **Medal** has a single "Start Game" button in the window's top-left that
+///   opens a quick-settings dropdown; recording is otherwise automatic on
+///   game detection and captured by hotkey.
+/// * **OBS** does have a controls dock and a status bar — but it is a
+///   dockable-panel console where the window IS the instrument, which a clip
+///   library is not.
 ///
-/// An earlier full-width deck (`StatusStrip`, 2026-07-13 spec §3.2) was
-/// removed as redundant, and correctly so: it restated the active game's
-/// name and icon, which the rail and every hub header already show. This
-/// deck deliberately carries only what nothing else in the app can say —
-/// tally state, how full the rolling buffer is, the timecode, what capture
-/// is actually pointed at, and the two verbs.
+/// The argument underneath all three: while you are gaming, this window is
+/// behind a fullscreen game. Anything put in it is invisible at exactly the
+/// moment it matters, so paying permanent chrome for it buys nothing. The
+/// always-on indicator belongs in the tray (see `TrayService`, which now
+/// carries the live state in its title); the window only needs somewhere to
+/// GO for the controls.
 ///
-/// Left to right: tally light, buffer ring + timecode (tap to change buffer
-/// length), capture-source picker, then the hotkey cap, Save clip and Record.
-class TransportDeck extends StatefulWidget {
+/// So: a compact state chip at the top of the rail, opening a panel with the
+/// capture source, the buffer length, Save clip and Record. The rail is also
+/// kept visible on the Settings destination, which is what actually fixed the
+/// original defect — recording state vanishing on the one screen most likely
+/// to be opened mid-match — without a bar anywhere.
+class RecorderButton extends StatefulWidget {
   final ClipCoordinator coordinator;
   final String? captureError;
 
@@ -91,9 +91,10 @@ class TransportDeck extends StatefulWidget {
   /// still refreshes the readouts.
   final ValueListenable<int>? settingsRevision;
 
-  const TransportDeck({
+  const RecorderButton({
     required this.coordinator,
     required this.hotkeyLabel,
+    this.compact = false,
     required this.onSettingsChanged,
     required this.onOpenSettings,
     this.captureError,
@@ -106,11 +107,14 @@ class TransportDeck extends StatefulWidget {
     super.key,
   });
 
+  /// Icon-only, for the collapsed rail.
+  final bool compact;
+
   @override
-  State<TransportDeck> createState() => _TransportDeckState();
+  State<RecorderButton> createState() => _RecorderButtonState();
 }
 
-class _TransportDeckState extends State<TransportDeck> {
+class _RecorderButtonState extends State<RecorderButton> {
   /// Ticks the elapsed-recording readout, and (separately) the buffer ring
   /// while it is still filling. Never runs otherwise.
   ///
@@ -155,7 +159,7 @@ class _TransportDeckState extends State<TransportDeck> {
   }
 
   @override
-  void didUpdateWidget(covariant TransportDeck old) {
+  void didUpdateWidget(covariant RecorderButton old) {
     super.didUpdateWidget(old);
     if (old.coordinator != widget.coordinator) {
       old.coordinator.isRecording.removeListener(_onStateChanged);
@@ -275,97 +279,110 @@ class _TransportDeckState extends State<TransportDeck> {
     final bufferSeconds = widget.coordinator.settings
         .bufferSecondsFor(widget.coordinator.activeGame.value);
 
-    return Container(
-      key: const ValueKey('transportDeck'),
-      height: transportDeckHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        border: Border(bottom: hairlineBorder()),
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(tokens.surfaceRaised),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          side: BorderSide(color: tokens.hairline),
+        )),
       ),
-      child: Row(
-        children: [
-          Flexible(
-            child: TallyLight(
-              state: _tallyState,
-              elapsed: recording ? _elapsed : null,
-            ),
-          ),
-          const SizedBox(width: 12),
-          BufferReadout(
-            fill: _bufferFill,
-            seconds: bufferSeconds,
-            running: _bufferRunning,
-            onPick: _setBufferSeconds,
-            onOpenSettings: widget.onOpenSettings,
-          ),
-          const SizedBox(width: 12),
-          // Show the picker whenever ANYTHING is pickable — not only when the
-          // startup `displays` snapshot is non-empty. That snapshot is
-          // one-shot (main.dart); a single empty `listDisplays()` at launch (a
-          // display asleep/clamshell, the screen locked, or a fullscreen game
-          // holding its own Space) used to hide the only app picker in the
-          // main window for the whole session. A live engine re-enumerates on
-          // menu open, so always show it and let it self-heal; tests with no
-          // live enumerator fall back to the snapshot.
-          if (widget.displays.isNotEmpty ||
-              widget.capturableApps.isNotEmpty ||
-              widget.listApps != null)
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 260),
-                child: SourcePicker(
-                  displays: widget.displays,
-                  capturableApps: widget.capturableApps,
-                  listApps: widget.listApps,
-                  settings: widget.coordinator.settings,
-                  onSettingsChanged: widget.onSettingsChanged,
-                  onWinePick: (app, gameId) => widget.coordinator
-                      .captureWineAppWindow(app, gameId: gameId),
-                  autoSwitchedAppName:
-                      widget.coordinator.autoSwitchedAppName.value,
-                ),
-              ),
-            ),
-          const Spacer(),
-          // First thing to go on a narrow window: it is a reminder, not a
-          // control. Everything to its right is functional and stays.
-          if (MediaQuery.sizeOf(context).width >= 860) ...[
-            _KeyCap(label: widget.hotkeyLabel),
-            const SizedBox(width: 8),
-          ],
-          SizedBox(
-            height: _controlHeight,
-            // The tooltip carries the WHY when the button is disabled — a
-            // bare greyed control otherwise reads as broken.
-            child: Tooltip(
-              message: widget.captureError == null
-                  ? 'Save the last $bufferSeconds seconds'
-                  : 'Capture unavailable — check Screen Recording permission',
-              child: FilledButton.icon(
-                key: const ValueKey('deckSaveClip'),
-                style: FilledButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: _controlPaddingH),
-                ),
-                onPressed: widget.captureError == null
-                    ? () => widget.coordinator.onHotkey()
-                    : null,
-                icon:
-                    const Icon(Icons.videocam_outlined, size: _controlIconSize),
-                label: const Text('Save clip'),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          _RecordButton(
-            coordinator: widget.coordinator,
-            disabled: widget.captureError != null,
-            recording: recording,
-            elapsed: _elapsed,
-          ),
-        ],
+      builder: (context, controller, _) => _StateChip(
+        state: _tallyState,
+        elapsed: recording ? _elapsed : null,
+        seconds: bufferSeconds,
+        fill: _bufferFill,
+        compact: widget.compact,
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
+      menuChildren: [
+        SizedBox(
+          width: 268,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('CAPTURING',
+                    style: Theme.of(context)
+                        .textTheme
+                        .micro
+                        .copyWith(color: tokens.textDim)),
+                const SizedBox(height: 6),
+                // Show the picker whenever ANYTHING is pickable — not only
+                // when the startup `displays` snapshot is non-empty. That
+                // snapshot is one-shot (main.dart); a single empty
+                // `listDisplays()` at launch (a display asleep/clamshell, the
+                // screen locked, or a fullscreen game holding its own Space)
+                // used to hide the only app picker in the main window for the
+                // whole session. A live engine re-enumerates on menu open, so
+                // always show it and let it self-heal.
+                if (widget.displays.isNotEmpty ||
+                    widget.capturableApps.isNotEmpty ||
+                    widget.listApps != null)
+                  SourcePicker(
+                    displays: widget.displays,
+                    capturableApps: widget.capturableApps,
+                    listApps: widget.listApps,
+                    settings: widget.coordinator.settings,
+                    onSettingsChanged: widget.onSettingsChanged,
+                    onWinePick: (app, gameId) => widget.coordinator
+                        .captureWineAppWindow(app, gameId: gameId),
+                    autoSwitchedAppName:
+                        widget.coordinator.autoSwitchedAppName.value,
+                  ),
+                const SizedBox(height: 8),
+                BufferReadout(
+                  fill: _bufferFill,
+                  seconds: bufferSeconds,
+                  running: _bufferRunning,
+                  onPick: _setBufferSeconds,
+                  onOpenSettings: widget.onOpenSettings,
+                ),
+                if (_bufferRunning && _bufferFill < 1) ...[
+                  const SizedBox(height: 8),
+                  _FillLine(held: _bufferHeldSeconds, total: bufferSeconds),
+                ],
+                const SizedBox(height: 10),
+                Divider(height: 1, color: tokens.hairline),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: _controlHeight,
+                  child: Tooltip(
+                    message: widget.captureError == null
+                        ? 'Save the last $bufferSeconds seconds'
+                        : 'Capture unavailable — check Screen Recording '
+                            'permission',
+                    child: FilledButton.icon(
+                      key: const ValueKey('deckSaveClip'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: _controlPaddingH),
+                      ),
+                      onPressed: widget.captureError == null
+                          ? () => widget.coordinator.onHotkey()
+                          : null,
+                      icon: const Icon(Icons.videocam_outlined,
+                          size: _controlIconSize),
+                      label: Text('Save clip  ${widget.hotkeyLabel}'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _RecordButton(
+                  coordinator: widget.coordinator,
+                  disabled: widget.captureError != null,
+                  recording: recording,
+                  elapsed: _elapsed,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -403,16 +420,48 @@ class _TransportDeckState extends State<TransportDeck> {
 /// buffer and an active recording are different things.
 enum TallyState { armed, onAir, waiting, paused, unavailable }
 
-/// The deck's leftmost element: a dot plus a tracked label, tinted by state.
-/// Carries a `Semantics` label because the dot alone conveys state by color,
-/// which is exactly what WCAG's "not by color alone" rule is about.
-class TallyLight extends StatelessWidget {
+/// The rail's recorder chip: a dot, the state, and the buffer it holds.
+///
+/// Carries a `Semantics` label because a coloured dot conveys state by colour
+/// alone, which is exactly what WCAG's "not by colour alone" rule is about.
+/// The chip's state light. A plain dot, not a progress ring: a ring sitting
+/// at zero — which is the honest reading for the first seconds after launch,
+/// when the buffer really is still filling — reads as "off" or "broken"
+/// rather than "filling". How full the buffer is says it in words instead,
+/// in the panel, and only while it is still filling (see [_FillLine]).
+class _Dot extends StatelessWidget {
+  final Color color;
+  final bool lit;
+
+  const _Dot({required this.color, required this.lit});
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: lit ? color : Colors.transparent,
+          shape: BoxShape.circle,
+          border: lit ? null : Border.all(color: color, width: 1.5),
+        ),
+        child: const SizedBox(width: 9, height: 9),
+      );
+}
+
+class _StateChip extends StatelessWidget {
   final TallyState state;
-
-  /// Elapsed recording time, shown inside the label while on air.
   final String? elapsed;
+  final int seconds;
+  final double fill;
+  final bool compact;
+  final VoidCallback onTap;
 
-  const TallyLight({required this.state, this.elapsed, super.key});
+  const _StateChip({
+    required this.state,
+    required this.seconds,
+    required this.fill,
+    required this.compact,
+    required this.onTap,
+    this.elapsed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -427,11 +476,11 @@ class TallyLight extends StatelessWidget {
       TallyState.armed => (
           tokens.armed,
           'ARMED',
-          'Armed — the replay buffer is running',
+          'Armed — holding the last $seconds seconds',
         ),
       TallyState.waiting => (
           tokens.textDim,
-          'WAITING FOR A GAME',
+          'WAITING',
           'Waiting for a game — the buffer is paused until one starts',
         ),
       TallyState.paused => (
@@ -446,41 +495,61 @@ class TallyLight extends StatelessWidget {
         ),
     };
     final lit = state == TallyState.onAir || state == TallyState.armed;
+
     return Semantics(
       label: spoken,
+      button: true,
       child: ExcludeSemantics(
-        child: Container(
-          key: const ValueKey('deckTally'),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: lit ? color.withValues(alpha: 0.12) : null,
-            borderRadius: BorderRadius.circular(tokens.radiusChip),
-            border: Border.all(
-              color: lit ? color.withValues(alpha: 0.45) : tokens.hairline,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Static, never pulsing — see `_PulseDot`'s history note.
-              DecoratedBox(
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: const SizedBox(width: 7, height: 7),
-              ),
-              const SizedBox(width: 7),
-              // Ellipsizes rather than overflowing: "WAITING FOR A GAME" is
-              // the longest state, and the deck must survive a narrow window
-              // without dropping a functional control to make room for it.
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  softWrap: false,
-                  style: theme.textTheme.micro.copyWith(color: color),
+        child: Tooltip(
+          message: compact ? label : '',
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              key: const ValueKey('recorderButton'),
+              onTap: onTap,
+              child: Container(
+                height: 44,
+                padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 14),
+                decoration: BoxDecoration(
+                  border: Border(bottom: hairlineBorder()),
                 ),
+                child: compact
+                    ? Center(child: _Dot(color: color, lit: lit))
+                    : Row(
+                        children: [
+                          _Dot(color: color, lit: lit),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: theme.textTheme.micro
+                                      .copyWith(color: color),
+                                ),
+                                Text(
+                                  state == TallyState.onAir
+                                      ? 'recording'
+                                      : '$seconds s buffer',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: theme.textTheme.numeral.copyWith(
+                                      fontSize: 10, color: tokens.textDim),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.expand_more,
+                              size: 14, color: tokens.textDim),
+                        ],
+                      ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -549,13 +618,6 @@ class BufferReadout extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              BufferRing(
-                fill: fill,
-                color: tokens.armed,
-                track: tokens.hairline,
-                dimmed: !running,
-              ),
-              const SizedBox(width: 8),
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -571,6 +633,8 @@ class BufferReadout extends StatelessWidget {
                       )),
                 ],
               ),
+              const SizedBox(width: 8),
+              Icon(Icons.expand_more, size: 14, color: tokens.textDim),
             ],
           ),
         ),
@@ -579,103 +643,72 @@ class BufferReadout extends StatelessWidget {
   }
 }
 
-/// A 20px ring that fills clockwise with how much rolling buffer is held.
+/// How much rolling buffer is actually held, in words and a thin bar —
+/// shown ONLY while it is still filling.
 ///
-/// Deliberately a ring and not a bar: the buffer is circular — it overwrites
-/// its own oldest second forever — and a bar implies a beginning and an end
-/// it does not have.
-class BufferRing extends StatelessWidget {
-  final double fill;
-  final Color color;
-  final Color track;
-  final bool dimmed;
+/// "ARMED" alone overstates a buffer that has held four seconds: a save right
+/// now reaches back four seconds, not thirty. This says so directly rather
+/// than through a ring the user has to interpret, and disappears entirely
+/// once the buffer is full, which is almost always — so it costs nothing in
+/// the steady state and appears exactly when it has something to say.
+class _FillLine extends StatelessWidget {
+  final int held;
+  final int total;
 
-  const BufferRing({
-    required this.fill,
-    required this.color,
-    required this.track,
-    this.dimmed = false,
-    super.key,
-  });
+  const _FillLine({required this.held, required this.total});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(
-        painter: _RingPainter(
-          fill: fill.clamp(0.0, 1.0),
-          color: dimmed ? color.withValues(alpha: 0.25) : color,
-          track: track,
+    final tokens = context.rewindTokens;
+    final theme = Theme.of(context);
+    final fill = total <= 0 ? 1.0 : (held / total).clamp(0.0, 1.0);
+    return Semantics(
+      label: 'Holding $held of $total seconds so far',
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Holding $held s of $total s so far',
+                style: theme.textTheme.numeral
+                    .copyWith(fontSize: 10, color: tokens.textDim)),
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: SizedBox(
+                height: 3,
+                child: BufferFill(fill: fill),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _RingPainter extends CustomPainter {
+/// The bar itself, split out so the fill fraction is assertable without
+/// reaching into private state.
+class BufferFill extends StatelessWidget {
   final double fill;
-  final Color color;
-  final Color track;
 
-  const _RingPainter(
-      {required this.fill, required this.color, required this.track});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 2.5;
-    final rect =
-        Rect.fromLTWH(0, 0, size.width, size.height).deflate(stroke / 2 + 0.5);
-    final base = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..color = track;
-    canvas.drawArc(rect, 0, math.pi * 2, false, base);
-    if (fill <= 0) return;
-    final arc = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-    // Starts at 12 o'clock and sweeps clockwise — the reading everyone
-    // already has for a dial.
-    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * fill, false, arc);
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter old) =>
-      old.fill != fill || old.color != color || old.track != track;
-}
-
-/// A hotkey rendered as a physical keyboard key: bordered cap, numeral face.
-/// No drop shadow — the "raised key" read comes from the border alone.
-class _KeyCap extends StatelessWidget {
-  final String label;
-
-  const _KeyCap({required this.label});
+  const BufferFill({required this.fill, super.key});
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
-    return Semantics(
-      label: 'Save hotkey $label',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(tokens.radiusChip),
-            border: Border.all(color: tokens.hairline),
-          ),
-          child: Text(
-            label,
-            style: Theme.of(context)
-                .textTheme
-                .numeral
-                .copyWith(fontSize: 11, color: tokens.textDim),
-          ),
+    return Row(
+      children: [
+        Expanded(
+          flex: (fill * 1000).round().clamp(1, 1000),
+          child:
+              ColoredBox(color: tokens.armed, child: const SizedBox(height: 3)),
         ),
-      ),
+        Expanded(
+          flex: ((1 - fill) * 1000).round().clamp(1, 1000),
+          child: ColoredBox(
+              color: tokens.hairline, child: const SizedBox(height: 3)),
+        ),
+      ],
     );
   }
 }

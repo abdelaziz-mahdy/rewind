@@ -388,7 +388,7 @@ void main() {
     // once stranded it at ~60% of the row width. Measured against the
     // CONTENT COLUMN, which is capped and centred on a wide window (see
     // `contentMaxWidth`), not against the window edge.
-    final columnRight = (1600 + contentMaxWidth) / 2;
+    const columnRight = (1600 + contentMaxWidth) / 2;
     expect(right, greaterThan(columnRight - 40));
     expect(right, lessThanOrEqualTo(columnRight));
   });
