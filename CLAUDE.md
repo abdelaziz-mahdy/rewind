@@ -203,6 +203,26 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   whether used or not — trailing buttons end up stranded mid-row. One
   `Expanded` filler per row.
 
+**Screenshots of the UI — read `.claude/skills/screenshots/SKILL.md` first:**
+- `screencapture` from a terminal CANNOT work here (`could not create image
+  from display`) — Claude Code has no Screen Recording TCC grant. Don't retry
+  it and don't conclude screenshots are impossible.
+- The working path is an integration test that renders into a
+  `RepaintBoundary` and calls `toImage()` — pure Dart on the real GPU inside
+  the app's own process, so the OS screenshot API (and its permission) is
+  never involved. macOS's `integration_test` plugin also has no
+  `captureScreenshot` channel, so `takeScreenshot()` is not the answer either.
+- Two tours exist: `integration_test/ui_tour_test.dart` (individual screens)
+  and `integration_test/redesign_tour_test.dart` (the whole shell in five
+  states). Run with `flutter test <file> -d macos --dart-define=SHOT_DIR=after`.
+- For a BEFORE/AFTER across branches, write the tour against only the API that
+  exists on BOTH trees (go through `Shell`, whose prop list is deliberately
+  stable), keep it untracked, and `git checkout` the base branch IN PLACE to
+  re-run it. A `git worktree` fails — a fresh worktree can't resolve the macOS
+  runner's Swift Package Manager dependencies.
+- ALWAYS Read the PNGs back and look at them. A passing tour proves nothing;
+  the images are the artifact.
+
 **Testing gotchas:**
 - Never pipe `flutter test` through `tail`/`grep` when the exit code matters
   — pipes mask failures. Redirect to a file and `echo $?`.
