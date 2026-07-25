@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../clip/clip_library.dart';
 import '../clip/duration_prober.dart';
 import '../clip/match_export.dart';
+import '../clip/match_stats.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
@@ -229,7 +230,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
         return ListView(
           padding: EdgeInsets.zero,
           children: [
-            _header(context, entry),
+            _header(context, entry, _scoreCells(entry, sessions)),
             if (_isLeague && _liveEvents.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -313,7 +314,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
     ));
   }
 
-  Widget _header(BuildContext context, GameEntry entry) {
+  Widget _header(
+      BuildContext context, GameEntry entry, List<_ScoreCell> cells) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -351,22 +353,75 @@ class _GameHubScreenState extends State<GameHubScreen> {
             key: const ValueKey('gameHubDetailLine'),
             style: theme.textTheme.bodyMuted,
           ),
-          // No fake stats: the fact row only appears once this game has a
-          // clip (§3.4 — "omit facts when zero clips").
+          // No fake stats: the band only appears once this game has a clip,
+          // and each cell is omitted rather than shown as zero when the
+          // underlying data was never recorded.
           if (entry.clipCount > 0) ...[
-            const SizedBox(height: 4),
-            Text(_factLine(entry), style: theme.textTheme.bodyMuted),
+            const SizedBox(height: 12),
+            _ScoreBand(cells: cells),
           ],
         ],
       ),
     );
   }
 
-  String _factLine(GameEntry entry) {
-    final base =
-        '${entry.clipCount} clips · ${formatSize(entry.totalSizeBytes)}';
-    final last = entry.lastClipAt;
-    return last == null ? base : '$base · last clip ${relativeAge(last)}';
+  /// The header's four-cell readout — the reason to open a hub at all.
+  ///
+  /// A hub used to end its header with "42 clips · 2.4 GB · last clip 2 h
+  /// ago": true, but it never answered the question a player actually opens
+  /// their own match history to ask. With recorded stats the band reports
+  /// matches, win rate and average KDA; without them it falls back to what
+  /// IS known. Nothing is invented — a cell whose data was never recorded is
+  /// left out rather than rendered as a zero.
+  List<_ScoreCell> _scoreCells(GameEntry entry, List<ClipSession> sessions) {
+    final store = widget.coordinator.matchStats;
+    final recorded = <MatchStats>[
+      if (store != null)
+        for (final s in sessions)
+          if (store.statsFor(widget.gameId, s.startedAt) case final m?) m,
+    ];
+    final decided = recorded.where((m) => m.result != null).toList();
+    final combat =
+        recorded.where((m) => m.kills > 0 || m.deaths > 0 || m.assists > 0);
+
+    final cells = <_ScoreCell>[
+      _ScoreCell(
+        value: '${sessions.length}',
+        label: recorded.isEmpty ? 'SESSIONS' : 'MATCHES',
+      ),
+    ];
+
+    if (decided.isNotEmpty) {
+      final wins = decided.where((m) => m.result == MatchResult.win).length;
+      final pct = (wins / decided.length * 100).round();
+      cells.add(_ScoreCell(
+        value: '$pct%',
+        label: 'WIN RATE',
+        positive: pct >= 50,
+      ));
+    }
+
+    if (combat.isNotEmpty) {
+      final k = combat.fold<int>(0, (n, m) => n + m.kills);
+      final d = combat.fold<int>(0, (n, m) => n + m.deaths);
+      final a = combat.fold<int>(0, (n, m) => n + m.assists);
+      // The conventional KDA ratio. A no-death run divides by 1 rather than
+      // reporting infinity, which is the same convention every scoreboard
+      // the user has seen already uses.
+      final kda = (k + a) / (d == 0 ? 1 : d);
+      cells.add(_ScoreCell(value: kda.toStringAsFixed(1), label: 'AVG KDA'));
+    }
+
+    cells.add(
+        _ScoreCell(value: formatSize(entry.totalSizeBytes), label: 'ON DISK'));
+
+    if (cells.length < 4) {
+      if (entry.lastClipAt case final last?) {
+        cells.add(_ScoreCell(
+            value: relativeAge(last).toUpperCase(), label: 'LAST CLIP'));
+      }
+    }
+    return cells;
   }
 
   /// The single line folded in from the old integration-status card: for
@@ -527,6 +582,90 @@ class _GameHubScreenState extends State<GameHubScreen> {
   }
 }
 
+/// One cell of the hub header's score band.
+class _ScoreCell {
+  final String value;
+  final String label;
+
+  /// Tints the value with `positive` — used only where a higher number is
+  /// unambiguously better (a win rate at or above 50%).
+  final bool positive;
+
+  const _ScoreCell(
+      {required this.value, required this.label, this.positive = false});
+}
+
+/// The hub header's readout: up to four hairline-separated cells, numerals
+/// in the mono face so they align and read as data rather than prose.
+class _ScoreBand extends StatelessWidget {
+  final List<_ScoreCell> cells;
+
+  const _ScoreBand({required this.cells});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: settingsMaxContentWidth),
+      child: Container(
+        key: const ValueKey('gameHubScoreBand'),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          border: Border.fromBorderSide(hairlineBorder()),
+          color: tokens.surface,
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < cells.length; i++)
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: i == 0
+                      ? null
+                      : BoxDecoration(
+                          border: Border(left: hairlineBorder()),
+                        ),
+                  child: Semantics(
+                    label: '${cells[i].label.toLowerCase()} '
+                        '${cells[i].value}',
+                    child: ExcludeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cells[i].value,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.numeralLarge.copyWith(
+                              fontSize: 19,
+                              color: cells[i].positive
+                                  ? tokens.positive
+                                  : tokens.text,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cells[i].label,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.micro
+                                .copyWith(color: tokens.textDim),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One summary chip in [_GameHubScreenState._captureSummaryCard]: a small
 /// raised-bg pill, same visual language as [_StatusPill].
 class _SummaryChip extends StatelessWidget {
@@ -560,14 +699,23 @@ class _StatusPill extends StatelessWidget {
 
   const _StatusPill({required this.entry});
 
+  /// What the user GETS, not how Rewind is built.
+  ///
+  /// This used to read "LIVE CLIENT API" / "PROCESS DETECTION" / "MANUAL
+  /// CAPTURE" — implementation vocabulary that tells a player nothing they
+  /// can act on. The distinction that matters to them is whether the game
+  /// clips itself, whether Rewind at least knows when they're playing, or
+  /// whether it's hotkey-only.
   String get _label {
     if (entry.detection.contains(DetectionMethod.liveClientApi)) {
-      return 'LIVE CLIENT API';
+      return entry.vendorActive ? 'IN MATCH · CLIPS ITSELF' : 'CLIPS ITSELF';
     }
     if (entry.detection.contains(DetectionMethod.processWatch)) {
-      return 'PROCESS DETECTION';
+      return entry.active
+          ? 'RUNNING · KNOWS WHEN YOU PLAY'
+          : 'KNOWS WHEN YOU PLAY';
     }
-    return 'MANUAL CAPTURE';
+    return 'HOTKEY ONLY';
   }
 
   @override
@@ -575,23 +723,28 @@ class _StatusPill extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     final color = entry.active ? tokens.armed : tokens.textDim;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: tokens.surfaceRaised,
-        borderRadius: BorderRadius.circular(tokens.radiusChip),
-        border: Border.fromBorderSide(hairlineBorder()),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: const SizedBox(width: 6, height: 6),
+    return Semantics(
+      label: entry.active ? '$_label, active now' : _label,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: tokens.surfaceRaised,
+            borderRadius: BorderRadius.circular(tokens.radiusChip),
+            border: Border.fromBorderSide(hairlineBorder()),
           ),
-          const SizedBox(width: 6),
-          Text(_label, style: theme.textTheme.micro.copyWith(color: color)),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: const SizedBox(width: 6, height: 6),
+              ),
+              const SizedBox(width: 6),
+              Text(_label, style: theme.textTheme.micro.copyWith(color: color)),
+            ],
+          ),
+        ),
       ),
     );
   }

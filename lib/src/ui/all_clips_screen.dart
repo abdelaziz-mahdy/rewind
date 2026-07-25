@@ -116,6 +116,14 @@ class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
   final VoidCallback onOpenClipsFolder;
+
+  /// How far back a save reaches right now — shown by the first-run empty
+  /// state, which teaches exactly that.
+  final int bufferSeconds;
+
+  /// Opens the Supported Games catalog. Null in tests that don't wire it,
+  /// which simply drops the empty state's primary action.
+  final VoidCallback? onAddGame;
   final ThumbnailCache? thumbnails;
 
   /// Per-match K/D and event history, keyed by (gameId, session start) — see
@@ -132,6 +140,8 @@ class AllClipsScreen extends StatefulWidget {
     required this.library,
     required this.hotkeyLabel,
     required this.onOpenClipsFolder,
+    this.bufferSeconds = 30,
+    this.onAddGame,
     this.thumbnails,
     this.matchStats,
     this.ddragon,
@@ -210,6 +220,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
           return _EmptyLibrary(
             hotkeyLabel: widget.hotkeyLabel,
             onOpenClipsFolder: widget.onOpenClipsFolder,
+            bufferSeconds: widget.bufferSeconds,
+            onAddGame: widget.onAddGame,
           );
         }
 
@@ -394,45 +406,167 @@ class _SortButton extends StatelessWidget {
   }
 }
 
+/// First run. The one screen that has to teach Rewind's central idea.
+///
+/// It used to be a grey film glyph and "No clips yet — press Alt+F10 to save
+/// your last moment", which never explains the thing everything else depends
+/// on: Rewind is ALREADY recording, and the hotkey reaches BACKWARDS. So the
+/// state shows the rolling window instead of describing it — a static bar
+/// from -Ns to NOW, in the same `armed` amber the deck's tally is using at
+/// that exact moment, so the two read as one signal.
+///
+/// Static by design: nothing in this app may animate while it sits in the
+/// background (see `TransportDeck`'s ticker note).
 class _EmptyLibrary extends StatelessWidget {
   final String hotkeyLabel;
   final VoidCallback onOpenClipsFolder;
+  final int bufferSeconds;
+  final VoidCallback? onAddGame;
 
   const _EmptyLibrary({
     required this.hotkeyLabel,
     required this.onOpenClipsFolder,
+    this.bufferSeconds = 30,
+    this.onAddGame,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = context.rewindTokens.textMuted;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.movie_creation_outlined,
-              size: 56, color: muted.withValues(alpha: 0.5)),
-          const SizedBox(height: 16),
-          Text('No clips yet', style: theme.textTheme.title),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Press ',
-                  style: theme.textTheme.body.copyWith(color: muted)),
-              _KeyCap(label: hotkeyLabel),
-              Text(' to save your last moment',
-                  style: theme.textTheme.body.copyWith(color: muted)),
-            ],
+    final tokens = context.rewindTokens;
+    // Scrollable: with a permission banner above it on a short window there
+    // is genuinely not enough room, and a first-run screen that overflows is
+    // worse than one that scrolls.
+    return SingleChildScrollView(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ARMED — RECORDING THE LAST $bufferSeconds SECONDS',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.micro.copyWith(color: tokens.armed),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  "Rewind is already rolling.\nYou don't press record — you press "
+                  'rewind.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.display.copyWith(height: 1.25),
+                ),
+                const SizedBox(height: 22),
+                _BufferDiagram(seconds: bufferSeconds),
+                const SizedBox(height: 18),
+                // Text.rich, not a Row: the keycap sits INSIDE the sentence, so
+                // the line wraps like prose on a narrow window instead of
+                // overflowing as a fixed-width run of three children.
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Hit '),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: _KeyCap(label: hotkeyLabel),
+                    ),
+                    const TextSpan(text: ' after something good happens'),
+                  ]),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMuted,
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    if (onAddGame != null) ...[
+                      FilledButton(
+                        key: const ValueKey('emptyAddGame'),
+                        onPressed: onAddGame,
+                        child: const Text('Add a game'),
+                      ),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: onOpenClipsFolder,
+                      icon: const Icon(Icons.folder_open_outlined, size: 16),
+                      label: const Text('Open clips folder'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: onOpenClipsFolder,
-            icon: const Icon(Icons.folder_open_outlined, size: 18),
-            label: const Text('Open clips folder'),
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The rolling window, drawn: a bar that fades in from -Ns and ends at a
+/// hard NOW edge. The whole point is the direction — the saved clip is
+/// BEHIND the playhead, not ahead of it.
+class _BufferDiagram extends StatelessWidget {
+  final int seconds;
+
+  const _BufferDiagram({required this.seconds});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Semantics(
+      label: 'Rewind continuously holds the last $seconds seconds; '
+          'saving keeps that window',
+      child: ExcludeSemantics(
+        child: Column(
+          children: [
+            SizedBox(
+              width: 300,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        gradient: LinearGradient(colors: [
+                          tokens.armed.withValues(alpha: 0.10),
+                          tokens.armed,
+                        ]),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 2,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: tokens.interactive,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 300,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('-$seconds s',
+                      style: theme.textTheme.numeral
+                          .copyWith(fontSize: 10, color: tokens.textDim)),
+                  Text('NOW',
+                      style: theme.textTheme.micro
+                          .copyWith(fontSize: 9, color: tokens.textDim)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -485,10 +619,7 @@ class _KeyCap extends StatelessWidget {
         borderRadius: BorderRadius.circular(context.rewindTokens.radiusControl),
         border: Border.all(color: context.rewindTokens.hairline),
       ),
-      child: Text(
-        label,
-        style: theme.textTheme.numeral.copyWith(fontWeight: FontWeight.w600),
-      ),
+      child: Text(label, style: theme.textTheme.numeral),
     );
   }
 }

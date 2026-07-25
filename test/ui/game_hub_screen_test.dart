@@ -163,9 +163,14 @@ void main() {
           sizeBytes: 3 * 1024 * 1024));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(find.textContaining('2 clips · ${formatSize(5 * 1024 * 1024)}'),
-          findsOneWidget);
-      expect(find.textContaining('last clip'), findsOneWidget);
+      // The header's score band replaced the old "N clips · size · last
+      // clip" fact line: same facts, but reported as data a player actually
+      // opens a hub to read.
+      expect(find.byKey(const ValueKey('gameHubScoreBand')), findsOneWidget);
+      expect(find.text('SESSIONS'), findsOneWidget);
+      expect(find.text('ON DISK'), findsOneWidget);
+      expect(find.text(formatSize(5 * 1024 * 1024)), findsOneWidget);
+      expect(find.text('LAST CLIP'), findsOneWidget);
     });
   });
 
@@ -181,7 +186,8 @@ void main() {
       coordinator.activeGameIds.value = {'app:league_of_legends'};
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(find.text('LIVE CLIENT API'), findsOneWidget); // the header pill
+      // The pill names what the user GETS, not the integration mechanism.
+      expect(find.text('CLIPS ITSELF'), findsOneWidget);
       expect(
           t.widget<Text>(detailLine()).data,
           'Client open — waiting for a match. Rewind connects automatically '
@@ -213,7 +219,7 @@ void main() {
       coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(find.text('PROCESS DETECTION'), findsOneWidget);
+      expect(find.text('KNOWS WHEN YOU PLAY'), findsOneWidget);
       expect(t.widget<Text>(detailLine()).data, 'Watching for cs2');
     });
 
@@ -228,7 +234,7 @@ void main() {
     testWidgets('desktop shows manual capture with the hotkey hint', (t) async {
       await _pump(t, _app(hub(gameId: 'desktop')));
 
-      expect(find.text('MANUAL CAPTURE'), findsOneWidget); // the header pill
+      expect(find.text('HOTKEY ONLY'), findsOneWidget); // the header pill
       expect(t.widget<Text>(detailLine()).data,
           'Clips saved with Alt+F10 while no game is detected.');
     });

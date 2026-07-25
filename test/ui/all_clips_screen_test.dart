@@ -87,7 +87,7 @@ void main() {
       (t) async {
     var opened = false;
     await t.pumpWidget(_app(screen(onOpenClipsFolder: () => opened = true)));
-    await t.tap(find.widgetWithText(TextButton, 'Open clips folder'));
+    await t.tap(find.widgetWithText(OutlinedButton, 'Open clips folder'));
     expect(opened, isTrue);
   });
 

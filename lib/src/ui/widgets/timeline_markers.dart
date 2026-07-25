@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../clip/clip_markers.dart';
 import '../format_duration.dart';
+import '../theme.dart';
 import 'clip_tile.dart' show eventBadge, eventColor;
 
 /// Tick size (see class doc's "2x8-ish").
 const double timelineMarkerWidth = 3;
-const double timelineMarkerHeight = 8;
+const double timelineMarkerHeight = 11;
 
 /// How far before a marker's own offset a tap seeks to, so the viewer lands
 /// on the lead-up to the moment rather than the moment itself.
@@ -87,18 +88,82 @@ class _Tick extends StatelessWidget {
       child: Tooltip(
         message:
             '${eventBadge(marker.kind)} · ${formatDuration(marker.offset)}',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onSeek(target),
-          child: Container(
-            width: timelineMarkerWidth,
-            height: timelineMarkerHeight,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(timelineMarkerWidth / 2),
+        child: Semantics(
+          label: '${eventBadge(marker.kind)} at '
+              '${formatDuration(marker.offset)}',
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onSeek(target),
+            child: Container(
+              width: timelineMarkerWidth,
+              height: timelineMarkerHeight,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(timelineMarkerWidth / 2),
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A labelled key for the ticks above, rendered beneath the seek bar.
+///
+/// The ticks alone are 3px of pure colour: their meaning is reachable only by
+/// hovering each one, and not at all by a screen reader. The legend states
+/// what happened and when in text, which is also simply faster to read than
+/// hunting along a bar.
+class TimelineMarkerLegend extends StatelessWidget {
+  final List<ClipMarker> markers;
+  final ValueChanged<Duration> onSeek;
+
+  /// Beyond this many, the legend would be longer than the clip is
+  /// interesting; the ticks still show every marker.
+  static const int maxShown = 6;
+
+  const TimelineMarkerLegend(
+      {required this.markers, required this.onSeek, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (markers.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        for (final m in markers.take(maxShown))
+          _LegendEntry(marker: m, onSeek: onSeek, style: theme.textTheme.micro),
+        if (markers.length > maxShown)
+          Text('+${markers.length - maxShown} more',
+              style: theme.textTheme.micro
+                  .copyWith(color: context.rewindTokens.textDim)),
+      ],
+    );
+  }
+}
+
+class _LegendEntry extends StatelessWidget {
+  final ClipMarker marker;
+  final ValueChanged<Duration> onSeek;
+  final TextStyle style;
+
+  const _LegendEntry(
+      {required this.marker, required this.onSeek, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = eventColor(context, marker.kind);
+    final leadIn = marker.offset - timelineMarkerSeekLeadIn;
+    final target = leadIn.isNegative ? Duration.zero : leadIn;
+    return InkWell(
+      onTap: () => onSeek(target),
+      child: Text(
+        '▲ ${eventBadge(marker.kind)} ${formatDuration(marker.offset)}',
+        style: style.copyWith(color: color),
       ),
     );
   }

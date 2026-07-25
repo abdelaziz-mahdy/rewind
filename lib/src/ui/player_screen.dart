@@ -395,17 +395,32 @@ class _Header extends StatelessWidget {
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           const SizedBox(width: 4),
-          EventBadge(kind: clip.event),
-          const SizedBox(width: 8),
+          // The MOMENT leads, not the game: "Penta Kill", with the game and
+          // age as context beneath it. The header used to be the game name
+          // and a badge, which named everything except what you clicked.
           Expanded(
-            child: Text(
-              displayNameFor(clip.gameId),
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.title,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  clip.eventLabel ?? eventBadge(clip.event),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.title,
+                ),
+                Text(
+                  '${displayNameFor(clip.gameId)} · '
+                  '${relativeAge(clip.createdAt)}',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.bodyMuted,
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(relativeAge(clip.createdAt), style: theme.textTheme.bodyMuted),
+          EventBadge(kind: clip.event),
         ],
       ),
     );
@@ -485,13 +500,26 @@ class _Controls extends StatelessWidget {
                 if (markers.isNotEmpty)
                   TimelineMarkers(
                       markers: markers, duration: duration, onSeek: onSeek),
-                Slider(
-                  value: positionMs.toDouble(),
-                  max: totalMs > 0 ? totalMs.toDouble() : 1.0,
-                  onChanged: totalMs > 0
-                      ? (v) => onSeek(Duration(milliseconds: v.round()))
-                      : null,
+                // A thicker track than Material's 4px default, painted in
+                // the achromatic `interactive`: the event markers above are
+                // the only hues on the bar, and a mint fill used to compete
+                // with them for the eye.
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 5),
+                  child: Slider(
+                    value: positionMs.toDouble(),
+                    max: totalMs > 0 ? totalMs.toDouble() : 1.0,
+                    onChanged: totalMs > 0
+                        ? (v) => onSeek(Duration(milliseconds: v.round()))
+                        : null,
+                  ),
                 ),
+                if (markers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child:
+                        TimelineMarkerLegend(markers: markers, onSeek: onSeek),
+                  ),
               ],
             ),
           ),

@@ -112,7 +112,9 @@ void main() {
   testWidgets('defaults to the All Clips destination showing the empty state',
       (t) async {
     await t.pumpWidget(_app(shell()));
-    expect(find.textContaining('Alt+F10'), findsOneWidget);
+    // The first-run state teaches the buffer rather than describing it.
+    expect(find.textContaining('Rewind is already rolling'), findsOneWidget);
+    expect(find.textContaining('Alt+F10'), findsWidgets);
     expect(find.text('All clips'), findsNothing); // empty state, no header
   });
 

@@ -26,6 +26,7 @@ import 'shell_destination.dart';
 import 'supported_games_screen.dart';
 import 'system_settings.dart';
 import 'theme.dart';
+import 'widgets/clip_tile.dart' show eventBadge, formatSize;
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
 import 'widgets/transport_deck.dart';
@@ -255,14 +256,60 @@ class _ShellState extends State<Shell> {
   /// clip" from Settings or an empty hub looked like it did nothing (the
   /// only success signals were an optional sound and a clip list the user
   /// might not be on).
+  ///
+  /// Saving a clip is the app's entire reason to exist, so this is not the
+  /// stock `SnackBar('Clip saved')` it used to be: it names the moment that
+  /// was captured, reports its size, and offers a way to go look at it —
+  /// which is what a user wants next and previously had to hunt for.
   void _showManualSaveToast() {
     if (!mounted) return;
     final clip = widget.coordinator.lastManualSave.value;
     if (clip == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: const ValueKey('clipSavedToast'),
       behavior: SnackBarBehavior.floating,
-      duration: Duration(seconds: 3),
-      content: Text('Clip saved'),
+      duration: const Duration(seconds: 4),
+      backgroundColor: tokens.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(tokens.radiusCard),
+        side: BorderSide(color: tokens.hairline),
+      ),
+      width: 340,
+      content: Row(
+        children: [
+          Icon(Icons.check_circle_outline, size: 18, color: tokens.positive),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  clip.eventLabel ?? eventBadge(clip.event),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.label.copyWith(color: tokens.text),
+                ),
+                Text(
+                  '${displayNameFor(clip.gameId)} · '
+                  '${formatSize(clip.sizeBytes)}',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.numeral
+                      .copyWith(fontSize: 11, color: tokens.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      action: SnackBarAction(
+        label: 'Show me',
+        textColor: tokens.interactive,
+        onPressed: () => _select(GameDestination(clip.gameId)),
+      ),
     ));
   }
 
@@ -298,6 +345,9 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           hotkeyLabel: widget.hotkeyLabel,
           onOpenClipsFolder: widget.onOpenClipsFolder,
+          bufferSeconds: widget.coordinator.settings
+              .bufferSecondsFor(widget.coordinator.activeGame.value),
+          onAddGame: () => _select(const SupportedGamesDestination()),
           thumbnails: widget.thumbnails,
           matchStats: widget.coordinator.matchStats,
           ddragon: widget.ddragon,
