@@ -152,10 +152,11 @@ Left to right:
 1. **Tally** — `ARMED` (amber) while the buffer runs, `REC m:ss` (red) while manually recording,
    `UNAVAILABLE` (danger) on capture error, `WAITING FOR A GAME` (dim) when auto-paused by
    `captureOnlyInGame`, `PAUSED` (dim) when paused from the tray.
-2. **Buffer ring + timecode** — a conic ring filling as the rolling buffer fills, and the buffer
-   length in mono. While recording, the ring is replaced by elapsed time. Ring fill comes from a new
-   read-only `ClipCoordinator.bufferFillFraction` seam (see §5) — it must never require a new FFI
-   call per frame.
+2. **Buffer ring + timecode** — a ring filling as the rolling buffer fills, and the buffer length in
+   mono. It always reports the BUFFER, never the elapsed recording: the replay buffer keeps running
+   during a manual recording (`ClipCoordinator.isRecording` is independent of it), so a save is still
+   reaching back through the buffer, and swapping the readout for elapsed time would both lie and put
+   the same value on screen three times. Elapsed time is the tally's and the stop button's job.
 3. **Source** — the existing `_SourceLine` picker, moved verbatim out of `RecorderCluster`.
 4. **Hotkey cap + Save clip + Record** — the existing controls, moved. `Save clip` is the app's one
    primary fill and is therefore `interactive` (near-white on near-black).
@@ -230,14 +231,14 @@ A widget test asserts the tally and the rail's live dot expose labels, so this d
 
 ## 5. Seams touched outside `lib/src/ui`
 
-Exactly one, additive:
+**None.** The plan called for a `ClipCoordinator.bufferFillFraction` seam; it turned out to be
+unnecessary. The buffer is started and stopped by `main.dart`'s `applyBufferPolicy`, so the deck can
+derive the fill entirely from the `bufferActive` transition it is already given — no coordinator
+field, no engine call, nothing per frame.
 
-- `ClipCoordinator.bufferFillFraction` — a `ValueListenable<double>` in `[0,1]`, updated on the
-  existing buffer-state cadence (not per frame), used by the deck's ring. When the engine cannot
-  report it, the listenable stays at `1.0` and the ring renders full, which is the honest reading for
-  a buffer that has been running longer than its own length.
-
-Everything else is UI-local.
+The fill advances on a 1 s ticker that is bounded on both sides: it stops the moment a recording ends
+and the moment the ring reaches full (at most `bufferSeconds` after arming). The zero-idle-animation
+rule (§1.4) is intact — once the buffer is full the app renders only when something changes.
 
 ## 6. Order of work
 

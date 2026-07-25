@@ -3,23 +3,21 @@ import 'package:flutter/material.dart';
 
 import '../../coordinator/clip_coordinator.dart';
 import '../../clip/clip_library.dart';
-import '../../obs/app_info.dart';
-import '../../obs/display_info.dart';
-import '../../settings/app_settings.dart';
 import '../game_directory.dart';
 import '../shell_destination.dart';
 import '../theme.dart';
 import 'game_tile_avatar.dart';
-import 'recorder_cluster.dart';
 
-/// The persistent 220 px left rail (see docs/superpowers/specs/
-/// 2026-07-13-game-centric-redesign.md §3.1, restructured per the
-/// maintainer's "the deck feels redundant" call): wordmark, All Clips, one
-/// row per library game (live-rebuilt off [library], [ClipCoordinator.
-/// activeGameIds], and [settingsRevision]), + Add game, Settings/Logs, then
-/// the [RecorderCluster] pinned to the very bottom — a Discord-style action
-/// block (Save clip / Record / status readout) that used to be a full-width
-/// deck above the content area.
+/// The persistent 220 px left rail: wordmark, All Clips, one row per library
+/// game (live-rebuilt off [library], [ClipCoordinator.activeGameIds], and
+/// [settingsRevision]), + Add game, then Settings/Logs.
+///
+/// NAVIGATION ONLY. The recorder controls that used to be pinned to its
+/// bottom (`RecorderCluster`) now live in `TransportDeck`, above both the
+/// rail and the content — see docs/superpowers/specs/
+/// 2026-07-25-broadcast-deck-design-system.md §2. Keeping them here buried
+/// the app's most important state in a sidebar and, worse, lost it entirely
+/// on the Settings destination, which `Shell` renders without a rail.
 class NavRail extends StatelessWidget {
   final ClipCoordinator coordinator;
   final ClipLibrary library;
@@ -35,19 +33,6 @@ class NavRail extends StatelessWidget {
   final ValueChanged<ShellDestination> onSelect;
   final VoidCallback onOpenLogs;
 
-  /// Forwarded to the bottom [RecorderCluster] — see that widget's docs for
-  /// each prop's contract (unchanged from the old `StatusStrip`).
-  final String? captureError;
-  final ValueListenable<bool>? bufferActive;
-
-  /// See `RecorderCluster.bufferAutoPaused`'s doc.
-  final ValueListenable<bool>? bufferAutoPaused;
-  final List<DisplayInfo> displays;
-  final List<AppInfo> capturableApps;
-  final List<AppInfo> Function()? listApps;
-  final Future<void> Function(AppSettings) onSettingsChanged;
-  final VoidCallback onOpenSettings;
-
   const NavRail({
     required this.coordinator,
     required this.library,
@@ -55,14 +40,6 @@ class NavRail extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onOpenLogs,
-    this.captureError,
-    this.bufferActive,
-    this.bufferAutoPaused,
-    this.displays = const [],
-    this.capturableApps = const [],
-    this.listApps,
-    required this.onSettingsChanged,
-    required this.onOpenSettings,
     super.key,
   });
 
@@ -159,18 +136,6 @@ class NavRail extends StatelessWidget {
             label: 'Logs',
             selected: false,
             onTap: onOpenLogs,
-          ),
-          RecorderCluster(
-            coordinator: coordinator,
-            captureError: captureError,
-            bufferActive: bufferActive,
-            bufferAutoPaused: bufferAutoPaused,
-            displays: displays,
-            capturableApps: capturableApps,
-            listApps: listApps,
-            onSettingsChanged: onSettingsChanged,
-            onOpenSettings: onOpenSettings,
-            settingsRevision: settingsRevision,
           ),
         ],
       ),

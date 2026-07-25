@@ -28,6 +28,7 @@ import 'system_settings.dart';
 import 'theme.dart';
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
+import 'widgets/transport_deck.dart';
 
 /// The app's persistent scaffold (§3.1): a 220 px left rail — ending in the
 /// `RecorderCluster`, a Discord-style Save/Record/status block pinned to its
@@ -353,63 +354,100 @@ class _ShellState extends State<Shell> {
     };
   }
 
+  /// The transport deck, rendered above EVERY destination — including
+  /// Settings, which used to take over the whole window and with it every
+  /// signal that a recording was running (see `TransportDeck`'s doc and the
+  /// broadcast-deck spec §2).
+  Widget _deck() => TransportDeck(
+        coordinator: widget.coordinator,
+        captureError: widget.captureError,
+        bufferActive: widget.bufferActive,
+        bufferAutoPaused: widget.bufferAutoPaused,
+        hotkeyLabel: widget.hotkeyLabel,
+        displays: widget.displays,
+        capturableApps: widget.capturableApps,
+        listApps: widget.listApps,
+        onSettingsChanged: widget.onSettingsChanged,
+        onOpenSettings: () => _select(const SettingsDestination()),
+        settingsRevision: widget.settingsRevision,
+      );
+
   @override
   Widget build(BuildContext context) {
-    // Settings is full-page: it covers the whole window with its own
-    // sidebar as the ONLY nav while open, so the app rail (and the error/
+    // Settings still covers the window below the deck: its own sidebar is
+    // the ONLY nav while it is open, so the app rail (and the error/
     // detected-game banners that sit above the normal content area) are not
-    // shown at all — same rule a full-screen route would follow, just
-    // without an actual Navigator push.
+    // shown — same rule a full-screen route would follow, just without an
+    // actual Navigator push. The deck is the exception, deliberately: losing
+    // the REC state and the Save clip button on the one screen a user opens
+    // MID-MATCH was the whole point of moving it out of the rail.
     if (_destination is SettingsDestination) {
-      return _content(context);
+      return Scaffold(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [_deck(), Expanded(child: _content(context))],
+        ),
+      );
     }
     return Scaffold(
-      body: Row(
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          NavRail(
-            coordinator: widget.coordinator,
-            library: widget.library,
-            settingsRevision: widget.settingsRevision,
-            selected: _destination,
-            onSelect: _select,
-            onOpenLogs: _openLogs,
-            captureError: widget.captureError,
-            bufferActive: widget.bufferActive,
-            bufferAutoPaused: widget.bufferAutoPaused,
-            displays: widget.displays,
-            capturableApps: widget.capturableApps,
-            listApps: widget.listApps,
-            onSettingsChanged: widget.onSettingsChanged,
-            onOpenSettings: () => _select(const SettingsDestination()),
-          ),
+          _deck(),
           Expanded(
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (widget.captureError != null)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: _ErrorBanner(message: widget.captureError!),
-                  ),
-                _DetectedGameBanners(
+                NavRail(
                   coordinator: widget.coordinator,
-                  capturableApps: widget.capturableApps,
+                  library: widget.library,
                   settingsRevision: widget.settingsRevision,
-                  dismissed: _dismissedBanners,
-                  onDismiss: _dismissBanner,
-                  onRecord: _recordDetectedGame,
-                  listApps: widget.listApps,
-                  steamResolver: widget.steamResolver,
-                  onRecordApp: _recordDetectedApp,
+                  selected: _destination,
+                  onSelect: _select,
+                  onOpenLogs: _openLogs,
                 ),
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 150),
-                    child: KeyedSubtree(
-                      key: ValueKey(_destinationKey(_destination)),
-                      child: _content(context),
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.captureError != null)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: _ErrorBanner(message: widget.captureError!),
+                        ),
+                      _DetectedGameBanners(
+                        coordinator: widget.coordinator,
+                        capturableApps: widget.capturableApps,
+                        settingsRevision: widget.settingsRevision,
+                        dismissed: _dismissedBanners,
+                        onDismiss: _dismissBanner,
+                        onRecord: _recordDetectedGame,
+                        listApps: widget.listApps,
+                        steamResolver: widget.steamResolver,
+                        onRecordApp: _recordDetectedApp,
+                      ),
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 160),
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.02),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(
+                                  parent: animation, curve: Curves.easeOut)),
+                              child: child,
+                            ),
+                          ),
+                          child: KeyedSubtree(
+                            key: ValueKey(_destinationKey(_destination)),
+                            child: _content(context),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

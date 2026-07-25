@@ -115,21 +115,38 @@ void main() {
     expect(find.text('All clips'), findsNothing); // empty state, no header
   });
 
-  testWidgets('capture error hides the buffering indicator', (t) async {
+  testWidgets('capture error reads UNAVAILABLE on the deck tally', (t) async {
     await t.pumpWidget(_app(shell(error: 'libobs init failed')));
-    expect(find.textContaining('Buffering'), findsNothing);
-    expect(find.text('Capture unavailable'), findsOneWidget);
+    expect(find.text('ARMED'), findsNothing);
+    expect(find.text('UNAVAILABLE'), findsOneWidget);
   });
 
-  testWidgets('paused buffer shows Paused and stops claiming Buffering',
+  testWidgets('pausing the buffer flips the tally from ARMED to PAUSED',
       (t) async {
     final active = ValueNotifier<bool>(true);
     await t.pumpWidget(_app(shell(bufferActive: active)));
-    expect(find.textContaining('Buffering'), findsOneWidget);
+    expect(find.text('ARMED'), findsOneWidget);
     active.value = false;
     await t.pump();
-    expect(find.textContaining('Buffering'), findsNothing);
-    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('ARMED'), findsNothing);
+    expect(find.text('PAUSED'), findsOneWidget);
+  });
+
+  testWidgets('the deck stays visible on the Settings destination', (t) async {
+    // Settings used to take over the whole window, taking the recorder with
+    // it: opening Settings mid-match hid the REC state, the elapsed timer
+    // and the Save clip button until the user navigated back. That is the
+    // one screen most likely to be opened DURING a game.
+    await t.pumpWidget(_app(shell()));
+    expect(find.byKey(const ValueKey('transportDeck')), findsOneWidget);
+
+    await t.tap(find.byKey(const ValueKey('navItem:settings')));
+    await t.pump(const Duration(milliseconds: 200));
+
+    expect(find.byKey(const ValueKey('settingsScreen')), findsOneWidget);
+    expect(find.byKey(const ValueKey('navRail')), findsNothing);
+    expect(find.byKey(const ValueKey('transportDeck')), findsOneWidget);
+    expect(find.byKey(const ValueKey('deckSaveClip')), findsOneWidget);
   });
 
   testWidgets('capture error shows banner and disables Save', (t) async {
