@@ -482,10 +482,7 @@ class _KeyCap extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: theme.textTheme.label.copyWith(
-          fontWeight: FontWeight.w700,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
+        style: theme.textTheme.numeral.copyWith(fontWeight: FontWeight.w600),
       ),
     );
   }

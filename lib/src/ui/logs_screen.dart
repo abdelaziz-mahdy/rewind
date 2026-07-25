@@ -226,9 +226,8 @@ class _LogRowState extends State<_LogRow> {
                 ),
                 const SizedBox(width: 10),
                 Text(widget.time,
-                    style: theme.textTheme.micro.copyWith(
-                        color: tokens.textMuted,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
+                    style: theme.textTheme.numeral
+                        .copyWith(fontSize: 11, color: tokens.textMuted)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(e.message ?? e.displayMessage,

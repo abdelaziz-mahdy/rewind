@@ -222,8 +222,7 @@ class _MatchTimelineBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final timeStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final timeStyle = theme.textTheme.numeral.copyWith(color: tokens.textMuted);
     final markers = [
       for (final e in layout.events)
         ClipMarker(kind: e.stamp.kind, offset: e.at),

@@ -39,3 +39,37 @@ flutter:
   uses-material-design: true
   assets:
     - assets/tray/
+    # The bundled faces' licenses ship inside the app, not just in the repo
+    # (SIL OFL §... requires the license to travel with the font). The .ttf
+    # files themselves are declared under `fonts:` below, so they are NOT
+    # listed here — that would bundle them a second time.
+    - assets/fonts/OFL-Archivo.txt
+    - assets/fonts/OFL-InterTight.txt
+    - assets/fonts/OFL-IBMPlexMono.txt
+
+  # Three OFL families, bundled so the UI renders identically on macOS and
+  # Windows. Before this, every weight resolved to the platform UI face (SF
+  # Pro vs Segoe UI Variable) — two different designs from one codebase, and
+  # a type scale that could only ever be tuned for one of them. See
+  # docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md §1.2.
+  #
+  # Archivo and Inter Tight ship as VARIABLE fonts (one file, `wght` axis).
+  # Every style that needs a non-default weight sets `fontVariations`
+  # alongside `fontWeight` — see `RewindTypography._wght` — because
+  # `fontWeight` alone leaves a variable face at its default instance and
+  # lets the engine synthesize a fake bold instead.
+  fonts:
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-Variable.ttf
+    - family: InterTight
+      fonts:
+        - asset: assets/fonts/InterTight-Variable.ttf
+    - family: IBMPlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexMono-SemiBold.ttf
+          weight: 600

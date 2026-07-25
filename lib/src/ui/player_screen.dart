@@ -458,10 +458,11 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Tabular figures so the elapsed/total readout doesn't jitter width as
-    // its digits change every second (§2's numeral treatment for durations).
-    final durationStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    // The numeral role: a real monospace with tabular figures, so the
+    // elapsed/total readout doesn't jitter width as its digits change every
+    // second.
+    final durationStyle =
+        theme.textTheme.numeral.copyWith(color: context.rewindTokens.textMuted);
     final totalMs = duration.inMilliseconds;
     final positionMs =
         position.inMilliseconds.clamp(0, totalMs > 0 ? totalMs : 0);
@@ -601,8 +602,7 @@ class _TrimBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final timeStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final timeStyle = theme.textTheme.numeral.copyWith(color: tokens.textMuted);
     final totalMs = duration.inMilliseconds.toDouble();
     final max = totalMs > 0 ? totalMs : 1.0;
 

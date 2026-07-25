@@ -651,10 +651,7 @@ class _RecordButtonState extends State<_RecordButton> {
           icon: const Icon(Icons.stop_rounded, size: _controlIconSize),
           label: Text(
             _elapsed,
-            style: Theme.of(context)
-                .textTheme
-                .label
-                .copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+            style: Theme.of(context).textTheme.numeral,
           ),
         ),
       );

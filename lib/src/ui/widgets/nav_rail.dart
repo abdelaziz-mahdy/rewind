@@ -234,8 +234,8 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-/// One rail row for a [GameEntry]: name, a live  dot when [GameEntry.
-/// active], and its clip count (tabular, muted) — see §3.1.
+/// One rail row for a [GameEntry]: name, an [RewindTokens.armed] dot when
+/// [GameEntry.active], and its clip count (numeral, muted).
 class _GameRow extends StatelessWidget {
   final GameEntry entry;
   final bool selected;

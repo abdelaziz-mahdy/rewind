@@ -45,6 +45,11 @@ ThemeData rewindTheme() {
     brightness: Brightness.dark,
     scaffoldBackgroundColor: tokens.bg,
     colorScheme: colorScheme,
+    // Every default text style resolves to the bundled UI face; [display]
+    // and [numeral] override it per role. Without this the app rendered in
+    // SF Pro on macOS and Segoe UI Variable on Windows — two designs, one
+    // codebase.
+    fontFamily: kRewindUiFont,
     visualDensity: VisualDensity.compact,
     // No ripple spread anywhere — pressed states are a fill change instead
     // (see each widget's `overlayColor`/pressed styling).
@@ -73,8 +78,10 @@ ThemeData rewindTheme() {
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       titleTextStyle: TextStyle(
+        fontFamily: kRewindDisplayFont,
         fontSize: 22,
         fontWeight: FontWeight.w800,
+        fontVariations: const [FontVariation('wght', 800)],
         letterSpacing: -0.4,
         color: tokens.text,
       ),
@@ -180,6 +187,21 @@ ThemeData rewindTheme() {
 /// visible enough to separate surfaces, quiet enough to stay out of the way.
 BorderSide hairlineBorder([double alpha = 0.08]) =>
     BorderSide(color: Colors.white.withValues(alpha: alpha));
+
+/// The bundled UI face — body copy, labels, buttons, settings rows. Variable
+/// (`wght` axis); see [RewindTypography] for why weights are set twice.
+const String kRewindUiFont = 'InterTight';
+
+/// The bundled display face — screen titles, hub names, the wordmark. An
+/// industrial grotesque, used sparingly and only above ~15 px, where its
+/// tighter apertures read as deliberate rather than cramped.
+const String kRewindDisplayFont = 'Archivo';
+
+/// The bundled numeral face. Rewind's screens are mostly numbers —
+/// timecodes, durations, buffer seconds, sizes, K/D/A, counts — and a real
+/// monospace is what makes them column-aligned and instantly separable from
+/// prose. Static instances (400/500/600), so no `fontVariations` needed.
+const String kRewindNumeralFont = 'IBMPlexMono';
 
 /// The design tokens (see docs/superpowers/specs/
 /// 2026-07-25-broadcast-deck-design-system.md §1): the palette and the four
@@ -413,23 +435,39 @@ extension RewindTokensX on BuildContext {
 /// [numeral]/[numeralLarge] are the only styles digits should use; see
 /// docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md §1.2.
 extension RewindTypography on TextTheme {
+  /// Both halves of setting a weight on a VARIABLE face.
+  ///
+  /// [TextStyle.fontWeight] alone leaves Archivo/Inter Tight at their default
+  /// instance and lets the engine synthesize a fake bold on top of it —
+  /// visibly smeared, and different again per platform, which is exactly the
+  /// problem bundling the fonts was meant to solve. Setting the `wght` axis
+  /// picks the real designed weight; `fontWeight` stays so that any fallback
+  /// face (and Flutter's own metrics) still behave.
+  static List<FontVariation> _wght(double w) => [FontVariation('wght', w)];
+
   /// Screen titles, hub headers. 22/w800, tight tracking.
   TextStyle get display => (headlineSmall ?? const TextStyle()).copyWith(
+        fontFamily: kRewindDisplayFont,
         fontSize: 22,
         fontWeight: FontWeight.w800,
+        fontVariations: _wght(800),
         letterSpacing: -0.4,
       );
 
   /// Card headers, the rail's selected row. 15/w700.
   TextStyle get title => (titleMedium ?? const TextStyle()).copyWith(
+        fontFamily: kRewindDisplayFont,
         fontSize: 15,
         fontWeight: FontWeight.w700,
+        fontVariations: _wght(700),
       );
 
   /// 13/w500.
   TextStyle get body => (bodyMedium ?? const TextStyle()).copyWith(
+        fontFamily: kRewindUiFont,
         fontSize: 13,
         fontWeight: FontWeight.w500,
+        fontVariations: _wght(500),
       );
 
   /// [body] in [RewindTokens.dark.textMuted] — secondary text.
@@ -437,16 +475,21 @@ extension RewindTypography on TextTheme {
 
   /// Chips, buttons. 12/w600.
   TextStyle get label => (labelLarge ?? const TextStyle()).copyWith(
+        fontFamily: kRewindUiFont,
         fontSize: 12,
         fontWeight: FontWeight.w600,
+        fontVariations: _wght(600),
       );
 
   /// Section labels, event badges ("GAMES", "LIVE"): 11/w700, tracked 1.2.
   /// Callers still uppercase the string themselves — this only sets the type
-  /// treatment.
+  /// treatment. Stays on the UI face: the display face's tracking is too
+  /// tight to survive at 11 px with letter-spacing applied on top.
   TextStyle get micro => (labelSmall ?? const TextStyle()).copyWith(
+        fontFamily: kRewindUiFont,
         fontSize: 11,
         fontWeight: FontWeight.w700,
+        fontVariations: _wght(700),
         letterSpacing: 1.2,
       );
 
@@ -454,14 +497,16 @@ extension RewindTypography on TextTheme {
   /// K/D/A, buffer seconds, clip counts, hotkey caps. Tabular figures so
   /// values in a column never shift width as they tick.
   TextStyle get numeral => (bodyMedium ?? const TextStyle()).copyWith(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
+        fontFamily: kRewindNumeralFont,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w500,
         fontFeatures: const [FontFeature.tabularFigures()],
       );
 
   /// The hero readouts — the deck's timecode, a match card's scoreboard.
   TextStyle get numeralLarge => (titleLarge ?? const TextStyle()).copyWith(
-        fontWeight: FontWeight.w800,
+        fontFamily: kRewindNumeralFont,
+        fontWeight: FontWeight.w600,
         letterSpacing: -0.4,
         fontFeatures: const [FontFeature.tabularFigures()],
       );
