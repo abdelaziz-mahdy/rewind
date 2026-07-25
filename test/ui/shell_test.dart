@@ -14,6 +14,7 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/shell.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/session_card.dart';
 import 'package:rewind/src/ui/widgets/nav_rail.dart';
 import '../fakes/fake_capture_engine.dart';
 
@@ -271,19 +272,18 @@ void main() {
           DateTime(2026, 7, 2)));
       await _pumpTall(t, _app(shell()));
 
-      // All Clips (the default destination) shows both.
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      // All Clips (the default destination) shows a session card per game.
+      expect(inList(find.byType(SessionCard)), findsNWidgets(2));
 
       await t.tap(navGame('league_of_legends'));
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
       expect(find.text('League of Legends'), findsWidgets);
-      // The hub is now a match grid: League's session shows as one card
-      // (1 clip); the desktop clip is filtered out entirely.
+      // The hub scopes to one game: League's single session card remains,
+      // the desktop one is filtered out entirely.
+      expect(inList(find.byType(SessionCard)), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsNothing);
     });
 
     testWidgets('All Clips destination shows every game\'s clips', (t) async {
@@ -303,8 +303,7 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      expect(inList(find.byType(SessionCard)), findsNWidgets(2));
     });
 
     testWidgets('the Settings destination renders the embedded SettingsScreen',

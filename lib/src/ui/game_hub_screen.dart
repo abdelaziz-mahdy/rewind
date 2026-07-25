@@ -22,7 +22,7 @@ import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_matrix.dart';
 import 'widgets/game_tile_avatar.dart';
-import 'widgets/match_card.dart';
+import 'widgets/session_card.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -262,28 +262,31 @@ class _GameHubScreenState extends State<GameHubScreen> {
               Padding(
                 key: const ValueKey('clipsList'),
                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                    mainAxisSpacing: clipGridSpacing,
-                    crossAxisSpacing: clipGridSpacing,
-                    childAspectRatio: matchCardAspectRatio,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent:
+                          clipGridExtentFor(constraints.maxWidth),
+                      mainAxisSpacing: clipGridSpacing,
+                      crossAxisSpacing: clipGridSpacing,
+                      childAspectRatio: sessionCardAspectRatio,
+                    ),
+                    itemCount: sessions.length,
+                    itemBuilder: (context, i) {
+                      final session = sessions[i];
+                      return SessionCard(
+                        session: session,
+                        isMatch: isMatch,
+                        stats: widget.coordinator.matchStats
+                            ?.statsFor(widget.gameId, session.startedAt),
+                        thumbnails: widget.thumbnails,
+                        ddragon: widget.ddragon,
+                        onTap: () => _openMatch(context, entry, session),
+                      );
+                    },
                   ),
-                  itemCount: sessions.length,
-                  itemBuilder: (context, i) {
-                    final session = sessions[i];
-                    return MatchCard(
-                      session: session,
-                      isMatch: isMatch,
-                      stats: widget.coordinator.matchStats
-                          ?.statsFor(widget.gameId, session.startedAt),
-                      thumbnails: widget.thumbnails,
-                      ddragon: widget.ddragon,
-                      onTap: () => _openMatch(context, entry, session),
-                    );
-                  },
                 ),
               ),
           ],

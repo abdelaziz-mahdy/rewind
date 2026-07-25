@@ -158,6 +158,20 @@ enum _ClipAction { openDefault, reveal, protect, delete }
 /// `tester.getSize`/`tester.takeException`.
 const double clipGridMaxCrossAxisExtent = 300;
 const double clipGridSpacing = 16;
+
+/// Card width to ask the grid delegate for, given the space it actually has.
+///
+/// A constant 300 meant a 2560px window showed eight small cards per row
+/// instead of fewer, larger ones — the extra pixels went into COUNT rather
+/// than size, which is the wrong trade for content whose whole value is a
+/// legible video frame. Steps rather than a continuous function so the
+/// column count stays stable while a window is dragged.
+double clipGridExtentFor(double width) {
+  if (width >= 1900) return 420;
+  if (width >= 1500) return 360;
+  return clipGridMaxCrossAxisExtent;
+}
+
 const double _footerHeight = 56;
 const double clipGridChildAspectRatio = clipGridMaxCrossAxisExtent /
     (clipGridMaxCrossAxisExtent * 9 / 16 + _footerHeight);

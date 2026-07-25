@@ -11,7 +11,7 @@ import 'match_timeline_screen.dart';
 import 'theme.dart';
 import 'clip_file_actions.dart';
 import 'widgets/clip_tile.dart';
-import 'widgets/match_card.dart' show MatchResultBadge;
+import 'widgets/session_card.dart' show MatchResultBadge;
 
 /// Route name for the match drill-down, so navigation can be asserted in
 /// widget tests without building the screen (which needs media_kit for its

@@ -11,9 +11,10 @@ import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/all_clips_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
-import 'package:rewind/src/ui/widgets/clip_tile.dart' show ClipTile, formatSize;
+import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
+import 'package:rewind/src/ui/widgets/session_card.dart';
 
-/// Records pushed routes so a session-header tap can be asserted by route
+/// Records pushed routes so a session-card tap can be asserted by route
 /// name without building MatchClipsScreen (whose ClipTiles need media_kit) —
 /// same pattern as game_hub_screen_test.dart's identical helper.
 class _RouteObserver extends NavigatorObserver {
@@ -60,8 +61,10 @@ void main() {
         matchStats: matchStats,
       );
 
-  Finder sessionHeader(String gameId, DateTime startedAt) => find
-      .byKey(ValueKey('sessionHeader:$gameId:${startedAt.toIso8601String()}'));
+  // All Clips renders one SessionCard per play session — the same card a
+  // game hub renders, so the two screens agree on what a session is.
+  Finder sessionCard(String gameId, DateTime startedAt) => find
+      .byKey(ValueKey('sessionCard:$gameId:${startedAt.toIso8601String()}'));
 
   Finder eventChip(String name) =>
       find.byKey(ValueKey('eventFilterChip:$name'));
@@ -109,24 +112,23 @@ void main() {
     expect(opened, isTrue);
   });
 
-  testWidgets('clips render newest-first with event badge', (t) async {
+  testWidgets('sessions render newest-first, each naming its game', (t) async {
     library
         .add(clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
     library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
         DateTime(2026, 7, 2)));
     await t.pumpWidget(_app(screen()));
 
-    expect(inList(find.text('PENTA KILL')), findsOneWidget);
-    expect(inList(find.text('MANUAL')), findsOneWidget);
     // The grid can place same-row cards side by side, so vertical position
-    // no longer indicates order (unlike the old list) — newest-first is now
-    // index order: the first ClipTile GridView.builder constructs is the
-    // newest clip. GridView.builder's sliver keeps children in a
-    // SplayTreeMap keyed by index, so `find`'s element-tree walk (and thus
-    // `widgetList`) visits them in that same ascending index order.
-    final tiles = t.widgetList<ClipTile>(find.byType(ClipTile)).toList();
-    expect(tiles.first.clip.event, GameEventKind.pentaKill);
-    expect(tiles.last.clip.event, GameEventKind.manual);
+    // no longer indicates order — newest-first is index order: the first
+    // card GridView.builder constructs is the newest session.
+    // GridView.builder's sliver keeps children in a SplayTreeMap keyed by
+    // index, so `find`'s element-tree walk visits them in ascending index
+    // order.
+    final cards = t.widgetList<SessionCard>(find.byType(SessionCard)).toList();
+    expect(cards, hasLength(2));
+    expect(cards.first.displayName, 'League of Legends');
+    expect(cards.last.displayName, 'Desktop');
   });
 
   testWidgets('library updates reactively when a clip is added', (t) async {
@@ -134,7 +136,7 @@ void main() {
     library
         .add(clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
     await t.pump();
-    expect(find.text('MANUAL'), findsOneWidget);
+    expect(find.byType(SessionCard), findsOneWidget);
   });
 
   group('event-kind filter chips', () {
@@ -155,21 +157,24 @@ void main() {
       expect(countIn(eventChip('pentaKill'), 1), findsOneWidget);
     });
 
-    testWidgets('selecting a chip filters the list to that kind', (t) async {
+    testWidgets('selecting a chip filters the grid to sessions of that kind',
+        (t) async {
       library.add(
           clip('a', 'desktop', GameEventKind.manual, DateTime(2026, 7, 1)));
       library.add(clip('b', 'league_of_legends', GameEventKind.pentaKill,
           DateTime(2026, 7, 2)));
       await t.pumpWidget(_app(screen()));
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      expect(find.byType(SessionCard), findsNWidgets(2));
 
       await t.tap(eventChip('pentaKill'));
       await t.pump();
 
-      expect(inList(find.text('MANUAL')), findsNothing);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      // The desktop session holds only a manual clip, so it drops out
+      // entirely rather than rendering as an empty card.
+      final cards = t.widgetList<SessionCard>(find.byType(SessionCard));
+      expect(cards, hasLength(1));
+      expect(cards.single.displayName, 'League of Legends');
     });
 
     testWidgets(
@@ -183,8 +188,12 @@ void main() {
 
       await t.tap(eventChip('pentaKill'));
       await t.pump();
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsNothing);
+      expect(
+          t
+              .widgetList<SessionCard>(find.byType(SessionCard))
+              .single
+              .displayName,
+          'League of Legends');
 
       // Synchronous remove() (not deleteClip(), which does real file I/O and
       // would hang the fake-async test zone) still fires the same
@@ -194,13 +203,18 @@ void main() {
       library.remove(pentaClip);
       await t.pump();
 
-      // Filter reset to All: the remaining desktop clip is visible again.
-      expect(inList(find.text('MANUAL')), findsOneWidget);
+      // Filter reset to All: the remaining desktop session is visible again.
+      expect(
+          t
+              .widgetList<SessionCard>(find.byType(SessionCard))
+              .single
+              .displayName,
+          'Desktop');
     });
   });
 
   group('session grouping (Task 17)', () {
-    testWidgets('two sessions of the same game render two session headers',
+    testWidgets('two sessions of the same game render two session cards',
         (t) async {
       final session1 = DateTime(2026, 7, 1, 10);
       final session2 = DateTime(2026, 7, 3, 20);
@@ -212,8 +226,8 @@ void main() {
           sessionAt: session2));
       await t.pumpWidget(_app(screen()));
 
-      expect(sessionHeader('desktop', session1), findsOneWidget);
-      expect(sessionHeader('desktop', session2), findsOneWidget);
+      expect(sessionCard('desktop', session1), findsOneWidget);
+      expect(sessionCard('desktop', session2), findsOneWidget);
     });
 
     testWidgets('sessions from different games interleave by recency',
@@ -233,14 +247,13 @@ void main() {
       await t.pumpWidget(_app(screen()));
 
       // Newest-first across games — NOT game-partitioned: the desktop
-      // session sits between League's two sessions, not after both.
-      final yNew =
-          t.getTopLeft(sessionHeader('league_of_legends', leagueNew)).dy;
-      final yMid = t.getTopLeft(sessionHeader('desktop', desktopMid)).dy;
-      final yOld =
-          t.getTopLeft(sessionHeader('league_of_legends', leagueOld)).dy;
-      expect(yNew, lessThan(yMid));
-      expect(yMid, lessThan(yOld));
+      // session sits between League's two sessions, not after both. Grid
+      // index order, not vertical position (cards share rows).
+      final ids = t
+          .widgetList<SessionCard>(find.byType(SessionCard))
+          .map((c) => c.session.startedAt)
+          .toList();
+      expect(ids, [leagueNew, desktopMid, leagueOld]);
     });
 
     testWidgets("League's two gameIds sharing one stamp merge into ONE session",
@@ -257,8 +270,8 @@ void main() {
           sessionAt: started));
       await t.pumpWidget(_app(screen()));
 
-      expect(sessionHeader('app:league_of_legends', started), findsOneWidget);
-      expect(sessionHeader('league_of_legends', started), findsNothing);
+      expect(sessionCard('app:league_of_legends', started), findsOneWidget);
+      expect(sessionCard('league_of_legends', started), findsNothing);
       expect(inList(find.textContaining('2 clips')), findsOneWidget);
     });
 
@@ -277,15 +290,15 @@ void main() {
       await t.pumpWidget(_app(screen()));
 
       // Bucketed by the renamed display name, not the raw gameId — a
-      // per-gameId header key still exists (both clips share one gameId
-      // here regardless), but the visible label must be the override.
-      expect(sessionHeader('app:cs2', started), findsOneWidget);
-      expect(find.text('CS2 RANKED'), findsOneWidget);
+      // per-gameId card key still exists (both clips share one gameId here
+      // regardless), but the visible label must be the override.
+      expect(sessionCard('app:cs2', started), findsOneWidget);
+      expect(find.textContaining('CS2 RANKED'), findsOneWidget);
       expect(find.textContaining('Counter-Strike'), findsNothing);
       expect(inList(find.textContaining('2 clips')), findsOneWidget);
     });
 
-    testWidgets('tapping a session header navigates to the match screen',
+    testWidgets('tapping a session card navigates to the match screen',
         (t) async {
       final started = DateTime(2026, 7, 1, 10);
       library.add(clip('a', 'desktop', GameEventKind.manual,
@@ -295,16 +308,14 @@ void main() {
       await t.pumpWidget(_app(screen(), observers: [observer]));
       observer.pushed.clear();
 
-      await t.tap(sessionHeader('desktop', started));
+      await t.tap(sessionCard('desktop', started));
       // No further pump: the pushed route's builder (MatchClipsScreen →
       // ClipTile → media_kit) only runs next frame — assert the push
       // happened first, same pattern as game_hub_screen_test.dart.
       expect(observer.pushed.single.settings.name, matchClipsScreenRouteName);
     });
 
-    testWidgets(
-        "a clip tile in a session with stats receives the stats' events",
-        (t) async {
+    testWidgets('a session with recorded stats reads as a MATCH', (t) async {
       final started = DateTime(2026, 7, 1, 10);
       final statsStore = MatchStatsStore(dir: tmp);
       statsStore.recordEvent(
@@ -314,23 +325,53 @@ void main() {
           sessionAt: started));
       await t.pumpWidget(_app(screen(matchStats: statsStore)));
 
-      final stats = statsStore.statsFor('league_of_legends', started)!;
-      expect(stats.events, isNotEmpty);
+      final card = t.widget<SessionCard>(find.byType(SessionCard));
       expect(
-        t.widget<ClipTile>(find.byType(ClipTile)).events,
-        same(stats.events),
-      );
+          card.stats, same(statsStore.statsFor('league_of_legends', started)));
+      // All Clips has no GameEntry to ask "does this game have a live-match
+      // API", so recorded stats are the honest proxy.
+      expect(card.isMatch, isTrue);
     });
 
-    testWidgets('a session with no stats gives its clip tiles no events',
-        (t) async {
+    testWidgets('a session with no stats reads as a plain SESSION', (t) async {
       final started = DateTime(2026, 7, 1, 10);
       library.add(clip('a', 'desktop', GameEventKind.manual,
           started.add(const Duration(minutes: 5)),
           sessionAt: started));
       await t.pumpWidget(_app(screen()));
 
-      expect(t.widget<ClipTile>(find.byType(ClipTile)).events, isEmpty);
+      final card = t.widget<SessionCard>(find.byType(SessionCard));
+      expect(card.stats, isNull);
+      expect(card.isMatch, isFalse);
+    });
+  });
+
+  group('sort', () {
+    testWidgets('defaults to newest and can reorder by size', (t) async {
+      final small = DateTime(2026, 7, 3, 10);
+      final big = DateTime(2026, 7, 1, 10);
+      library.add(clip('a', 'desktop', GameEventKind.manual,
+          small.add(const Duration(minutes: 1)),
+          sizeBytes: 1024, sessionAt: small));
+      library.add(clip('b', 'desktop', GameEventKind.manual,
+          big.add(const Duration(minutes: 1)),
+          sizeBytes: 50 * 1024 * 1024, sessionAt: big));
+      await t.pumpWidget(_app(screen()));
+
+      List<DateTime> order() => t
+          .widgetList<SessionCard>(find.byType(SessionCard))
+          .map((c) => c.session.startedAt)
+          .toList();
+      expect(order(), [small, big]);
+
+      await t.tap(find.byKey(const ValueKey('sortButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.text('Largest').last);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+
+      expect(order(), [big, small]);
     });
   });
 

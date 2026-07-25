@@ -15,7 +15,7 @@ import 'match_clips_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
-import 'widgets/game_tile_avatar.dart';
+import 'widgets/session_card.dart';
 
 /// One session in the All Clips feed, tagged with the display-name bucket it
 /// came from (see [_sessionFeed]).
@@ -86,11 +86,32 @@ String _sessionLabel(ClipSession session, MatchStats? stats) {
       '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
 }
 
-/// The cross-game clip library (§3.3): header (title + count + size + open-
-/// folder), an event-kind filter row, and a newest-first FEED OF SESSIONS —
-/// each play session/match gets a tappable header (game + relative time +
-/// clip count) and its own clip grid beneath, interleaved across games by
-/// recency (not game-partitioned — the per-game hubs already own that view).
+/// How the session grid is ordered. Recency is the default and the only one
+/// that matters most of the time; the other two exist because "which of
+/// these is eating my disk" and "where is that long one" are real questions
+/// a 3 GB library can't otherwise answer.
+enum ClipSort { newest, largest, longest }
+
+extension _SortLabel on ClipSort {
+  String get label => switch (this) {
+        ClipSort.newest => 'Newest',
+        ClipSort.largest => 'Largest',
+        ClipSort.longest => 'Most clips',
+      };
+}
+
+/// The cross-game clip library: header (title + count + size + sort + open-
+/// folder), an event-kind filter row, and a grid of SESSION CARDS —
+/// interleaved across games by recency, not game-partitioned (the per-game
+/// hubs already own that view).
+///
+/// The cards are the same `SessionCard` a game hub renders. This screen and
+/// a hub show the same thing at the same level and differ only in scope, so
+/// they must not disagree about what a session is or how it is summarized;
+/// they used to use two different layouts and two different aspect ratios
+/// for identical data, which meant nothing a user learned on one transferred
+/// to the other. Tapping a card opens that session's clips, exactly as a hub
+/// card does.
 class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
@@ -126,6 +147,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
   /// has no clips left in the library (e.g. the last clip of that kind was
   /// deleted).
   GameEventKind? _filterKind;
+
+  ClipSort _sort = ClipSort.newest;
 
   @override
   void initState() {
@@ -175,44 +198,6 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
     ));
   }
 
-  /// The header + clip grid for one [_SessionEntry] — stats are looked up
-  /// once here and threaded to both the header's tap (for the match label)
-  /// and every [ClipTile] (for timeline markers), so a clip opened from All
-  /// Clips finally carries the same markers it would from its game hub.
-  List<Widget> _sessionSection(BuildContext context, _SessionEntry entry) {
-    final stats = _statsForSession(widget.matchStats, entry.session);
-    return [
-      _SessionHeader(
-        key: ValueKey(
-            'sessionHeader:${entry.gameId}:${entry.session.startedAt.toIso8601String()}'),
-        gameId: entry.gameId,
-        displayName: entry.displayName,
-        session: entry.session,
-        onTap: () => _openMatch(context, entry, stats),
-      ),
-      GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-          mainAxisSpacing: clipGridSpacing,
-          crossAxisSpacing: clipGridSpacing,
-          childAspectRatio: clipGridChildAspectRatio,
-        ),
-        itemCount: entry.session.clips.length,
-        itemBuilder: (context, i) => ClipTile(
-          clip: entry.session.clips[i],
-          library: widget.library,
-          thumbnails: widget.thumbnails,
-          // The section header already names the game.
-          showGameName: false,
-          events: stats?.events ?? const [],
-        ),
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -234,6 +219,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
         final clips = List.of(visible)
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         final totalBytes = scoped.fold<int>(0, (sum, c) => sum + c.sizeBytes);
+        final sessions = _sorted(_sessionFeed(clips));
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -260,10 +246,18 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       '${scoped.length} clips · ${formatSize(totalBytes)}',
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
-                      style: Theme.of(context).textTheme.bodyMuted,
+                      style: Theme.of(context)
+                          .textTheme
+                          .numeral
+                          .copyWith(color: context.rewindTokens.textMuted),
                     ),
                   ),
                   const SizedBox(width: 12),
+                  _SortButton(
+                    sort: _sort,
+                    onChanged: (s) => setState(() => _sort = s),
+                  ),
+                  const SizedBox(width: 8),
                   _FolderButton(onPressed: widget.onOpenClipsFolder),
                 ],
               ),
@@ -278,7 +272,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
               // them — that's "nothing matches", not "library empty", so
               // the first-run guidance ("press the hotkey…") would be
               // wrong and the fix is one click away: clear the filter.
-              child: clips.isEmpty
+              child: sessions.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -296,13 +290,40 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                         ],
                       ),
                     )
-                  : ListView(
-                      key: const ValueKey('clipsList'),
-                      padding: const EdgeInsets.only(bottom: 24),
-                      children: [
-                        for (final entry in _sessionFeed(clips))
-                          ..._sessionSection(context, entry),
-                      ],
+                  : LayoutBuilder(
+                      builder: (context, constraints) => GridView.builder(
+                        key: const ValueKey('clipsList'),
+                        padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent:
+                              clipGridExtentFor(constraints.maxWidth),
+                          mainAxisSpacing: clipGridSpacing,
+                          crossAxisSpacing: clipGridSpacing,
+                          childAspectRatio: sessionCardAspectRatio,
+                        ),
+                        itemCount: sessions.length,
+                        itemBuilder: (context, i) {
+                          final entry = sessions[i];
+                          final stats = _statsForSession(
+                              widget.matchStats, entry.session);
+                          return SessionCard(
+                            key: ValueKey('sessionCard:${entry.gameId}:'
+                                '${entry.session.startedAt.toIso8601String()}'),
+                            session: entry.session,
+                            // Stats only ever get recorded by a vendor
+                            // integration, so their presence is the honest
+                            // proxy for MATCH vs SESSION here — All Clips has
+                            // no GameEntry to ask.
+                            isMatch: stats != null,
+                            stats: stats,
+                            thumbnails: widget.thumbnails,
+                            ddragon: widget.ddragon,
+                            gameId: entry.gameId,
+                            displayName: entry.displayName,
+                            onTap: () => _openMatch(context, entry, stats),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
@@ -310,79 +331,63 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
       },
     );
   }
+
+  List<_SessionEntry> _sorted(List<_SessionEntry> entries) {
+    final out = List.of(entries);
+    switch (_sort) {
+      case ClipSort.newest:
+        break; // _sessionFeed already returns newest-first
+      case ClipSort.largest:
+        out.sort((a, b) => _bytes(b).compareTo(_bytes(a)));
+      case ClipSort.longest:
+        out.sort(
+            (a, b) => b.session.clips.length.compareTo(a.session.clips.length));
+    }
+    return out;
+  }
+
+  static int _bytes(_SessionEntry e) =>
+      e.session.clips.fold<int>(0, (sum, c) => sum + c.sizeBytes);
 }
 
-/// A session's header row in the feed: avatar + display name + relative
-/// time + clip count, tappable (chevron affordance) to open the full
-/// [MatchClipsScreen] for that session — mirrors `GameHubScreen`'s match
-/// card tap, just reached from a cross-game feed instead of a per-game grid.
-class _SessionHeader extends StatelessWidget {
-  final String gameId;
-  final String displayName;
-  final ClipSession session;
-  final VoidCallback onTap;
+/// The header's sort control. A bordered menu button rather than a row of
+/// chips: sort is one choice out of three, and the event filter beneath it
+/// already owns the chip vocabulary for multi-valued filtering.
+class _SortButton extends StatelessWidget {
+  final ClipSort sort;
+  final ValueChanged<ClipSort> onChanged;
 
-  const _SessionHeader({
-    required this.gameId,
-    required this.displayName,
-    required this.session,
-    required this.onTap,
-    super.key,
-  });
+  const _SortButton({required this.sort, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
-    final mutedStyle =
-        Theme.of(context).textTheme.micro.copyWith(color: tokens.textMuted);
-    final count = session.clips.length;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(tokens.radiusControl),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-          child: Row(
-            children: [
-              GameTileAvatar(
-                gameId: gameId,
-                displayName: displayName,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              // One Expanded filler only (the name/age/count run) — a
-              // second loose flex widget sharing this row with it would hit
-              // the flex-allocation trap the redesign spec calls out.
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        displayName.toUpperCase(),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: mutedStyle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('·', style: mutedStyle),
-                    const SizedBox(width: 8),
-                    Text(relativeAge(session.startedAt), style: mutedStyle),
-                    const SizedBox(width: 8),
-                    Text(
-                      '· $count ${count == 1 ? 'clip' : 'clips'}',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: mutedStyle,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right, size: 16, color: tokens.textMuted),
-            ],
-          ),
+    final theme = Theme.of(context);
+    return PopupMenuButton<ClipSort>(
+      key: const ValueKey('sortButton'),
+      tooltip: 'Sort sessions',
+      padding: EdgeInsets.zero,
+      initialValue: sort,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        for (final s in ClipSort.values)
+          PopupMenuItem(value: s, height: 36, child: Text(s.label)),
+      ],
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          border: Border.fromBorderSide(hairlineBorder()),
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(sort.label,
+                style: theme.textTheme.label.copyWith(color: tokens.textMuted)),
+            const SizedBox(width: 4),
+            Icon(Icons.expand_more, size: 16, color: tokens.textMuted),
+          ],
         ),
       ),
     );

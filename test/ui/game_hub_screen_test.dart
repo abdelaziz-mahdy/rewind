@@ -15,7 +15,7 @@ import 'package:rewind/src/ui/game_hub_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
-import 'package:rewind/src/ui/widgets/match_card.dart';
+import 'package:rewind/src/ui/widgets/session_card.dart';
 import '../fakes/fake_capture_engine.dart';
 import '../fakes/fake_game_source.dart';
 
@@ -322,7 +322,7 @@ void main() {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
       // Only the cs2 session shows — one card, and it holds only cs2's clip.
-      expect(find.byType(MatchCard), findsOneWidget);
+      expect(find.byType(SessionCard), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
     });
 
@@ -338,7 +338,7 @@ void main() {
           DateTime(2026, 7, 2, 20, 5)));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(find.byType(MatchCard), findsOneWidget);
+      expect(find.byType(SessionCard), findsOneWidget);
       expect(inList(find.text('2 clips')), findsOneWidget);
     });
 
@@ -390,7 +390,7 @@ void main() {
       expect(inList(find.text('1')), findsWidgets);
 
       observer.pushed.clear();
-      await t.tap(find.byType(MatchCard));
+      await t.tap(find.byType(SessionCard));
       // No pump: the pushed route's builder (MatchClipsScreen → ClipTile →
       // media_kit) only runs next frame; assert the push happened first.
       expect(observer.pushed.single.settings.name, matchClipsScreenRouteName);

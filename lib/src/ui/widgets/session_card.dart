@@ -14,13 +14,21 @@ import 'game_tile_avatar.dart';
 /// taller footer (a label line plus a prominent K/D/A + CS readout), so they
 /// get their own aspect ratio derived from that geometry — same width,
 /// taller card.
-const double _matchFooterHeight = 76;
-const double matchCardAspectRatio = clipGridMaxCrossAxisExtent /
-    (clipGridMaxCrossAxisExtent * 9 / 16 + _matchFooterHeight);
+const double _sessionFooterHeight = 76;
+const double sessionCardAspectRatio = clipGridMaxCrossAxisExtent /
+    (clipGridMaxCrossAxisExtent * 9 / 16 + _sessionFooterHeight);
 
 const double _portraitSize = 28;
 
-/// One card in a game's match grid: a play session summarized. The
+/// One card per play session, shared by BOTH the cross-game All Clips grid
+/// and each game hub's grid — they show the same thing at the same level and
+/// differ only in scope, so they must not disagree about what a session is
+/// or how it is summarized. (Before this they used two different layouts and
+/// two different aspect ratios for identical data.) All Clips passes
+/// [displayName] so each card names its game; a hub omits it, since its whole
+/// grid is already one game.
+///
+/// The card: a play session summarized. The
 /// thumbnail is the session's newest clip, with the champion portrait (when
 /// [ddragon] is wired up and the match reports one — see [DDragon.
 /// championSquare]) and the match's KILLS / DEATHS / ASSISTS scoreboard (a
@@ -31,7 +39,7 @@ const double _portraitSize = 28;
 /// no [ddragon]) falls back to a monogram, same as `GameTileAvatar`'s
 /// contract — never a broken image or a hole. Tapping opens the session's
 /// clips (see [onTap]).
-class MatchCard extends StatelessWidget {
+class SessionCard extends StatelessWidget {
   final ClipSession session;
 
   /// Whether to head the card "MATCH" (games with an in-match API) vs
@@ -50,13 +58,21 @@ class MatchCard extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  const MatchCard({
+  /// The game this session belongs to, for the footer's avatar + name. Null
+  /// on a game hub, where every card is the same game and repeating its name
+  /// on each one is noise.
+  final String? gameId;
+  final String? displayName;
+
+  const SessionCard({
     required this.session,
     required this.isMatch,
     required this.stats,
     required this.onTap,
     this.thumbnails,
     this.ddragon,
+    this.gameId,
+    this.displayName,
     super.key,
   });
 
@@ -70,9 +86,14 @@ class MatchCard extends StatelessWidget {
       stats?.champion != null && stats!.champion!.isNotEmpty;
 
   /// The muted top line: "MATCH · 2 H AGO", enriched with the League match's
-  /// champion and mode when captured — e.g. "AHRI · ARENA · 2 H AGO".
+  /// champion and mode when captured — e.g. "AHRI · ARENA · 2 H AGO". On the
+  /// cross-game grid the game's own name leads instead, since that is what
+  /// tells two cards apart there.
   String _labelLine() {
     final parts = <String>[];
+    if (displayName case final n? when n.isNotEmpty) {
+      parts.add(n.toUpperCase());
+    }
     if (stats?.champion case final c? when c.isNotEmpty) {
       parts.add(c.toUpperCase());
     }
@@ -83,8 +104,8 @@ class MatchCard extends StatelessWidget {
       parts.add(m.toUpperCase());
     }
     parts.add(relativeAge(session.startedAt).toUpperCase());
-    // "MATCH"/"SESSION" prefix stays only when there's no champion/mode to
-    // lead with — champion + mode already reads as a match.
+    // "MATCH"/"SESSION" prefix stays only when there's nothing more specific
+    // to lead with — a game name, or a champion + mode, already reads as one.
     if (parts.length == 1) parts.insert(0, isMatch ? 'MATCH' : 'SESSION');
     return parts.join(' · ');
   }
@@ -151,7 +172,7 @@ class MatchCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  height: _matchFooterHeight,
+                  height: _sessionFooterHeight,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
@@ -159,12 +180,26 @@ class MatchCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _labelLine(),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          style: theme.textTheme.micro
-                              .copyWith(color: tokens.textMuted),
+                        Row(
+                          children: [
+                            if (gameId case final id?) ...[
+                              GameTileAvatar(
+                                gameId: id,
+                                displayName: displayName ?? id,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Expanded(
+                              child: Text(
+                                _labelLine(),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                style: theme.textTheme.micro
+                                    .copyWith(color: tokens.textMuted),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         if (_hasKd)
@@ -203,7 +238,7 @@ class _ChampionPortrait extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
-    final champion = stats.champion!; // guarded by MatchCard._hasChampion
+    final champion = stats.champion!; // guarded by SessionCard._hasChampion
     final placeholder = Container(
       alignment: Alignment.center,
       color: gameTileColor(champion),
@@ -247,8 +282,8 @@ class _KdLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final num = theme.textTheme.title.copyWith(fontWeight: FontWeight.w800);
-    final label = theme.textTheme.body.copyWith(color: tokens.textMuted);
+    final num = theme.textTheme.numeralLarge.copyWith(fontSize: 17);
+    final label = theme.textTheme.micro.copyWith(color: tokens.textDim);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
@@ -265,7 +300,8 @@ class _KdLine extends StatelessWidget {
         const Spacer(),
         if (stats.creepScore > 0)
           Text('${stats.creepScore} CS',
-              style: theme.textTheme.micro.copyWith(color: tokens.textMuted)),
+              style: theme.textTheme.numeral
+                  .copyWith(fontSize: 11, color: tokens.textDim)),
       ],
     );
   }
@@ -284,27 +320,35 @@ class _KdBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final base = large ? theme.textTheme.body : theme.textTheme.micro;
-    final numStyle = base.copyWith(fontWeight: FontWeight.w800);
+    final base =
+        theme.textTheme.numeral.copyWith(fontSize: large ? 12.5 : 10.5);
+    final numStyle = base.copyWith(fontWeight: FontWeight.w600);
     final slash = base.copyWith(color: Colors.white.withValues(alpha: 0.6));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${stats.kills}',
-              style: numStyle.copyWith(color: tokens.positive)),
-          Text('/', style: slash),
-          Text('${stats.deaths}',
-              style: numStyle.copyWith(color: theme.colorScheme.error)),
-          Text('/', style: slash),
-          Text('${stats.assists}',
-              style: numStyle.copyWith(color: Colors.white)),
-        ],
+    return Semantics(
+      label: '${stats.kills} kills, ${stats.deaths} deaths, '
+          '${stats.assists} assists',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.6),
+            borderRadius:
+                BorderRadius.circular(context.rewindTokens.radiusChip),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${stats.kills}',
+                  style: numStyle.copyWith(color: tokens.positive)),
+              Text('/', style: slash),
+              Text('${stats.deaths}',
+                  style: numStyle.copyWith(color: theme.colorScheme.error)),
+              Text('/', style: slash),
+              Text('${stats.assists}',
+                  style: numStyle.copyWith(color: Colors.white)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -368,7 +412,8 @@ class _CountPill extends StatelessWidget {
               size: 12, color: Colors.white),
           const SizedBox(width: 4),
           Text('$count',
-              style: theme.textTheme.micro.copyWith(color: Colors.white)),
+              style: theme.textTheme.numeral
+                  .copyWith(fontSize: 10.5, color: Colors.white)),
         ],
       ),
     );
