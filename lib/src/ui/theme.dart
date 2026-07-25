@@ -172,6 +172,26 @@ ThemeData rewindTheme() {
       ),
       iconColor: tokens.textMuted,
     ),
+    // THE ONE PILL IN THE APP, and a deliberate exception rather than an
+    // inherited default.
+    //
+    // The shape language bans stadium/pill radii everywhere else (§2 of the
+    // game-centric spec). A switch is the exception because its shape IS its
+    // affordance: a rectangular switch reads as a segmented control or a
+    // slider, and users identify a toggle by that silhouette before they read
+    // anything. Declaring it here also makes every switch in the app
+    // identical, which it was not — they were picking up Material defaults
+    // per widget.
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? tokens.bg : tokens.textMuted),
+      trackColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected)
+              ? tokens.interactive
+              : tokens.surfaceRaised),
+      trackOutlineColor: WidgetStatePropertyAll(tokens.hairline),
+      thumbIcon: const WidgetStatePropertyAll(null),
+    ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: SegmentedButton.styleFrom(
         shape: RoundedRectangleBorder(

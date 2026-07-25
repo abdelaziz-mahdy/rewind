@@ -182,15 +182,23 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   display, Inter Tight = UI, IBM Plex Mono = numerals. The first two are
   VARIABLE: any non-default weight must set `fontVariations` as well as
   `fontWeight`, or the engine synthesizes a fake bold instead.
+- **One pill is allowed: `Switch`** (declared in `switchTheme`). Its shape is
+  its affordance — a rectangular switch reads as a segmented control. Every
+  other stadium/pill radius stays banned.
 - One icon family: `*_outlined` for interface icons. The three transport
   glyphs (`play_arrow`, `pause`, `stop`) stay filled — a hollow play
   triangle is illegible at 20px.
-- Navigation: `shell.dart` = `TransportDeck` across the top, then rail +
-  destination, on a sealed `shell_destination.dart` value. No
-  router/state-management packages. The deck renders on EVERY destination
-  including Settings — that is deliberate and load-bearing (Settings is the
-  screen most likely to be opened mid-match; without it, REC state and Save
-  clip disappear).
+- Navigation: `shell.dart` = rail + destination on a sealed
+  `shell_destination.dart` value. No router/state-management packages.
+- **The recorder is a BUTTON at the top of the rail, never a bar.** Two
+  persistent strips (top, then bottom) were built and rejected on sight. The
+  reason is structural, not taste: while you're gaming this window is behind
+  a fullscreen game, so permanent in-window chrome is invisible exactly when
+  it matters — which is also what ShadowPlay (overlay only) and Medal (one
+  corner button + dropdown) do. The always-on indicator belongs in the tray
+  (`TrayService` sets a live menu-bar title). Settings has no rail, so
+  `Shell` hands the same `RecorderButton` to its sidebar — that is what keeps
+  REC state visible on the screen most likely to be opened mid-match.
 - **Zero idle animation.** Nothing may animate while the app sits in the
   background — a never-ending animation once measured ~45% app + ~45%
   WindowServer CPU. The deck's 1s ticker is the only repeating timer and is

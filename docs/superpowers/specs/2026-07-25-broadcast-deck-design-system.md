@@ -76,6 +76,13 @@ eventSeed       (new)      #F0B429
 
 Radii are unchanged (8 / 6 / 4 / 2) — the audit found them already correct.
 
+**The one pill.** The no-stadium rule has exactly one exception, declared in
+`switchTheme`: a `Switch`. Its shape *is* its affordance — a rectangular switch
+reads as a segmented control or a slider, and people identify a toggle by that
+silhouette before reading anything near it. Every other pill remains banned.
+Declaring it in the theme also makes every switch identical; they were picking
+up Material defaults per widget.
+
 **Contrast gate.** The 2026-07-20 note on `RewindTokens` stands: every foreground token must clear
 WCAG AA (4.5:1) against `bg`, `surface` and `surfaceRaised`. A test (`test/theme_contrast_test.dart`)
 now enforces this instead of a comment, so a future retune cannot silently go sub-AA.
@@ -132,41 +139,43 @@ stands; nothing may animate while the app sits in the background).
 - state change (tally flip, buffer ring): 220 ms, ease-out
 - `MediaQuery.disableAnimations` respected everywhere
 
-## 2. The transport deck
+## 2. The recorder — SUPERSEDED by a rail button
 
-A new `TransportDeck` widget, 44 px tall, rendered by `Shell` ABOVE the `Row(rail, content)` — so it
-spans the full window and is present on every destination **including Settings** (audit F-03).
+**This section originally specified a `TransportDeck`: a 44px full-width bar above the rail, present
+on every destination. It was built, rejected on sight, rebuilt along the bottom edge, and rejected
+again.** What replaced it, and why, matters more than the original design:
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ ● ARMED  ◔ 00:30 BUFFER │ ▭ League Of Legends ⌄ │   ⌥F10  [Save clip] [● Record] │
-├──────────┬─────────────────────────────────────────────────────────────────┤
-│  REWIND  │                                                                 │
-│ ALL CLIPS│                        CONTENT                                  │
-│ GAMES    │                                                                 │
-│ ● League │                                                                 │
-```
+Checking comparable apps says the same thing all three times:
 
-Left to right:
+- **NVIDIA ShadowPlay** puts nothing in its desktop window. Capture state lives in the in-game
+  overlay and a status indicator drawn over the game.
+- **Medal** has one "Start Game" button in the window corner opening a quick-settings dropdown;
+  recording is otherwise automatic on game detection and captured by hotkey.
+- **OBS** does have a controls dock and status bar — but it is a dockable-panel console where the
+  window IS the instrument, which a clip library is not.
 
-1. **Tally** — `ARMED` (amber) while the buffer runs, `REC m:ss` (red) while manually recording,
-   `UNAVAILABLE` (danger) on capture error, `WAITING FOR A GAME` (dim) when auto-paused by
-   `captureOnlyInGame`, `PAUSED` (dim) when paused from the tray.
-2. **Buffer ring + timecode** — a ring filling as the rolling buffer fills, and the buffer length in
-   mono. It always reports the BUFFER, never the elapsed recording: the replay buffer keeps running
-   during a manual recording (`ClipCoordinator.isRecording` is independent of it), so a save is still
-   reaching back through the buffer, and swapping the readout for elapsed time would both lie and put
-   the same value on screen three times. Elapsed time is the tally's and the stop button's job.
-3. **Source** — the existing `_SourceLine` picker, moved verbatim out of `RecorderCluster`.
-4. **Hotkey cap + Save clip + Record** — the existing controls, moved. `Save clip` is the app's one
-   primary fill and is therefore `interactive` (near-white on near-black).
+The argument underneath all three: **while you are gaming, this window is behind a fullscreen game.**
+Anything put in it is invisible at exactly the moment it matters, so permanent chrome for it buys
+nothing.
 
-`RecorderCluster` is deleted; `NavRail` becomes navigation only and loses `captureError`,
-`bufferActive`, `bufferAutoPaused`, `displays`, `capturableApps`, `listApps`, `onSettingsChanged`.
-Those props move to `TransportDeck`. `Shell` keeps its existing prop list unchanged — only where it
-forwards them changes — so `main.dart` needs no edit.
+So the shipped design is:
 
-The deck is NOT shown during onboarding (there is nothing to transport yet).
+- **`RecorderButton`** — a compact state chip at the top of the rail (`ARMED` / `REC m:ss` /
+  `WAITING` / `PAUSED` / `UNAVAILABLE`, plus the buffer length), opening a panel with the capture
+  source, buffer length, Save clip and Record. Collapses to the state dot alone on a narrow window.
+- **Settings gets the same chip** at the top of its own sidebar. That — not a bar — is what fixes
+  audit F-03, recording state vanishing on the one screen most likely to be opened mid-match.
+- **`TrayService` carries the always-on indicator**: a live menu-bar title while recording. It
+  already tracked both flags and spent them only on menu labels, which requires opening the menu —
+  the thing a glance is meant to avoid.
+
+Buffer fill is stated in words in the panel ("00:12 / 00:30" under a `BUFFER · FILLING` caption) and
+only while it is still filling. The ring it replaced sat at zero for the first seconds after launch —
+the honest reading — but read as "off" rather than "filling".
+
+`RecorderCluster` is deleted. `NavRail` is navigation only and takes the recorder as a widget from
+`Shell`, so Settings can be handed the same one. `Shell` keeps its existing prop list unchanged, so
+`main.dart` needed no edit.
 
 ## 3. Screen changes
 

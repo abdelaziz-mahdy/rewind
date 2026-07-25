@@ -954,6 +954,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Copies [fields] from a pristine [AppSettings] onto the live one, so
+  /// "defaults" always means the real constructor defaults rather than a
+  /// second hand-maintained copy of them that can drift.
+  void _resetFields(void Function(AppSettings live, AppSettings fresh) fields) {
+    fields(widget.settings, AppSettings());
+    widget.onChanged(widget.settings);
+    setState(() {});
+  }
+
   Widget _capturePage(BuildContext context) {
     return _settingsPage(context, 'Capture', [
       _SettingsSection(
@@ -1324,6 +1333,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+      _ResetToDefaults(
+        describe: 'Buffer length, video quality and audio settings on this '
+            'page go back to their defaults. Your hotkeys, storage limits and '
+            'per-game settings are not touched.',
+        onReset: () => _resetFields((live, fresh) {
+          live.defaultBufferSeconds = fresh.defaultBufferSeconds;
+          live.captureFps = fresh.captureFps;
+          live.captureMaxHeight = fresh.captureMaxHeight;
+          live.audioMode = fresh.audioMode;
+          live.captureMicrophone = fresh.captureMicrophone;
+          live.micDeviceUid = fresh.micDeviceUid;
+          live.micVolume = fresh.micVolume;
+          live.gameAudioVolume = fresh.gameAudioVolume;
+          live.micAutoLevel = fresh.micAutoLevel;
+          live.micNoiseSuppression = fresh.micNoiseSuppression;
+          live.captureOnlyInGame = fresh.captureOnlyInGame;
+          live.autoSwitchCapture = fresh.autoSwitchCapture;
+        }),
+      ),
     ]);
   }
 
@@ -1452,6 +1480,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: _handleFeedbackSoundsChanged,
         ),
       ),
+      _ResetToDefaults(
+        describe: 'Both shortcuts go back to their defaults (Alt+F10 to save '
+            'a clip, Alt+F9 to record) and the save sound is turned back on.',
+        onReset: () => _resetFields((live, fresh) {
+          live.hotkey = fresh.hotkey;
+          live.recordHotkey = fresh.recordHotkey;
+          live.playFeedbackSounds = fresh.playFeedbackSounds;
+        }),
+      ),
     ]);
   }
 
@@ -1538,6 +1575,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           footnote: 'Applies on next launch. Existing clips stay where they '
               'are.',
         ),
+      ),
+      _ResetToDefaults(
+        describe: 'The storage limit goes back to 20 GB, clips stop expiring '
+            'by age, and the recordings folder goes back to the default '
+            'location. No clips are deleted.',
+        onReset: () {
+          _resetFields((live, fresh) {
+            live.maxStorageGb = fresh.maxStorageGb;
+            live.maxClipAgeDays = fresh.maxClipAgeDays;
+            live.clipsDirPath = fresh.clipsDirPath;
+          });
+          // The text fields hold their own copies — re-seed them or the page
+          // keeps showing the old numbers over the new settings.
+          _maxStorageController.text =
+              widget.settings.maxStorageGb?.toString() ?? '';
+          _maxAgeController.text =
+              widget.settings.maxClipAgeDays?.toString() ?? '';
+        },
       ),
     ]);
   }
@@ -2498,8 +2553,33 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 style: Theme.of(context).textTheme.bodyMuted),
           ),
         ),
+        _ResetToDefaults(
+          describe: 'This game stops overriding anything: capture mode, '
+              'buffer length and its name all follow your Capture defaults '
+              'again. Its clips are not touched.',
+          onReset: _resetGame,
+        ),
       ],
     );
+  }
+
+  /// Drops this game's overrides entirely rather than writing default values
+  /// into them: a game with no config row is exactly "follows the defaults",
+  /// which is what reset means here.
+  void _resetGame() {
+    final fresh = GameConfig(
+      gameId: widget.entry.gameId,
+      bufferSeconds: widget.settings.defaultBufferSeconds,
+    );
+    widget.settings.setConfig(fresh);
+    widget.onChanged(widget.settings);
+    setState(() {
+      _autoClip = fresh.autoClip;
+      _recordFullSession = fresh.recordFullSession;
+      _bufferSeconds = fresh.bufferSeconds;
+      _enabledEvents = {...fresh.enabledEvents};
+      _nameController?.text = '';
+    });
   }
 
   /// Under the event chips: how long to keep the burst debounce "quiet
@@ -2816,6 +2896,69 @@ class _StorageMeter extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Reset to defaults", scoped to ONE page.
+///
+/// Per page rather than per row or per app, deliberately. Per row would put a
+/// reset affordance beside every control and drown the controls themselves;
+/// whole-app would make one button mean "throw away my hotkeys AND my storage
+/// limits AND my per-game setup", which is not a thing anyone wants to press
+/// by accident. A page is the unit the user is actually looking at.
+///
+/// [describe] must name what will change, in the confirmation, because
+/// "Reset to defaults" alone gives the user no way to predict the blast
+/// radius.
+class _ResetToDefaults extends StatelessWidget {
+  final String describe;
+  final VoidCallback onReset;
+
+  const _ResetToDefaults({required this.describe, required this.onReset});
+
+  Future<void> _confirm(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset to defaults?'),
+        content: Text(describe),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.rewindTokens.danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) onReset();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.only(top: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(height: 1, color: tokens.hairline),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => _confirm(context),
+            icon: const Icon(Icons.settings_backup_restore_outlined, size: 16),
+            label: const Text('Reset to defaults'),
+          ),
+        ],
       ),
     );
   }

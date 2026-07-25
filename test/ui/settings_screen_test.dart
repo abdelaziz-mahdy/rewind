@@ -2067,4 +2067,95 @@ void main() {
       expect(filled, empty);
     });
   });
+
+  group('reset to defaults', () {
+    Future<void> confirmReset(WidgetTester t) async {
+      await t.tap(find.widgetWithText(OutlinedButton, 'Reset to defaults'));
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(FilledButton, 'Reset'));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('Hotkeys resets only its own page, not the whole app',
+        (t) async {
+      // Scoped per PAGE on purpose: a whole-app reset would make one button
+      // mean "throw away my hotkeys AND my storage limits AND my per-game
+      // setup", which nobody wants to press by accident.
+      final settings = AppSettings(
+        hotkey: 'Ctrl+6',
+        recordHotkey: 'Ctrl+7',
+        playFeedbackSounds: false,
+        maxStorageGb: 5,
+        defaultBufferSeconds: 60,
+      );
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        initialTab: 'Hotkey',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await confirmReset(t);
+
+      final fresh = AppSettings();
+      expect(settings.hotkey, fresh.hotkey);
+      expect(settings.recordHotkey, fresh.recordHotkey);
+      expect(settings.playFeedbackSounds, fresh.playFeedbackSounds);
+      // Untouched — a different page owns these.
+      expect(settings.maxStorageGb, 5);
+      expect(settings.defaultBufferSeconds, 60);
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets('cancelling changes nothing', (t) async {
+      final settings = AppSettings(hotkey: 'Ctrl+6');
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Hotkey',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await t.tap(find.widgetWithText(OutlinedButton, 'Reset to defaults'));
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await t.pumpAndSettle();
+
+      expect(settings.hotkey, 'Ctrl+6');
+    });
+
+    testWidgets('Storage reset also re-seeds the visible fields', (t) async {
+      // The text fields hold their own copies of the values, so a reset that
+      // only touches settings would leave the page showing the old numbers
+      // over the new state.
+      final settings = AppSettings(maxStorageGb: 5, maxClipAgeDays: 3);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await confirmReset(t);
+
+      expect(settings.maxStorageGb, AppSettings().maxStorageGb);
+      expect(settings.maxClipAgeDays, isNull);
+      expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('maxStorageField')))
+              .controller!
+              .text,
+          '20');
+      expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('maxAgeField')))
+              .controller!
+              .text,
+          '');
+    });
+  });
 }

@@ -51,6 +51,13 @@ All notable changes to Rewind are documented here. Format based on
   and its event markers gained a readable legend beneath the seek bar instead
   of being 3px ticks you had to hover one at a time.
 
+### Added
+- **Reset to defaults**, on each Settings page and on each game's page. Scoped
+  per page rather than per app, so one button can't mean "throw away my
+  hotkeys and my storage limits and my per-game setup" at once — and the
+  confirmation names exactly what's about to change. Resetting a game simply
+  stops it overriding anything; its clips are untouched.
+
 ### Fixed
 - **Settings: capture mode showed nothing selected on most games.** Auto-clip
   defaults to on, and the mode was worked out as "auto-clip on = Highlights"
