@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,7 @@ import 'package:rewind/src/events/steam_account_locator.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/audio_input_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
+import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/system_settings.dart';
@@ -2020,5 +2023,29 @@ void main() {
     expect(find.byKey(const ValueKey('settingsCloseButton')), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
     await t.pump(); // does not throw
+  });
+
+  group('Storage meter', () {
+    testWidgets('the usage bar actually has height', (t) async {
+      // A childless ColoredBox has no intrinsic size and a Row centres
+      // rather than stretches, so the meter first shipped rendering as
+      // literally nothing — visible only by looking at a screenshot.
+      final tmp = Directory.systemTemp.createTempSync('rewind_meter');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final library = ClipLibrary(clipsDir: tmp);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        library: library,
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      final bar = find.byKey(const ValueKey('storageMeterBar'));
+      expect(bar, findsOneWidget);
+      expect(t.getSize(bar).height, greaterThan(0));
+      expect(t.getSize(bar).width, greaterThan(0));
+    });
   });
 }

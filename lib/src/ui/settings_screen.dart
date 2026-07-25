@@ -1476,25 +1476,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _FieldRow(
+            _LimitFieldRow(
               label: 'Max storage',
-              control: _LimitField(
-                fieldKey: const ValueKey('maxStorageField'),
-                controller: _maxStorageController,
-                focusNode: _maxStorageFocus,
-                suffix: 'GB',
-                emptyLabel: 'No limit',
-              ),
+              fieldKey: const ValueKey('maxStorageField'),
+              controller: _maxStorageController,
+              focusNode: _maxStorageFocus,
+              suffix: 'GB',
+              emptyLabel: 'No limit',
             ),
-            _FieldRow(
+            _LimitFieldRow(
               label: 'Delete clips after',
-              control: _LimitField(
-                fieldKey: const ValueKey('maxAgeField'),
-                controller: _maxAgeController,
-                focusNode: _maxAgeFocus,
-                suffix: 'days',
-                emptyLabel: 'Keep forever',
-              ),
+              fieldKey: const ValueKey('maxAgeField'),
+              controller: _maxAgeController,
+              focusNode: _maxAgeFocus,
+              suffix: 'days',
+              emptyLabel: 'Keep forever',
             ),
             if (widget.onCleanUpStorage != null)
               _TrailingRow(
@@ -2696,7 +2692,8 @@ class _UnsetHotkeyNote extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
     return Padding(
-      padding: const EdgeInsets.only(left: 168, bottom: 8),
+      padding: const EdgeInsets.only(
+          left: _fieldLabelWidth + _fieldLabelGap, bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2778,10 +2775,16 @@ class _StorageMeter extends StatelessWidget {
             if (fraction != null) ...[
               const SizedBox(height: 10),
               ClipRRect(
+                key: const ValueKey('storageMeterBar'),
                 borderRadius: BorderRadius.circular(3),
                 child: SizedBox(
-                  height: 6,
+                  height: 8,
                   child: Row(
+                    // stretch, or the ColoredBoxes below size to ZERO height:
+                    // a childless ColoredBox has no intrinsic size, and a Row
+                    // centres rather than stretches by default — so the meter
+                    // rendered as nothing at all.
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
                         // Floor the fill so a small-but-real usage still
@@ -2795,7 +2798,7 @@ class _StorageMeter extends StatelessWidget {
                         // A visible track: `surfaceRaised` on `bg` is too
                         // close to the page to read as a bar at all.
                         child: ColoredBox(
-                            color: Colors.white.withValues(alpha: 0.09)),
+                            color: Colors.white.withValues(alpha: 0.13)),
                       ),
                     ],
                   ),
@@ -2814,86 +2817,6 @@ class _StorageMeter extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// A numeric limit field with its unit inline and a real word for "empty".
-///
-/// The old field showed "Blank = never" as PLACEHOLDER text — a hint
-/// impersonating a value, which is the placeholder-as-label anti-pattern:
-/// it vanishes the moment you type, and until then it reads like the field is
-/// already set to something. The unit moves into the field's suffix (so the
-/// label can be plain prose) and the empty state is stated underneath in
-/// words, permanently.
-class _LimitField extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String suffix;
-
-  /// What an empty field MEANS, shown under it whenever it is empty.
-  final String emptyLabel;
-
-  /// Goes on the inner [TextField], not the wrapper — callers (and tests)
-  /// address the field itself.
-  final Key fieldKey;
-
-  const _LimitField({
-    required this.controller,
-    required this.focusNode,
-    required this.suffix,
-    required this.emptyLabel,
-    required this.fieldKey,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          // Sized to the content: a two-or-three digit number. A 200px box
-          // for "20" told the user to expect something much longer.
-          width: 132,
-          child: ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, _) => TextField(
-              key: fieldKey,
-              controller: controller,
-              focusNode: focusNode,
-              keyboardType: TextInputType.number,
-              style: theme.textTheme.numeral,
-              decoration: InputDecoration(
-                isDense: true,
-                // suffixIcon, not suffixText: Material hides prefix/suffix
-                // TEXT while a field is empty and unfocused — i.e. exactly
-                // when "days" is most needed to explain what to type.
-                suffixIcon: Padding(
-                  padding: const EdgeInsets.only(right: 12, top: 10),
-                  child: Text(suffix,
-                      style:
-                          theme.textTheme.body.copyWith(color: tokens.textDim)),
-                ),
-                suffixIconConstraints:
-                    const BoxConstraints(minWidth: 0, minHeight: 0),
-              ),
-              // Commit on blur/submit ONLY — see _commitLimit's doc for the
-              // typing-"15"-passes-through-"1" data-loss bug this prevents.
-              onSubmitted: (_) => focusNode.unfocus(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (context, value, _) => Text(
-            value.text.trim().isEmpty ? emptyLabel : '',
-            style: theme.textTheme.bodyMuted,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2951,10 +2874,15 @@ class _SettingsSection extends StatelessWidget {
   }
 }
 
-/// A field row: a short (~150px) left-aligned label, then [control]
-/// immediately after at a shared left edge — for dropdowns/segmented
-/// controls, as opposed to [_ToggleRow] (trailing switch) or
-/// [_TextFieldRow] (label above a text-entry field).
+/// The one label column every settings row grammar shares, so a label and
+/// the control beside it line up across pages and row types.
+const double _fieldLabelWidth = 150;
+const double _fieldLabelGap = 18;
+
+/// A field row: a short left-aligned label, then [control] immediately after
+/// at a shared left edge — for dropdowns/segmented controls, as opposed to
+/// [_ToggleRow] (trailing switch) or [_TextFieldRow] (label above a
+/// text-entry field).
 class _FieldRow extends StatelessWidget {
   final String label;
   final Widget control;
@@ -2969,9 +2897,110 @@ class _FieldRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(width: 150, child: Text(label, style: theme.textTheme.body)),
-          const SizedBox(width: 18),
+          SizedBox(
+              width: _fieldLabelWidth,
+              child: Text(label, style: theme.textTheme.body)),
+          const SizedBox(width: _fieldLabelGap),
           Expanded(child: control),
+        ],
+      ),
+    );
+  }
+}
+
+/// A numeric limit row: label, a field sized to its content, and — under the
+/// field only — what an empty value MEANS.
+///
+/// One widget rather than a `_FieldRow` wrapping a column, because that is
+/// what broke the alignment: the row centres its label against the CONTROL,
+/// so a control that also contains a helper line (and reserved an empty line
+/// when there was none) made the label sit visibly low against the box it
+/// belongs to. The helper now lives outside the row's own alignment, indented
+/// to the field's left edge.
+///
+/// The helper also replaces the old "Blank = never" PLACEHOLDER, which was a
+/// hint impersonating a value: it vanished the moment you typed, and until
+/// then read as though the field was already set to something.
+class _LimitFieldRow extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String suffix;
+
+  /// What an empty field MEANS, shown under it whenever it is empty.
+  final String emptyLabel;
+
+  /// Goes on the inner [TextField] — callers (and tests) address the field.
+  final Key fieldKey;
+
+  const _LimitFieldRow({
+    required this.label,
+    required this.controller,
+    required this.focusNode,
+    required this.suffix,
+    required this.emptyLabel,
+    required this.fieldKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                  width: _fieldLabelWidth,
+                  child: Text(label, style: theme.textTheme.body)),
+              const SizedBox(width: _fieldLabelGap),
+              SizedBox(
+                // Sized to the content: a two-or-three digit number. A 200px
+                // box for "20" told the user to expect something longer.
+                width: 132,
+                child: TextField(
+                  key: fieldKey,
+                  controller: controller,
+                  focusNode: focusNode,
+                  keyboardType: TextInputType.number,
+                  style: theme.textTheme.numeral,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    // suffixIcon, not suffixText: Material hides prefix/suffix
+                    // TEXT while a field is empty and unfocused — i.e. exactly
+                    // when "days" is most needed to explain what to type.
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.only(right: 12, top: 10),
+                      child: Text(suffix,
+                          style: theme.textTheme.body
+                              .copyWith(color: tokens.textDim)),
+                    ),
+                    suffixIconConstraints:
+                        const BoxConstraints(minWidth: 0, minHeight: 0),
+                  ),
+                  // Commit on blur/submit ONLY — see _commitLimit's doc for
+                  // the typing-"15"-passes-through-"1" data-loss bug this
+                  // prevents.
+                  onSubmitted: (_) => focusNode.unfocus(),
+                ),
+              ),
+            ],
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => value.text.trim().isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.only(
+                        left: _fieldLabelWidth + _fieldLabelGap, top: 6),
+                    child: Text(emptyLabel, style: theme.textTheme.bodyMuted),
+                  )
+                // Nothing at all when the field HAS a value — an empty
+                // reserved line is what pushed the label off-centre.
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
