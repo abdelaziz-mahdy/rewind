@@ -972,11 +972,32 @@ class ClipCoordinator {
   }
 
   void _recordOutcome(GameEvent e) {
-    final sessionStart = _sessionStartedAt[e.gameId];
     final stats = matchStats;
-    if (sessionStart == null || stats == null) return;
+    if (stats == null) return;
     final result =
         e.kind == GameEventKind.victory ? MatchResult.win : MatchResult.loss;
+    final sessionStart = _sessionStartedAt[e.gameId];
+    if (sessionStart == null) {
+      // The other way an outcome can vanish: GameEnd arrives after the game
+      // already deactivated, so there is no live session to key it to. Fall
+      // back to the most recently touched match for this game — an outcome
+      // only ever arrives at the END of a match, so "the one that just
+      // finished" is the correct target — but only if it was touched
+      // recently, so a GameEnd from a stale/replayed event log can't stamp a
+      // result onto a match from days ago.
+      final latest = stats.latestFor(e.gameId);
+      if (latest == null ||
+          DateTime.now().difference(latest.updatedAt) >
+              const Duration(hours: 3)) {
+        talker.warning('League: match ${result.name} arrived with no live '
+            'session and no recent match to attach it to — outcome dropped');
+        return;
+      }
+      talker.info('Match ${result.name} arrived after the session ended — '
+          'recording it on the match that started ${latest.startedAt}');
+      stats.recordOutcome(e.gameId, latest.startedAt, result);
+      return;
+    }
     stats.recordOutcome(e.gameId, sessionStart, result);
   }
 

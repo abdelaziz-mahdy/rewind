@@ -391,13 +391,25 @@ class _GameHubScreenState extends State<GameHubScreen> {
       ),
     ];
 
+    // A RECORD, never a win-rate percentage.
+    //
+    // Rewind records a match outcome only when it is still watching at the
+    // end of the match, which in practice is the minority: on a real library
+    // (2026-07-25) 19 of 21 matches had no result at all, and both that did
+    // were wins — so a percentage rendered "100% WIN RATE" off a sample of
+    // two. A percentage hides its own denominator, which is exactly the
+    // wrong property for a figure this sparse. "2-0", with the sample spelled
+    // out whenever some matches are unrated, cannot lie the same way.
     if (decided.isNotEmpty) {
       final wins = decided.where((m) => m.result == MatchResult.win).length;
-      final pct = (wins / decided.length * 100).round();
+      final losses = decided.length - wins;
+      final complete = decided.length == sessions.length;
       cells.add(_ScoreCell(
-        value: '$pct%',
-        label: 'WIN RATE',
-        positive: pct >= 50,
+        value: '$wins-$losses',
+        label: complete
+            ? 'RECORD'
+            : 'RECORD · ${decided.length} OF ${sessions.length}',
+        positive: wins > losses,
       ));
     }
 

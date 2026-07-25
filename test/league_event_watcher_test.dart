@@ -186,6 +186,45 @@ void main() {
     expect(emitted.single.kind, GameEventKind.other);
   });
 
+  test('GameEnd accepts every plausible loss spelling', () async {
+    // A real library (2026-07-25) had 21 matches with only 2 outcomes
+    // recorded — and both were WINS. The coordinator handles victory and
+    // defeat symmetrically, so a one-sided gap like that points at the token
+    // rather than the plumbing: a lost match most likely reported a spelling
+    // the old two-case switch didn't accept, and fell through to `other`.
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed past history (see the watcher's doc)
+
+    var id = 100;
+    for (final raw in ['Lose', 'loss', 'LOST', 'Defeat', ' fail ']) {
+      emitted.clear();
+      responses['/liveclientdata/eventdata'] = _events([
+        {'EventID': id++, 'EventName': 'GameEnd', 'Result': raw},
+      ]);
+      await watcher.pollNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(emitted.single.kind, GameEventKind.defeat,
+          reason: '"$raw" must record a loss');
+    }
+  });
+
+  test('an unrecognized GameEnd Result stays neutral, never a fake loss',
+      () async {
+    // Deliberately NOT "anything that isn't a win is a loss": a remake, a
+    // spectator session or an older client would then be written down as a
+    // defeat the player never had, and a wrong loss is worse than a missing
+    // one. The watcher logs the raw token instead so the next occurrence
+    // names it.
+    responses['/liveclientdata/eventdata'] = _events([]);
+    await watcher.pollNow(); // seed
+    responses['/liveclientdata/eventdata'] = _events([
+      {'EventID': 200, 'EventName': 'GameEnd', 'Result': 'Surrender'},
+    ]);
+    await watcher.pollNow();
+    await Future<void>.delayed(Duration.zero);
+    expect(emitted.single.kind, GameEventKind.other);
+  });
+
   test('a 2-team mode (CLASSIC) splits into your team vs enemies', () async {
     responses['/liveclientdata/gamestats'] =
         jsonEncode({'gameMode': 'CLASSIC'});

@@ -47,6 +47,31 @@ All notable changes to Rewind are documented here. Format based on
   and its event markers gained a readable legend beneath the seek bar instead
   of being 3px ticks you had to hover one at a time.
 
+### Fixed
+- **Win rate could read "100%" off a sample of two.** A game hub reported a
+  percentage over only the matches whose outcome Rewind managed to record —
+  on a real library that was 2 matches out of 21, both wins, so the hub
+  claimed a perfect record. It now shows a **record** ("2-0") and spells out
+  the sample whenever some matches are unrated ("RECORD · 2 OF 21"). A
+  percentage hides its own denominator, which is the wrong property for a
+  figure this sparse.
+- **Losses were never recorded at all.** Every recorded outcome in a real
+  library was a win. Rewind accepted only "Win"/"Lose" from League's match-end
+  event, so a lost match reporting any other spelling was silently dropped —
+  and nothing anywhere said so. It now accepts every plausible spelling, logs
+  the raw value when it recognises none (so the next lost match names the
+  exact token instead of vanishing), and still refuses to guess: an
+  unrecognised result stays neutral rather than being written down as a defeat
+  that never happened. A match-end that arrives after the game already closed
+  now attaches to the match that just finished instead of being dropped.
+- **Hotkey clips taken during a match now appear in that match.** They could
+  end up filed under the game's launcher instead of the live match and strand
+  themselves as one-clip groups beside the match they came from. Sessions are
+  now grouped by time as well as by stamp: a clip that falls inside a match's
+  span belongs to it. This also repairs clips already saved that way, without
+  rewriting anything on disk. Two back-to-back matches still never merge —
+  absorption requires containment, not proximity.
+
 ### Accessibility
 - Screen readers can now read the recorder state, the live-game dot, clip
   counts, K/D/A, match results, event badges, the buffer diagram and every
