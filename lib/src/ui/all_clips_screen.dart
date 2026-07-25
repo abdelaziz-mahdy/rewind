@@ -233,7 +233,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
         final totalBytes = scoped.fold<int>(0, (sum, c) => sum + c.sizeBytes);
         final sessions = _sorted(_sessionFeed(clips));
 
-        return Column(
+        return ContentColumn(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -339,7 +340,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                     ),
             ),
           ],
-        );
+        ));
       },
     );
   }

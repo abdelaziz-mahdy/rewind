@@ -161,14 +161,19 @@ const double clipGridSpacing = 16;
 
 /// Card width to ask the grid delegate for, given the space it actually has.
 ///
-/// A constant 300 meant a 2560px window showed eight small cards per row
-/// instead of fewer, larger ones — the extra pixels went into COUNT rather
-/// than size, which is the wrong trade for content whose whole value is a
-/// legible video frame. Steps rather than a continuous function so the
-/// column count stays stable while a window is dragged.
+/// A constant 300 meant a wide window showed more small cards per row rather
+/// than fewer large ones — the wrong trade for content whose whole value is a
+/// legible video frame. Steps rather than a continuous function so the column
+/// count stays stable while a window is dragged.
+///
+/// Thresholds are set against the CONTENT COLUMN (capped at
+/// `contentMaxWidth`), not the window: measuring the window instead meant a
+/// 2200px display never crossed the old 1500/1900 marks once the column
+/// capped at 1440, so the cards silently got smaller the wider the window
+/// went.
 double clipGridExtentFor(double width) {
-  if (width >= 1900) return 420;
-  if (width >= 1500) return 360;
+  if (width >= 1200) return 380;
+  if (width >= 900) return 340;
   return clipGridMaxCrossAxisExtent;
 }
 

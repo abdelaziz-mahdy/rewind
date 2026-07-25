@@ -375,7 +375,8 @@ void main() {
     });
   });
 
-  testWidgets('folder button sits flush right at wide widths', (t) async {
+  testWidgets('folder button sits flush right of the content column',
+      (t) async {
     t.view.physicalSize = const Size(1600, 900);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
@@ -384,7 +385,11 @@ void main() {
     await t.pumpWidget(_app(screen()));
     final right = t.getTopRight(find.byTooltip('Open clips folder')).dx;
     // Flush with the header's right padding — a flex-allocation regression
-    // once stranded it at ~60% of the row width.
-    expect(right, greaterThan(1600 - 40));
+    // once stranded it at ~60% of the row width. Measured against the
+    // CONTENT COLUMN, which is capped and centred on a wide window (see
+    // `contentMaxWidth`), not against the window edge.
+    final columnRight = (1600 + contentMaxWidth) / 2;
+    expect(right, greaterThan(columnRight - 40));
+    expect(right, lessThanOrEqualTo(columnRight));
   });
 }

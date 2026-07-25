@@ -512,6 +512,35 @@ extension RewindTypography on TextTheme {
       );
 }
 
+/// The widest a screen's content column ever gets, and the reason it is
+/// capped at all.
+///
+/// Left unbounded, a 2200px window rendered a ~900px app hugging the left
+/// edge: the hub's header blocks stopped at [settingsMaxContentWidth] while
+/// the card grid ran the full width, so the page had two different right
+/// edges and 1200px of dead space beside them. One column for every block,
+/// centred once the window outgrows it, keeps a wide display looking
+/// deliberate instead of unfinished — and keeps a row of cards from
+/// stretching so far that scanning one becomes a head-turn.
+const double contentMaxWidth = 1440;
+
+/// Wraps a screen's body in [contentMaxWidth], centred. Every top-level
+/// block on a screen should go through this so they all share one column.
+class ContentColumn extends StatelessWidget {
+  final Widget child;
+
+  const ContentColumn({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: contentMaxWidth),
+          child: child,
+        ),
+      );
+}
+
 /// Max width for a single column of settings (label → control pairs).
 ///
 /// Settings-style columns must not track the window width. Unconstrained on a

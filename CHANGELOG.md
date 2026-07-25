@@ -48,6 +48,23 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Fixed
+- **The window is now designed for more than one size.** The rail was a fixed
+  220px at every width — 27% of a half-screen window, on an app meant to sit
+  *beside* a game — and now collapses to icons (with tooltips, and the
+  live-game dot moved onto the game's avatar) below 1000px. On a wide display
+  the opposite problem: a 2200px window rendered a ~900px app hugging the left
+  edge, because a hub's header blocks stopped at one width while its card grid
+  ran the full window. Every block on a screen now shares one content column,
+  centred once the window outgrows it, and card size steps with that column so
+  a bigger display shows bigger clips rather than more small ones.
+- **A game hub's header had two different right edges** — the capture-settings
+  card was never actually width-capped (a `ConstrainedBox` cannot shrink below
+  a tight constraint), so it ran wider than the score band above it.
+- **WIN / LOSS badges could disappear on a bright frame.** They sat on an
+  arbitrary video still with only a colour wash behind them; they now carry
+  the same dark scrim as the K/D badge beside them.
+- **A game hub said "In match — connected to 127.0.0.1:2999".** It now says
+  what that means for the player.
 - **Win rate could read "100%" off a sample of two.** A game hub reported a
   percentage over only the matches whose outcome Rewind managed to record —
   on a real library that was 2 matches out of 21, both wins, so the hub

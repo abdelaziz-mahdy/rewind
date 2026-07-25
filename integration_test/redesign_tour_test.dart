@@ -48,8 +48,29 @@ void main() {
   final boundaryKey = GlobalKey();
 
   late Directory tmp;
-  setUp(() => tmp = Directory.systemTemp.createTempSync('rewind_redesign'));
-  tearDown(() => tmp.deleteSync(recursive: true));
+
+  /// Force a deterministic canvas.
+  ///
+  /// `pumpWidget` applies TIGHT constraints from the test surface, so a
+  /// `SizedBox` inside `frame()` is silently ignored — the first run of this
+  /// tour captured 1600x1200 and a later one 3024x1636 purely because the
+  /// window differed. Screenshots meant for before/after comparison have to
+  /// be the same size or the comparison is worthless, so pin the view here.
+  const size = Size(1440, 900);
+  setUp(() {
+    tmp = Directory.systemTemp.createTempSync('rewind_redesign');
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+    view.physicalSize = size * 2;
+    view.devicePixelRatio = 2;
+  });
+  tearDown(() {
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+    view.resetPhysicalSize();
+    view.resetDevicePixelRatio();
+    tmp.deleteSync(recursive: true);
+  });
 
   Future<void> shoot(String name) async {
     final boundary =
@@ -63,9 +84,8 @@ void main() {
 
   Widget frame(Widget child) => RepaintBoundary(
         key: boundaryKey,
-        child: SizedBox(
-          width: 1280,
-          height: 860,
+        child: SizedBox.fromSize(
+          size: size,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: rewindTheme(),
@@ -225,16 +245,71 @@ void main() {
       outDir: tmp.path,
       engine: FakeCaptureEngine(),
     );
-    await t.pumpWidget(
-        frame(shell((library: library, coordinator: coordinator))));
+    await t
+        .pumpWidget(frame(shell((library: library, coordinator: coordinator))));
     await t.pump(const Duration(milliseconds: 500));
     await shoot('04-shell-empty');
   });
 
   testWidgets('shell — capture permission error', (t) async {
-    await t.pumpWidget(frame(shell(seeded(),
-        captureError: 'Screen Recording permission denied')));
+    await t.pumpWidget(frame(
+        shell(seeded(), captureError: 'Screen Recording permission denied')));
     await t.pump(const Duration(milliseconds: 500));
     await shoot('05-shell-capture-error');
+  });
+
+  /// Resizing is a first-class case, not an afterthought: this is a desktop
+  /// app that lives beside a game, so it gets dragged narrow, parked on a
+  /// laptop display, and stretched across an ultrawide. Every one of those is
+  /// a real window, and a layout that only works at one width is broken.
+  group('resizing', () {
+    const widths = <String, Size>{
+      'narrow': Size(820, 720), // half a laptop screen
+      'laptop': Size(1280, 800),
+      'wide': Size(2200, 1100), // a big display, or half an ultrawide
+    };
+
+    for (final w in widths.entries) {
+      testWidgets('all clips @ ${w.key}', (t) async {
+        final view =
+            TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+        view.physicalSize = w.value * 2;
+        await t.pumpWidget(RepaintBoundary(
+          key: boundaryKey,
+          child: SizedBox.fromSize(
+            size: w.value,
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: rewindTheme(),
+              home: shell(seeded()),
+            ),
+          ),
+        ));
+        await t.pump(const Duration(milliseconds: 600));
+        await shoot('10-allclips-${w.key}');
+      });
+
+      testWidgets('game hub @ ${w.key}', (t) async {
+        final view =
+            TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+        view.physicalSize = w.value * 2;
+        await t.pumpWidget(RepaintBoundary(
+          key: boundaryKey,
+          child: SizedBox.fromSize(
+            size: w.value,
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: rewindTheme(),
+              home: shell(seeded()),
+            ),
+          ),
+        ));
+        await t.pump(const Duration(milliseconds: 400));
+        await t.tap(find.byKey(const ValueKey('navGame:league_of_legends')));
+        await t.pump();
+        await t.pump(const Duration(milliseconds: 600));
+        await shoot('11-hub-${w.key}');
+      });
+    }
   });
 }

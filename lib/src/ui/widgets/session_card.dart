@@ -378,7 +378,11 @@ class MatchResultBadge extends StatelessWidget {
       padding: EdgeInsets.symmetric(
           horizontal: large ? 10 : 8, vertical: large ? 4 : 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
+        // A DARK scrim under the tint, like the K/D badge beside it: this
+        // chip sits on an arbitrary video frame, and a coloured label on a
+        // low-alpha colour wash vanishes the moment that frame is bright.
+        color: Color.alphaBlend(color.withValues(alpha: 0.22),
+            Colors.black.withValues(alpha: 0.66)),
         borderRadius: BorderRadius.circular(tokens.radiusChip),
         border: Border.all(color: color),
       ),

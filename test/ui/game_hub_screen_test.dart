@@ -180,7 +180,7 @@ void main() {
         'League merged row: only the CLIENT open (process half active) must '
         'NOT read as in-match — the API is not even listening', (t) async {
       // Regression: sitting in the lobby (LeagueClientUx running, catalog
-      // half active) used to show "In match — connected to 127.0.0.1:2999"
+      // half active) used to claim it was in a match
       // while nothing was listening on 2999 at all.
       coordinator.settings.setConfig(GameConfig(gameId: 'league_of_legends'));
       coordinator.activeGameIds.value = {'app:league_of_legends'};
@@ -190,7 +190,7 @@ void main() {
       expect(find.text('CLIPS ITSELF'), findsOneWidget);
       expect(
           t.widget<Text>(detailLine()).data,
-          'Client open — waiting for a match. Rewind connects automatically '
+          'League is open — waiting for a match. Rewind joins automatically '
           'when one starts.');
     });
 
@@ -202,7 +202,7 @@ void main() {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
       expect(t.widget<Text>(detailLine()).data,
-          'In match — connected to 127.0.0.1:2999');
+          'In a match now — clipping your kills automatically.');
     });
 
     testWidgets('League shows the waiting state when inactive', (t) async {

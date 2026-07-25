@@ -451,6 +451,11 @@ class _ShellState extends State<Shell> {
                 NavRail(
                   coordinator: widget.coordinator,
                   library: widget.library,
+                  // A 220px rail is 27% of an 820px window, and this app is
+                  // meant to sit BESIDE a game — a half-screen window is a
+                  // normal way to use it, not an edge case.
+                  compact:
+                      MediaQuery.sizeOf(context).width < navRailCompactBelow,
                   settingsRevision: widget.settingsRevision,
                   selected: _destination,
                   onSelect: _select,

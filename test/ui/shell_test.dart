@@ -246,6 +246,11 @@ void main() {
 
   group('rail', () {
     testWidgets('lists directory entries with clip counts', (t) async {
+      // Labels and counts only exist on the EXPANDED rail; below
+      // navRailCompactBelow it collapses to icons (see NavRail.compact).
+      t.view.physicalSize = const Size(1400, 900);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
       coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
       library.add(
           clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
