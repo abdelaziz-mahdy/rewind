@@ -472,7 +472,7 @@ void main() {
       )));
       await openPanel(t);
 
-      expect(find.text('00:30'), findsOneWidget);
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
       await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
@@ -497,7 +497,7 @@ void main() {
       )));
       await openPanel(t);
 
-      expect(find.text('00:30'), findsOneWidget);
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
       await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
@@ -545,13 +545,13 @@ void main() {
       )));
       await openPanel(t);
 
-      expect(find.text('00:30'), findsOneWidget);
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
       await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
       await settleMenu(t);
 
-      expect(find.text('01:00'), findsOneWidget);
+      expect(find.text('00:00 / 01:00'), findsOneWidget);
     });
   });
 
@@ -687,7 +687,7 @@ void main() {
       // it is still filling — a ring sitting at zero read as "off" rather
       // than "filling".
       double fill() => t.widget<BufferFill>(find.byType(BufferFill)).fill;
-      expect(find.textContaining('Holding 0 s of 30 s'), findsOneWidget);
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
       expect(fill(), 0);
 
       await t.pump(const Duration(seconds: 15));

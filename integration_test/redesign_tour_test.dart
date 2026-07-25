@@ -321,4 +321,41 @@ void main() {
       });
     }
   });
+
+  /// Every Settings page, for the settings audit.
+  group('settings pages', () {
+    const pages = <String, String>{
+      'Capture': 'settingsTab:Capture',
+      'Hotkey': 'settingsTab:Hotkey',
+      'Storage': 'settingsTab:Storage',
+      'Steam': 'settingsTab:Steam',
+      'About': 'settingsTab:About',
+    };
+
+    for (final page in pages.entries) {
+      testWidgets('settings — ${page.key}', (t) async {
+        await t.pumpWidget(frame(shell(seeded())));
+        await t.pump(const Duration(milliseconds: 300));
+        await t.tap(find.byKey(const ValueKey('navItem:settings')));
+        await t.pump();
+        await t.pump(const Duration(milliseconds: 300));
+        await t.tap(find.byKey(ValueKey(page.value)));
+        await t.pump();
+        await t.pump(const Duration(milliseconds: 400));
+        await shoot('20-settings-${page.key.toLowerCase()}');
+      });
+    }
+
+    testWidgets('settings — a game page', (t) async {
+      await t.pumpWidget(frame(shell(seeded())));
+      await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.byKey(const ValueKey('navItem:settings')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.text('League of Legends').last);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 400));
+      await shoot('21-settings-game');
+    });
+  });
 }

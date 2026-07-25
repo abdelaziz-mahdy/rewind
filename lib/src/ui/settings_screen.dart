@@ -2237,8 +2237,16 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   /// events), or full (record the whole session). Full session is exclusive
   /// of highlights: it's "the whole game" instead of picked moments (the full
   /// VOD contains every highlight anyway); the buffer + hotkey still work.
-  String get _mode =>
-      _recordFullSession ? 'full' : (_autoClip ? 'highlights' : 'manual');
+  ///
+  /// [hasEvents] is not optional detail: a game with no event feed has no
+  /// Highlights CARD, so resolving to 'highlights' there selected a card that
+  /// isn't on screen and left BOTH visible radios empty — the mode looked
+  /// unset when it wasn't. `GameConfig.autoClip` defaults to true, so every
+  /// process-only game landed in exactly that state. Highlights is not a
+  /// reachable mode without an event feed, so it resolves to manual.
+  String _modeFor({required bool hasEvents}) => _recordFullSession
+      ? 'full'
+      : (_autoClip && hasEvents ? 'highlights' : 'manual');
 
   void _setMode(String mode) {
     setState(() {
@@ -2340,7 +2348,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 ),
               ],
               // Highlights mode: the event matrix + burst-quiet delay.
-              if (_mode == 'highlights' && groups.isNotEmpty) ...[
+              if (_modeFor(hasEvents: groups.isNotEmpty) == 'highlights') ...[
                 const SizedBox(height: 12),
                 Column(
                   key: const ValueKey('gameSettingsEventMatrix'),
@@ -2361,7 +2369,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 _postEventDelayRow(context),
               ],
               // Full session mode: the storage caveat.
-              if (_mode == 'full') ...[
+              if (_modeFor(hasEvents: groups.isNotEmpty) == 'full') ...[
                 const SizedBox(height: 10),
                 Text(
                   'Records the whole game to one continuous video, alongside '
@@ -2466,14 +2474,16 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   /// ([hasEvents] false) — there's nothing to auto-clip — leaving Manual and
   /// Full session.
   Widget _captureModeCards(BuildContext context, {required bool hasEvents}) {
-    Widget card(String mode, String title, String description) => _PresetCard(
-          key: ValueKey('captureMode:$mode'),
+    final mode = _modeFor(hasEvents: hasEvents);
+    Widget card(String cardMode, String title, String description) =>
+        _PresetCard(
+          key: ValueKey('captureMode:$cardMode'),
           title: title,
           description: description,
           costLine: null,
-          selected: _mode == mode,
+          selected: mode == cardMode,
           recommended: false,
-          onTap: () => _setMode(mode),
+          onTap: () => _setMode(cardMode),
         );
 
     final cards = <Widget>[

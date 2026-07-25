@@ -338,14 +338,11 @@ class _RecorderButtonState extends State<RecorderButton> {
                 BufferReadout(
                   fill: _bufferFill,
                   seconds: bufferSeconds,
+                  held: _bufferHeldSeconds,
                   running: _bufferRunning,
                   onPick: _setBufferSeconds,
                   onOpenSettings: widget.onOpenSettings,
                 ),
-                if (_bufferRunning && _bufferFill < 1) ...[
-                  const SizedBox(height: 8),
-                  _FillLine(held: _bufferHeldSeconds, total: bufferSeconds),
-                ],
                 const SizedBox(height: 10),
                 Divider(height: 1, color: tokens.hairline),
                 const SizedBox(height: 10),
@@ -567,6 +564,10 @@ class _StateChip extends StatelessWidget {
 class BufferReadout extends StatelessWidget {
   final double fill;
   final int seconds;
+
+  /// Seconds actually held so far. Only differs from [seconds] in the window
+  /// right after the buffer starts.
+  final int held;
   final bool running;
   final ValueChanged<int> onPick;
   final VoidCallback onOpenSettings;
@@ -574,6 +575,7 @@ class BufferReadout extends StatelessWidget {
   const BufferReadout({
     required this.fill,
     required this.seconds,
+    required this.held,
     required this.running,
     required this.onPick,
     required this.onOpenSettings,
@@ -590,10 +592,17 @@ class BufferReadout extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final value = _clock(seconds);
-    final spoken = running
-        ? 'Buffer $seconds seconds, ${(fill * 100).round()} percent held'
-        : 'Buffer $seconds seconds, not running';
+    // One block, not two. While the buffer is still filling the readout
+    // becomes "held / length" — the same fact the separate "Holding N s of
+    // M s" line used to state underneath it, which said it twice.
+    final filling = running && fill < 1;
+    final value =
+        filling ? '${_clock(held)} / ${_clock(seconds)}' : _clock(seconds);
+    final spoken = !running
+        ? 'Buffer $seconds seconds, not running'
+        : filling
+            ? 'Buffer $seconds seconds, holding $held so far'
+            : 'Buffer $seconds seconds, full';
     return Semantics(
       label: spoken,
       button: true,
@@ -615,71 +624,44 @@ class BufferReadout extends StatelessWidget {
             PopupMenuItem(value: 60, child: Text('60 s')),
             PopupMenuItem(value: 'custom', child: Text('Custom…')),
           ],
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(value,
-                      style: theme.textTheme.numeral
-                          .copyWith(fontSize: 13, color: tokens.text)),
-                  Text('BUFFER',
-                      style: theme.textTheme.micro.copyWith(
-                        fontSize: 8,
-                        letterSpacing: 1.4,
-                        color: tokens.textDim,
-                      )),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(value,
+                          style: theme.textTheme.numeral
+                              .copyWith(fontSize: 13, color: tokens.text)),
+                      Text(filling ? 'BUFFER · FILLING' : 'BUFFER',
+                          style: theme.textTheme.micro.copyWith(
+                            fontSize: 8,
+                            letterSpacing: 1.4,
+                            color: tokens.textDim,
+                          )),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.expand_more, size: 14, color: tokens.textDim),
                 ],
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.expand_more, size: 14, color: tokens.textDim),
+              if (filling) ...[
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 120,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: BufferFill(fill: fill),
+                  ),
+                ),
+              ],
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// How much rolling buffer is actually held, in words and a thin bar —
-/// shown ONLY while it is still filling.
-///
-/// "ARMED" alone overstates a buffer that has held four seconds: a save right
-/// now reaches back four seconds, not thirty. This says so directly rather
-/// than through a ring the user has to interpret, and disappears entirely
-/// once the buffer is full, which is almost always — so it costs nothing in
-/// the steady state and appears exactly when it has something to say.
-class _FillLine extends StatelessWidget {
-  final int held;
-  final int total;
-
-  const _FillLine({required this.held, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.rewindTokens;
-    final theme = Theme.of(context);
-    final fill = total <= 0 ? 1.0 : (held / total).clamp(0.0, 1.0);
-    return Semantics(
-      label: 'Holding $held of $total seconds so far',
-      child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Holding $held s of $total s so far',
-                style: theme.textTheme.numeral
-                    .copyWith(fontSize: 10, color: tokens.textDim)),
-            const SizedBox(height: 5),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: SizedBox(
-                height: 3,
-                child: BufferFill(fill: fill),
-              ),
-            ),
-          ],
         ),
       ),
     );
