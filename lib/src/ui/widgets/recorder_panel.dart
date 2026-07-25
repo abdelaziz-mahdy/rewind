@@ -530,9 +530,12 @@ class _StateChip extends StatelessWidget {
                                       .copyWith(color: color),
                                 ),
                                 Text(
-                                  state == TallyState.onAir
-                                      ? 'recording'
-                                      : '$seconds s buffer',
+                                  // Not "recording" — the label above
+                                  // already says REC. The buffer keeps
+                                  // running DURING a recording and can still
+                                  // be saved, so its length stays the useful
+                                  // second line in both states.
+                                  '$seconds s buffer',
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
                                   style: theme.textTheme.numeral.copyWith(
@@ -730,7 +733,17 @@ class _RecordButton extends StatelessWidget {
           ),
           onPressed: onPressed,
           icon: const Icon(Icons.stop, size: _controlIconSize),
-          label: Text(elapsed, style: Theme.of(context).textTheme.numeral),
+          // A verb, not just a number: the elapsed time is already on the
+          // tally two rows above, and a lone "0:03" on a red button says
+          // nothing about what pressing it does.
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Stop'),
+              const SizedBox(width: 8),
+              Text(elapsed, style: Theme.of(context).textTheme.numeral),
+            ],
+          ),
         ),
       );
     }

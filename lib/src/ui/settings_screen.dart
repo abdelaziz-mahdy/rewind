@@ -2879,6 +2879,10 @@ class _SettingsSection extends StatelessWidget {
 const double _fieldLabelWidth = 150;
 const double _fieldLabelGap = 18;
 
+/// Fixed so an empty field and a filled one are the same size — see the
+/// note in [_LimitFieldRow].
+const double _limitFieldHeight = 40;
+
 /// A field row: a short left-aligned label, then [control] immediately after
 /// at a shared left edge — for dropdowns/segmented controls, as opposed to
 /// [_ToggleRow] (trailing switch) or [_TextFieldRow] (label above a
@@ -2961,22 +2965,34 @@ class _LimitFieldRow extends StatelessWidget {
                 // Sized to the content: a two-or-three digit number. A 200px
                 // box for "20" told the user to expect something longer.
                 width: 132,
+                // Fixed height, or the two fields end up DIFFERENT heights:
+                // with no text, the suffix's own padding drives the box, so
+                // an empty field rendered ~8px taller than a filled one and
+                // the two rows visibly disagreed.
+                height: _limitFieldHeight,
                 child: TextField(
                   key: fieldKey,
                   controller: controller,
                   focusNode: focusNode,
                   keyboardType: TextInputType.number,
                   style: theme.textTheme.numeral,
+                  textAlignVertical: TextAlignVertical.center,
                   decoration: InputDecoration(
                     isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     // suffixIcon, not suffixText: Material hides prefix/suffix
                     // TEXT while a field is empty and unfocused — i.e. exactly
                     // when "days" is most needed to explain what to type.
+                    // Center(widthFactor: 1) hugs the text and contributes no
+                    // height of its own.
                     suffixIcon: Padding(
-                      padding: const EdgeInsets.only(right: 12, top: 10),
-                      child: Text(suffix,
-                          style: theme.textTheme.body
-                              .copyWith(color: tokens.textDim)),
+                      padding: const EdgeInsets.only(right: 12, left: 6),
+                      child: Center(
+                        widthFactor: 1,
+                        child: Text(suffix,
+                            style: theme.textTheme.body
+                                .copyWith(color: tokens.textDim)),
+                      ),
                     ),
                     suffixIconConstraints:
                         const BoxConstraints(minWidth: 0, minHeight: 0),

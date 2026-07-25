@@ -2047,5 +2047,24 @@ void main() {
       expect(t.getSize(bar).height, greaterThan(0));
       expect(t.getSize(bar).width, greaterThan(0));
     });
+
+    testWidgets('a filled and an empty limit field are the same size',
+        (t) async {
+      // The suffix's padding drives an EMPTY field's height, so the two rows
+      // rendered ~8px apart and visibly disagreed with each other — the
+      // "Max storage" box (filled) was shorter than "Delete clips after"
+      // (blank).
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(maxStorageGb: 20), // maxAgeDays stays null
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      final filled = t.getSize(find.byKey(const ValueKey('maxStorageField')));
+      final empty = t.getSize(find.byKey(const ValueKey('maxAgeField')));
+      expect(filled, empty);
+    });
   });
 }
