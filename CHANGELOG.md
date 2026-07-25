@@ -52,6 +52,29 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Fixed
+- **Settings: capture mode showed nothing selected on most games.** Auto-clip
+  defaults to on, and the mode was worked out as "auto-clip on = Highlights"
+  without checking whether Highlights was even offered — so on any game
+  without an in-game event feed (most of them) both radio buttons rendered
+  empty and the mode looked unset. It now reads Manual only, correctly.
+- **Settings → Storage now shows your storage.** It listed the total and the
+  limit as two unrelated lines and left the ratio to you; there is now a
+  usage meter, with a warning as you approach the limit and clips start being
+  evicted.
+- **Settings → About now shows the version**, and links the licenses of
+  everything bundled. Neither existed, which made "what version are you on?"
+  unanswerable from inside the app — including for anyone about to press the
+  Report an issue button next to it.
+- **"Blank = never" was a hint pretending to be a value.** The retention
+  fields now say what an empty field means underneath them, permanently, and
+  their units stay visible while they're empty.
+- **Clearing a hotkey now says what that means.** The ✕ removed the shortcut
+  silently, in an app whose whole premise is a shortcut.
+- Settings pages share one row grammar and gained section headings; fields are
+  sized to what you type into them; the content column stays anchored to the
+  sidebar instead of drifting right as the window grows; the close button is
+  no longer the only circle in the app; and a running game shows its live dot
+  in the Settings sidebar too.
 - **The window is now designed for more than one size.** The rail was a fixed
   220px at every width — 27% of a half-screen window, on an app meant to sit
   *beside* a game — and now collapses to icons (with tooltips, and the

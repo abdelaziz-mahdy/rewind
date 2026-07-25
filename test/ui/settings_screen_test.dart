@@ -1937,12 +1937,12 @@ void main() {
       expect(find.text('Instant replay'), findsNothing);
 
       await openPage(t, 'Storage');
-      expect(find.text('Max storage (GB)'), findsOneWidget);
+      expect(find.text('Max storage'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
 
       await openPage(t, 'About');
       expect(find.byKey(const ValueKey('riotDisclaimer')), findsOneWidget);
-      expect(find.text('Max storage (GB)'), findsNothing);
+      expect(find.text('Max storage'), findsNothing);
 
       await openPage(t, 'Capture');
       expect(find.text('Instant replay'), findsOneWidget);

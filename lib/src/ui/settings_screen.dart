@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_version.dart';
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
@@ -1386,128 +1387,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _hotkeysPage(BuildContext context) {
+    final saveUnset = widget.settings.hotkey.isEmpty;
+    final recordUnset = widget.settings.recordHotkey.isEmpty;
     return _settingsPage(context, 'Hotkeys', [
-      _FieldRow(
-        label: 'Save clip',
-        control: SizedBox(
-          width: 300,
-          child: _HotkeyRecorderField(
-            key: const ValueKey('saveHotkeyField'),
-            value: widget.settings.hotkey,
-            onChanged: _handleHotkeyChanged,
-            onRecording: widget.onHotkeyRecording,
-          ),
+      _SettingsSection(
+        title: 'Shortcuts',
+        description: 'These work while a game is focused, which is the whole '
+            'point — you never have to leave the game to save a clip.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _FieldRow(
+              label: 'Save clip',
+              control: SizedBox(
+                width: 300,
+                child: _HotkeyRecorderField(
+                  key: const ValueKey('saveHotkeyField'),
+                  value: widget.settings.hotkey,
+                  onChanged: _handleHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+              ),
+            ),
+            // Clearing a hotkey is a real, reachable state, and the ✕ that
+            // does it said nothing about the consequence. For an app whose
+            // entire premise is a hotkey, "there is now no hotkey" has to be
+            // spelled out where it happens.
+            if (saveUnset)
+              const _UnsetHotkeyNote(
+                key: ValueKey('saveHotkeyUnsetNote'),
+                text: 'No shortcut set — saving a clip now needs the '
+                    'recorder panel or the tray menu.',
+              ),
+            _FieldRow(
+              label: 'Record',
+              control: SizedBox(
+                width: 300,
+                child: _HotkeyRecorderField(
+                  key: const ValueKey('recordHotkeyField'),
+                  value: widget.settings.recordHotkey,
+                  onChanged: _handleRecordHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+              ),
+            ),
+            if (recordUnset)
+              const _UnsetHotkeyNote(
+                key: ValueKey('recordHotkeyUnsetNote'),
+                text: 'No shortcut set — recording can still be started from '
+                    'the recorder panel or the tray menu.',
+              ),
+          ],
         ),
       ),
-      _FieldRow(
-        label: 'Record',
-        control: SizedBox(
-          width: 300,
-          child: _HotkeyRecorderField(
-            key: const ValueKey('recordHotkeyField'),
-            value: widget.settings.recordHotkey,
-            onChanged: _handleRecordHotkeyChanged,
-            onRecording: widget.onHotkeyRecording,
-          ),
+      const SizedBox(height: 28),
+      _SettingsSection(
+        title: 'Feedback',
+        child: _ToggleRow(
+          label: 'Sound on save',
+          hint: 'Plays a short sound when a manual save succeeds or fails, '
+              'and when recording starts or stops.',
+          value: widget.settings.playFeedbackSounds,
+          switchKey: const ValueKey('feedbackSoundsSwitch'),
+          onChanged: _handleFeedbackSoundsChanged,
         ),
-      ),
-      const SizedBox(height: 12),
-      _ToggleRow(
-        label: 'Sound on save',
-        hint: 'Plays a short sound when a manual save succeeds or fails, '
-            'and when recording starts or stops.',
-        value: widget.settings.playFeedbackSounds,
-        switchKey: const ValueKey('feedbackSoundsSwitch'),
-        onChanged: _handleFeedbackSoundsChanged,
       ),
     ]);
   }
 
   Widget _storagePage(BuildContext context) {
+    final maxGb = widget.settings.maxStorageGb;
     return _settingsPage(context, 'Storage', [
       if (widget.library case final lib?) ...[
         ListenableBuilder(
           listenable: lib,
-          builder: (context, _) => Text(
-            '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
-            style: Theme.of(context).textTheme.bodyMuted,
+          builder: (context, _) => _StorageMeter(
+            usedBytes: lib.totalBytes,
+            clipCount: lib.all.length,
+            limitGb: maxGb,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 28),
       ],
-      _TextFieldRow(
-        label: 'Max storage (GB)',
-        field: SizedBox(
-          width: 200,
-          child: TextField(
-            key: const ValueKey('maxStorageField'),
-            controller: _maxStorageController,
-            focusNode: _maxStorageFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'Blank = unlimited'),
-            // Commit on blur/submit ONLY — see _commitLimit's doc for the
-            // typing-"15"-passes-through-"1" data-loss bug this prevents.
-            onSubmitted: (_) => _maxStorageFocus.unfocus(),
-          ),
-        ),
-      ),
-      const SizedBox(height: 8),
-      _TextFieldRow(
-        label: 'Delete clips older than (days)',
-        field: SizedBox(
-          width: 200,
-          child: TextField(
-            key: const ValueKey('maxAgeField'),
-            controller: _maxAgeController,
-            focusNode: _maxAgeFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'Blank = never'),
-            onSubmitted: (_) => _maxAgeFocus.unfocus(),
-          ),
-        ),
-        footnote: 'Limits apply when you leave the field. Oldest clips are '
-            'removed first when a limit is hit. Protected clips are never '
-            'auto-deleted.',
-      ),
-      if (widget.onCleanUpStorage != null)
-        _TrailingRow(
-          label: 'Clean up now',
-          hint: 'Apply the limits above immediately instead of waiting '
-              'for the automatic sweep.',
-          trailing: OutlinedButton(
-            key: const ValueKey('cleanUpStorageButton'),
-            onPressed: _cleaningUp ? null : _cleanUpStorage,
-            child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
-          ),
-          footnote: _cleanupResult,
-        ),
-      _TrailingRow(
-        label: 'Recordings folder',
-        hint: resolveClipsDirPath(widget.settings.clipsDirPath),
-        hintKey: const ValueKey('clipsDirLabel'),
-        // OutlinedButton, matching Clean up above: ONE style for row
-        // actions on this page — a bordered button next to a bare text link
-        // doing the same kind of job read as two different controls.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      _SettingsSection(
+        title: 'Limits',
+        description: 'Oldest clips go first when a limit is hit. Clips you '
+            'have kept are never deleted automatically.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            OutlinedButton(
-              key: const ValueKey('chooseClipsDirButton'),
-              onPressed: _pickClipsDir,
-              child: const Text('Choose…'),
-            ),
-            if (widget.settings.clipsDirPath != null) ...[
-              const SizedBox(width: 8),
-              OutlinedButton(
-                key: const ValueKey('resetClipsDirButton'),
-                onPressed: _resetClipsDir,
-                child: const Text('Reset'),
+            _FieldRow(
+              label: 'Max storage',
+              control: _LimitField(
+                fieldKey: const ValueKey('maxStorageField'),
+                controller: _maxStorageController,
+                focusNode: _maxStorageFocus,
+                suffix: 'GB',
+                emptyLabel: 'No limit',
               ),
-            ],
+            ),
+            _FieldRow(
+              label: 'Delete clips after',
+              control: _LimitField(
+                fieldKey: const ValueKey('maxAgeField'),
+                controller: _maxAgeController,
+                focusNode: _maxAgeFocus,
+                suffix: 'days',
+                emptyLabel: 'Keep forever',
+              ),
+            ),
+            if (widget.onCleanUpStorage != null)
+              _TrailingRow(
+                label: 'Clean up now',
+                hint: 'Apply these limits immediately instead of waiting for '
+                    'the automatic sweep.',
+                trailing: OutlinedButton(
+                  key: const ValueKey('cleanUpStorageButton'),
+                  onPressed: _cleaningUp ? null : _cleanUpStorage,
+                  child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
+                ),
+                footnote: _cleanupResult,
+              ),
           ],
         ),
-        footnote: 'Applies on next launch. Existing clips stay where they '
-            'are.',
+      ),
+      const SizedBox(height: 28),
+      _SettingsSection(
+        title: 'Location',
+        child: _TrailingRow(
+          label: 'Recordings folder',
+          hint: resolveClipsDirPath(widget.settings.clipsDirPath),
+          hintKey: const ValueKey('clipsDirLabel'),
+          // OutlinedButton, matching Clean up above: ONE style for row
+          // actions on this page — a bordered button next to a bare text link
+          // doing the same kind of job read as two different controls.
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton(
+                key: const ValueKey('chooseClipsDirButton'),
+                onPressed: _pickClipsDir,
+                child: const Text('Choose…'),
+              ),
+              if (widget.settings.clipsDirPath != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('resetClipsDirButton'),
+                  onPressed: _resetClipsDir,
+                  child: const Text('Reset'),
+                ),
+              ],
+            ],
+          ),
+          footnote: 'Applies on next launch. Existing clips stay where they '
+              'are.',
+        ),
       ),
     ]);
   }
@@ -1741,10 +1775,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// pairs, so it deliberately doesn't use the field-row grammar — a normal
   /// column, same shape as before the redesign.
   Widget _aboutPage(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     return _settingsPage(context, 'About', [
+      // The version was missing entirely, which left "what version are you
+      // on?" unanswerable from inside the app — including for whoever is
+      // about to press Report an issue two rows down.
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('Rewind', style: theme.textTheme.display),
+          const SizedBox(width: 10),
+          Text(kAppVersion,
+              key: const ValueKey('appVersion'),
+              style: theme.textTheme.numeralLarge
+                  .copyWith(fontSize: 18, color: tokens.textMuted)),
+        ],
+      ),
+      const SizedBox(height: 6),
       Text(
-        'Rewind — open-source instant replay for macOS & Windows. GPLv3.',
-        style: Theme.of(context).textTheme.bodyMuted,
+        'Open-source instant replay for macOS & Windows. GPLv3.',
+        style: theme.textTheme.bodyMuted,
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -1776,6 +1828,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => openUrl('$kRepoUrl/issues'),
             icon: const Icon(Icons.bug_report_outlined, size: 18),
             label: const Text('Report an issue'),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('licensesButton'),
+            onPressed: () => showLicensePage(
+              context: context,
+              applicationName: 'Rewind',
+              applicationVersion: kAppVersion,
+              applicationLegalese: 'GPLv3. Bundled fonts are SIL OFL 1.1 — see '
+                  'docs/THIRD_PARTY.md.',
+            ),
+            icon: const Icon(Icons.description_outlined, size: 18),
+            label: const Text('Licenses'),
           ),
         ],
       ),
@@ -1840,7 +1904,11 @@ Widget _settingsPage(
   final theme = Theme.of(context);
   return SingleChildScrollView(
     padding: const EdgeInsets.fromLTRB(40, 30, 40, 40),
-    child: Center(
+    child: Align(
+      // Anchored to the sidebar's edge, not centred in whatever space is
+      // left: centring made every page drift right as the window grew, so
+      // the column floated instead of belonging to the sidebar beside it.
+      alignment: Alignment.topLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
         child: Column(
@@ -2048,6 +2116,20 @@ class _SidebarGameItem extends StatelessWidget {
                           color: selected ? tokens.interactive : tokens.text),
                 ),
               ),
+              // The rail shows a live dot for a running game; this list did
+              // not, so Settings — the screen we specifically kept the
+              // recorder on — still couldn't tell you which game was live.
+              if (entry.active) ...[
+                const SizedBox(width: 6),
+                Semantics(
+                  label: '${entry.displayName} is running',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: tokens.armed, shape: BoxShape.circle),
+                    child: const SizedBox(width: 6, height: 6),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2590,9 +2672,228 @@ class _CloseButton extends StatelessWidget {
         icon: const Icon(Icons.close, size: 16),
         style: IconButton.styleFrom(
           foregroundColor: tokens.textMuted,
-          shape: CircleBorder(side: BorderSide(color: tokens.hairline)),
+          // Rectangular, like every other control: this was the only circle
+          // in an app whose shape language explicitly bans pills and rounds,
+          // and it now sits directly above the recorder chip's dot, which
+          // made the odd one out obvious.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(tokens.radiusControl),
+            side: BorderSide(color: tokens.hairline),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Says what an unset hotkey MEANS, next to the control that unsets it.
+class _UnsetHotkeyNote extends StatelessWidget {
+  final String text;
+
+  const _UnsetHotkeyNote({required this.text, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.only(left: 168, bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outlined, size: 14, color: tokens.warn),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMuted
+                    .copyWith(color: tokens.warn)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the Storage page exists to answer: how close am I to the limit.
+///
+/// It used to print "7 clips · 270 MB" on one line and "Max storage (GB) 20"
+/// in a box below, leaving the actual question — the ratio between them — as
+/// arithmetic for the reader. A bar states it directly, and turns "you are
+/// near the cap, clips are about to be deleted" into something visible before
+/// it happens rather than after.
+class _StorageMeter extends StatelessWidget {
+  final int usedBytes;
+  final int clipCount;
+
+  /// The cap in GB, or null for no limit — in which case there is no ratio
+  /// to draw and the meter honestly shows only the total.
+  final int? limitGb;
+
+  const _StorageMeter({
+    required this.usedBytes,
+    required this.clipCount,
+    required this.limitGb,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    final limitBytes = limitGb == null ? null : limitGb! * 1024 * 1024 * 1024;
+    final fraction = limitBytes == null || limitBytes <= 0
+        ? null
+        : (usedBytes / limitBytes).clamp(0.0, 1.0);
+    // Amber past 80%: at that point the next few clips start evicting the
+    // oldest ones, which is worth seeing BEFORE it happens.
+    final nearLimit = fraction != null && fraction >= 0.8;
+    final barColor = nearLimit ? tokens.warn : tokens.interactive;
+
+    return Semantics(
+      label: limitBytes == null
+          ? '$clipCount clips using ${formatSize(usedBytes)}, no limit set'
+          : '$clipCount clips using ${formatSize(usedBytes)} of '
+              '$limitGb gigabytes, ${((fraction ?? 0) * 100).round()} percent',
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(formatSize(usedBytes),
+                    style: theme.textTheme.numeralLarge.copyWith(fontSize: 22)),
+                const SizedBox(width: 8),
+                Text(
+                  limitGb == null ? 'used' : 'of $limitGb GB',
+                  style: theme.textTheme.bodyMuted,
+                ),
+                const Spacer(),
+                Text('$clipCount ${clipCount == 1 ? 'clip' : 'clips'}',
+                    style: theme.textTheme.numeral
+                        .copyWith(color: tokens.textDim)),
+              ],
+            ),
+            if (fraction != null) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 6,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        // Floor the fill so a small-but-real usage still
+                        // renders as a visible sliver instead of nothing —
+                        // 270 MB of 20 GB is ~1%, which rounds away.
+                        flex: (fraction * 1000).round().clamp(12, 1000),
+                        child: ColoredBox(color: barColor),
+                      ),
+                      Expanded(
+                        flex: ((1 - fraction) * 1000).round().clamp(1, 1000),
+                        // A visible track: `surfaceRaised` on `bg` is too
+                        // close to the page to read as a bar at all.
+                        child: ColoredBox(
+                            color: Colors.white.withValues(alpha: 0.09)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (nearLimit) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Near the limit — the oldest unkept clips will be removed '
+                  'to make room.',
+                  key: const ValueKey('storageNearLimitNote'),
+                  style: theme.textTheme.bodyMuted.copyWith(color: tokens.warn),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A numeric limit field with its unit inline and a real word for "empty".
+///
+/// The old field showed "Blank = never" as PLACEHOLDER text — a hint
+/// impersonating a value, which is the placeholder-as-label anti-pattern:
+/// it vanishes the moment you type, and until then it reads like the field is
+/// already set to something. The unit moves into the field's suffix (so the
+/// label can be plain prose) and the empty state is stated underneath in
+/// words, permanently.
+class _LimitField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String suffix;
+
+  /// What an empty field MEANS, shown under it whenever it is empty.
+  final String emptyLabel;
+
+  /// Goes on the inner [TextField], not the wrapper — callers (and tests)
+  /// address the field itself.
+  final Key fieldKey;
+
+  const _LimitField({
+    required this.controller,
+    required this.focusNode,
+    required this.suffix,
+    required this.emptyLabel,
+    required this.fieldKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          // Sized to the content: a two-or-three digit number. A 200px box
+          // for "20" told the user to expect something much longer.
+          width: 132,
+          child: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => TextField(
+              key: fieldKey,
+              controller: controller,
+              focusNode: focusNode,
+              keyboardType: TextInputType.number,
+              style: theme.textTheme.numeral,
+              decoration: InputDecoration(
+                isDense: true,
+                // suffixIcon, not suffixText: Material hides prefix/suffix
+                // TEXT while a field is empty and unfocused — i.e. exactly
+                // when "days" is most needed to explain what to type.
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 12, top: 10),
+                  child: Text(suffix,
+                      style:
+                          theme.textTheme.body.copyWith(color: tokens.textDim)),
+                ),
+                suffixIconConstraints:
+                    const BoxConstraints(minWidth: 0, minHeight: 0),
+              ),
+              // Commit on blur/submit ONLY — see _commitLimit's doc for the
+              // typing-"15"-passes-through-"1" data-loss bug this prevents.
+              onSubmitted: (_) => focusNode.unfocus(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, value, _) => Text(
+            value.text.trim().isEmpty ? emptyLabel : '',
+            style: theme.textTheme.bodyMuted,
+          ),
+        ),
+      ],
     );
   }
 }

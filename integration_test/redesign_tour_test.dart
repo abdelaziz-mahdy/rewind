@@ -206,6 +206,7 @@ void main() {
         displays: displays,
         onSettingsChanged: (_) async {},
         onOpenClipsFolder: () {},
+        onCleanUpStorage: () async => const [],
         thumbnails: ThumbnailCache(FakeThumbnailGenerator()),
       );
 
