@@ -89,6 +89,20 @@ class ClipCoordinator {
   /// evening of clips was lost without anyone noticing.
   final ValueNotifier<bool> captureDown = ValueNotifier(false);
 
+  /// Whether the buffer is SUPPOSED to be running right now — `main.dart`'s
+  /// `bufferActive`, the output of `desiredBufferActive()` (see
+  /// `buffer_policy.dart`). Read by [_recoverIfBufferDied] so a buffer that
+  /// is stopped ON PURPOSE — "Only record while playing" with no game up, or
+  /// a manual tray pause — is never mistaken for one that crashed.
+  ///
+  /// Without this the recovery logic fought the pause policy: pressing the
+  /// hotkey at the desktop logged a false error and force-restarted a buffer
+  /// the user had asked to stay off, burning the CPU and battery that
+  /// setting exists to save. Null (tests, dev mode) assumes the buffer
+  /// should be running, which is the honest default when nobody has said
+  /// otherwise.
+  ValueListenable<bool>? bufferShouldBeRunning;
+
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
 
@@ -1188,6 +1202,17 @@ class ClipCoordinator {
     if (!msg.toLowerCase().contains('buffer not running')) return;
     final capture = engine;
     if (capture == null) return;
+
+    // A buffer that is stopped ON PURPOSE is not a failure. "Only record
+    // while playing" with no game up, or a manual tray pause, both land
+    // here with the same message from the shim — and restarting in that
+    // case defeats the very setting the user chose.
+    if (bufferShouldBeRunning?.value == false) {
+      talker.info(
+          'Nothing to save: the replay buffer is paused (see "Only record '
+          'while playing", or the tray\'s Pause). Not restarting it.');
+      return;
+    }
 
     talker.error(
         'Replay buffer stopped without notice — a clip was lost. Restarting '

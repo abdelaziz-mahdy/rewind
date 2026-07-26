@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
@@ -2398,6 +2399,24 @@ void main() {
 
       expect(coordinator.captureDown.value, isTrue,
           reason: 'the UI must be able to stop claiming to be armed');
+    });
+
+    // "Only record while playing" with no game up, and a manual tray pause,
+    // both surface the SAME "buffer not running" message from the shim. A
+    // buffer stopped on purpose is not a failure, and restarting it defeats
+    // the setting the user chose — it burns the CPU and battery that setting
+    // exists to save.
+    test('a deliberately paused buffer is left alone', () async {
+      engine.saveFailsBufferNotRunning = true;
+      coordinator.bufferShouldBeRunning = ValueNotifier<bool>(false);
+      engine.calls.clear();
+
+      await coordinator.onHotkey();
+
+      expect(engine.calls, isNot(contains('start')),
+          reason: 'a paused buffer must not be resurrected');
+      expect(coordinator.captureDown.value, isFalse,
+          reason: 'paused is not "capture is down"');
     });
 
     test('an ordinary save failure is NOT treated as a dead buffer', () async {

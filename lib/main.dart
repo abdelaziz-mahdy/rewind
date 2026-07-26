@@ -348,6 +348,9 @@ Future<void> main() async {
   // Live buffer state shared by the recorder cluster and the tray toggle.
   final bufferActive =
       ValueNotifier<bool>(engine != null && captureError == null);
+  // So the coordinator can tell a buffer that DIED from one that is stopped
+  // on purpose — see ClipCoordinator.bufferShouldBeRunning.
+  coordinator.bufferShouldBeRunning = bufferActive;
 
   // True while a STOPPED buffer is paused BY THE captureOnlyInGame POLICY
   // (as opposed to a manual tray pause) — see applyBufferPolicy below and
