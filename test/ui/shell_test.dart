@@ -14,6 +14,7 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/shell.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/session_card.dart';
 import 'package:rewind/src/ui/widgets/nav_rail.dart';
 import '../fakes/fake_capture_engine.dart';
 
@@ -111,32 +112,92 @@ void main() {
   testWidgets('defaults to the All Clips destination showing the empty state',
       (t) async {
     await t.pumpWidget(_app(shell()));
-    expect(find.textContaining('Alt+F10'), findsOneWidget);
+    // The first-run state teaches the buffer rather than describing it.
+    expect(find.textContaining('Rewind is already rolling'), findsOneWidget);
+    expect(find.textContaining('Alt+F10'), findsWidgets);
     expect(find.text('All clips'), findsNothing); // empty state, no header
   });
 
-  testWidgets('capture error hides the buffering indicator', (t) async {
-    await t.pumpWidget(_app(shell(error: 'libobs init failed')));
-    expect(find.textContaining('Buffering'), findsNothing);
-    expect(find.text('Capture unavailable'), findsOneWidget);
+  // macOS's "Reduce motion" arrives as MediaQuery.disableAnimations. Flutter
+  // honours it for its own route transitions but not for an AnimatedSwitcher
+  // we built ourselves — and this one fades AND slides the whole content
+  // area, the largest movement the app makes.
+  testWidgets('reduce-motion swaps destinations with no transition', (t) async {
+    Widget wrap({required bool reduce}) => MediaQuery(
+          data: MediaQueryData(
+            size: const Size(1400, 900),
+            disableAnimations: reduce,
+          ),
+          child: _app(shell()),
+        );
+
+    await t.pumpWidget(wrap(reduce: true));
+    final switcher =
+        t.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher).first);
+    expect(switcher.duration, Duration.zero);
+
+    await t.pumpWidget(wrap(reduce: false));
+    expect(
+      t.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher).first).duration,
+      isNot(Duration.zero),
+    );
   });
 
-  testWidgets('paused buffer shows Paused and stops claiming Buffering',
+  testWidgets('capture error reads UNAVAILABLE on the recorder chip',
       (t) async {
+    // The chip prints its state only on the EXPANDED rail; below
+    // navRailCompactBelow it collapses to the ring alone.
+    t.view.physicalSize = const Size(1400, 900);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(_app(shell(error: 'libobs init failed')));
+    expect(find.text('ARMED'), findsNothing);
+    expect(find.text('UNAVAILABLE'), findsOneWidget);
+  });
+
+  testWidgets('pausing the buffer flips the chip from ARMED to PAUSED',
+      (t) async {
+    // The chip prints its state only on the EXPANDED rail; below
+    // navRailCompactBelow it collapses to the ring alone.
+    t.view.physicalSize = const Size(1400, 900);
+    t.view.devicePixelRatio = 1.0;
+    addTearDown(t.view.reset);
     final active = ValueNotifier<bool>(true);
     await t.pumpWidget(_app(shell(bufferActive: active)));
-    expect(find.textContaining('Buffering'), findsOneWidget);
+    expect(find.text('ARMED'), findsOneWidget);
     active.value = false;
     await t.pump();
-    expect(find.textContaining('Buffering'), findsNothing);
-    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('ARMED'), findsNothing);
+    expect(find.text('PAUSED'), findsOneWidget);
+  });
+
+  testWidgets('the recorder stays visible on the Settings destination',
+      (t) async {
+    // Settings takes over the whole window, and used to take the recorder
+    // with it: opening Settings mid-match hid the REC state entirely until
+    // the user navigated back. That is the one screen most likely to be
+    // opened DURING a game. It keeps its own sidebar and no rail — the
+    // recorder chip is handed to that sidebar instead.
+    await t.pumpWidget(_app(shell()));
+    expect(find.byKey(const ValueKey('recorderButton')), findsOneWidget);
+
+    await t.tap(find.byKey(const ValueKey('navItem:settings')));
+    await t.pump(const Duration(milliseconds: 200));
+
+    expect(find.byKey(const ValueKey('settingsScreen')), findsOneWidget);
+    expect(find.byKey(const ValueKey('navRail')), findsNothing);
+    expect(find.byKey(const ValueKey('recorderButton')), findsOneWidget);
   });
 
   testWidgets('capture error shows banner and disables Save', (t) async {
     await t.pumpWidget(_app(shell(error: 'libobs init failed')));
     expect(find.textContaining('libobs init failed'), findsOneWidget);
+    // Save lives in the recorder popover now (see RecorderButton's doc).
+    await t.tap(find.byKey(const ValueKey('recorderButton')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
     final btn =
-        t.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save clip'));
+        t.widget<FilledButton>(find.byKey(const ValueKey('deckSaveClip')));
     expect(btn.onPressed, isNull);
   });
 
@@ -226,6 +287,11 @@ void main() {
 
   group('rail', () {
     testWidgets('lists directory entries with clip counts', (t) async {
+      // Labels and counts only exist on the EXPANDED rail; below
+      // navRailCompactBelow it collapses to icons (see NavRail.compact).
+      t.view.physicalSize = const Size(1400, 900);
+      t.view.devicePixelRatio = 1.0;
+      addTearDown(t.view.reset);
       coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
       library.add(
           clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
@@ -254,19 +320,18 @@ void main() {
           DateTime(2026, 7, 2)));
       await _pumpTall(t, _app(shell()));
 
-      // All Clips (the default destination) shows both.
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      // All Clips (the default destination) shows a session card per game.
+      expect(inList(find.byType(SessionCard)), findsNWidgets(2));
 
       await t.tap(navGame('league_of_legends'));
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
       expect(find.text('League of Legends'), findsWidgets);
-      // The hub is now a match grid: League's session shows as one card
-      // (1 clip); the desktop clip is filtered out entirely.
+      // The hub scopes to one game: League's single session card remains,
+      // the desktop one is filtered out entirely.
+      expect(inList(find.byType(SessionCard)), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
-      expect(inList(find.text('MANUAL')), findsNothing);
     });
 
     testWidgets('All Clips destination shows every game\'s clips', (t) async {
@@ -286,8 +351,7 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 200));
 
-      expect(inList(find.text('MANUAL')), findsOneWidget);
-      expect(inList(find.text('PENTA KILL')), findsOneWidget);
+      expect(inList(find.byType(SessionCard)), findsNWidgets(2));
     });
 
     testWidgets('the Settings destination renders the embedded SettingsScreen',

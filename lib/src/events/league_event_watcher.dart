@@ -441,19 +441,51 @@ class LeagueEventWatcher implements GameEventSource {
             ? const [GameEventKind.inhibitorKill]
             : const [];
       case 'GameEnd':
-        // The match-end event carries the active player's result in
-        // `Result` ("Win"/"Lose"). Map it to victory/defeat so the
-        // coordinator can record the match outcome (never a clip — see
-        // ClipCoordinator's outcome handling); an absent/unknown result
-        // stays a neutral `other` (older clients, spectator, remake).
-        return switch ((map['Result'] as String?)?.toLowerCase()) {
-          'win' => const [GameEventKind.victory],
-          'lose' || 'loss' => const [GameEventKind.defeat],
-          _ => const [GameEventKind.other],
-        };
+        return _gameEndKinds(map['Result'] as String?);
       default:
         return const [];
     }
+  }
+
+  /// Maps a `GameEnd` event's `Result` to victory/defeat.
+  ///
+  /// Riot documents "Win"/"Lose", but a real library (2026-07-25) had
+  /// **21 matches with only 2 outcomes recorded, and both were wins** —
+  /// losses never landed at all. A one-sided failure like that points at the
+  /// token, not at the plumbing: the coordinator's handling of victory and
+  /// defeat is symmetric, so the likeliest cause is that a lost match
+  /// reports a spelling this switch didn't accept and fell through to
+  /// `other`.
+  ///
+  /// So: accept every plausible loss spelling, and — the part that actually
+  /// settles it — LOG the raw value whenever it matches nothing. The next
+  /// lost match then names the exact token in the log instead of vanishing
+  /// silently, which is what made this invisible for 21 matches.
+  ///
+  /// Deliberately NOT "anything that isn't a win is a loss": a remake, a
+  /// spectator session or an older client would then be recorded as a defeat
+  /// the player never had, and a wrong loss is worse than a missing one.
+  static List<GameEventKind> _gameEndKinds(String? raw) {
+    final result = raw?.trim().toLowerCase();
+    if (result == null || result.isEmpty) {
+      talker.info('League: GameEnd with no Result field — outcome not '
+          'recorded (older client, spectator, or remake)');
+      return const [GameEventKind.other];
+    }
+    if (result == 'win' || result == 'won' || result == 'victory') {
+      return const [GameEventKind.victory];
+    }
+    if (result == 'lose' ||
+        result == 'loss' ||
+        result == 'lost' ||
+        result == 'defeat' ||
+        result == 'fail') {
+      return const [GameEventKind.defeat];
+    }
+    talker.warning('League: GameEnd reported an unrecognized Result '
+        '"$raw" — the match outcome was NOT recorded. Add this spelling to '
+        '_gameEndKinds in league_event_watcher.dart.');
+    return const [GameEventKind.other];
   }
 
   /// True when [actor] names the active player. `activeplayername` returns

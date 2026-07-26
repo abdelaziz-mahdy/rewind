@@ -11,7 +11,7 @@ import 'match_timeline_screen.dart';
 import 'theme.dart';
 import 'clip_file_actions.dart';
 import 'widgets/clip_tile.dart';
-import 'widgets/match_card.dart' show MatchResultBadge;
+import 'widgets/session_card.dart' show MatchResultBadge;
 
 /// Route name for the match drill-down, so navigation can be asserted in
 /// widget tests without building the screen (which needs media_kit for its
@@ -90,7 +90,7 @@ class MatchClipsScreen extends StatelessWidget {
                   if (prober != null && session.clips.isNotEmpty)
                     FilledButton.icon(
                       key: const ValueKey('watchMatchButton'),
-                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      icon: const Icon(Icons.play_circle_outlined, size: 18),
                       label: const Text('Watch match'),
                       onPressed: () {
                         Navigator.of(context).push(MaterialPageRoute<void>(

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,7 @@ import 'package:rewind/src/events/steam_account_locator.dart';
 import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/audio_input_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
+import 'package:rewind/src/clip/clip_library.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
 import 'package:rewind/src/ui/system_settings.dart';
@@ -215,6 +218,26 @@ void main() {
     await openPage(t, 'Hotkey');
     expect(find.text('Alt+F10'), findsOneWidget); // save hotkey
     expect(find.text('Alt+F9'), findsOneWidget); // record hotkey
+  });
+
+  // The rows wrapped the field in SizedBox(width: 300), but _FieldRow's
+  // Expanded handed it a TIGHT width that overrode it — the field rendered at
+  // the full pane width, stranding a 7-character combo and its ✕ at opposite
+  // ends of a near-empty box.
+  testWidgets('the hotkey field keeps its own width, not the pane\'s',
+      (t) async {
+    t.view.physicalSize = const Size(1600, 1200);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+    await openPage(t, 'Hotkey');
+
+    expect(t.getSize(find.byKey(const ValueKey('saveHotkeyField'))).width, 300);
   });
 
   testWidgets(
@@ -1937,12 +1960,12 @@ void main() {
       expect(find.text('Instant replay'), findsNothing);
 
       await openPage(t, 'Storage');
-      expect(find.text('Max storage (GB)'), findsOneWidget);
+      expect(find.text('Max storage'), findsOneWidget);
       expect(find.text('Save clip'), findsNothing);
 
       await openPage(t, 'About');
       expect(find.byKey(const ValueKey('riotDisclaimer')), findsOneWidget);
-      expect(find.text('Max storage (GB)'), findsNothing);
+      expect(find.text('Max storage'), findsNothing);
 
       await openPage(t, 'Capture');
       expect(find.text('Instant replay'), findsOneWidget);
@@ -2020,5 +2043,139 @@ void main() {
     expect(find.byKey(const ValueKey('settingsCloseButton')), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('settingsCloseButton')));
     await t.pump(); // does not throw
+  });
+
+  group('Storage meter', () {
+    testWidgets('the usage bar actually has height', (t) async {
+      // A childless ColoredBox has no intrinsic size and a Row centres
+      // rather than stretches, so the meter first shipped rendering as
+      // literally nothing — visible only by looking at a screenshot.
+      final tmp = Directory.systemTemp.createTempSync('rewind_meter');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final library = ClipLibrary(clipsDir: tmp);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        library: library,
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      final bar = find.byKey(const ValueKey('storageMeterBar'));
+      expect(bar, findsOneWidget);
+      expect(t.getSize(bar).height, greaterThan(0));
+      expect(t.getSize(bar).width, greaterThan(0));
+    });
+
+    testWidgets('a filled and an empty limit field are the same size',
+        (t) async {
+      // The suffix's padding drives an EMPTY field's height, so the two rows
+      // rendered ~8px apart and visibly disagreed with each other — the
+      // "Max storage" box (filled) was shorter than "Delete clips after"
+      // (blank).
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(maxStorageGb: 20), // maxAgeDays stays null
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      final filled = t.getSize(find.byKey(const ValueKey('maxStorageField')));
+      final empty = t.getSize(find.byKey(const ValueKey('maxAgeField')));
+      expect(filled, empty);
+    });
+  });
+
+  group('reset to defaults', () {
+    Future<void> confirmReset(WidgetTester t) async {
+      await t.tap(find.widgetWithText(OutlinedButton, 'Reset to defaults'));
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(FilledButton, 'Reset'));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('Hotkeys resets only its own page, not the whole app',
+        (t) async {
+      // Scoped per PAGE on purpose: a whole-app reset would make one button
+      // mean "throw away my hotkeys AND my storage limits AND my per-game
+      // setup", which nobody wants to press by accident.
+      final settings = AppSettings(
+        hotkey: 'Ctrl+6',
+        recordHotkey: 'Ctrl+7',
+        playFeedbackSounds: false,
+        maxStorageGb: 5,
+        defaultBufferSeconds: 60,
+      );
+      final calls = <AppSettings>[];
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (s) async => calls.add(s),
+        displays: const [],
+        initialTab: 'Hotkey',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await confirmReset(t);
+
+      final fresh = AppSettings();
+      expect(settings.hotkey, fresh.hotkey);
+      expect(settings.recordHotkey, fresh.recordHotkey);
+      expect(settings.playFeedbackSounds, fresh.playFeedbackSounds);
+      // Untouched — a different page owns these.
+      expect(settings.maxStorageGb, 5);
+      expect(settings.defaultBufferSeconds, 60);
+      expect(calls, isNotEmpty);
+    });
+
+    testWidgets('cancelling changes nothing', (t) async {
+      final settings = AppSettings(hotkey: 'Ctrl+6');
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Hotkey',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await t.tap(find.widgetWithText(OutlinedButton, 'Reset to defaults'));
+      await t.pumpAndSettle();
+      await t.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await t.pumpAndSettle();
+
+      expect(settings.hotkey, 'Ctrl+6');
+    });
+
+    testWidgets('Storage reset also re-seeds the visible fields', (t) async {
+      // The text fields hold their own copies of the values, so a reset that
+      // only touches settings would leave the page showing the old numbers
+      // over the new state.
+      final settings = AppSettings(maxStorageGb: 5, maxClipAgeDays: 3);
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      await confirmReset(t);
+
+      expect(settings.maxStorageGb, AppSettings().maxStorageGb);
+      expect(settings.maxClipAgeDays, isNull);
+      expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('maxStorageField')))
+              .controller!
+              .text,
+          '20');
+      expect(
+          t
+              .widget<TextField>(find.byKey(const ValueKey('maxAgeField')))
+              .controller!
+              .text,
+          '');
+    });
   });
 }

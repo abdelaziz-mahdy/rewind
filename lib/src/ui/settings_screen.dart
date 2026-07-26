@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_version.dart';
 import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/clips_dir.dart';
@@ -142,6 +143,12 @@ class SettingsScreen extends StatefulWidget {
   /// either way (see `_steamPage`'s doc).
   final ValueListenable<String?>? steamStatus;
 
+  /// The recorder chip (see `RecorderButton`), pinned at the top of this
+  /// screen's own sidebar. Settings covers the whole window, so without it
+  /// the one screen most likely to be opened MID-MATCH would be the one
+  /// screen that hides whether anything is recording.
+  final Widget? recorder;
+
   /// Looks up this machine's local Steam accounts (`loginusers.vdf`), for
   /// the Steam page's SteamID auto-detect -- see `steam_account_locator.
   /// dart`. Defaults to the real, this-machine lookup
@@ -165,6 +172,7 @@ class SettingsScreen extends StatefulWidget {
     this.initialGameId,
     this.initialTab,
     this.steamStatus,
+    this.recorder,
     this.steamAccountLocator,
     super.key,
   });
@@ -936,6 +944,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onSelectGeneral: _selectGeneralPage,
                 onSelectGame: _selectGame,
                 onClose: widget.onClose,
+                recorder: widget.recorder,
               ),
               Expanded(child: _selectedBody(context)),
             ],
@@ -943,6 +952,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// Copies [fields] from a pristine [AppSettings] onto the live one, so
+  /// "defaults" always means the real constructor defaults rather than a
+  /// second hand-maintained copy of them that can drift.
+  void _resetFields(void Function(AppSettings live, AppSettings fresh) fields) {
+    fields(widget.settings, AppSettings());
+    widget.onChanged(widget.settings);
+    setState(() {});
   }
 
   Widget _capturePage(BuildContext context) {
@@ -1202,10 +1220,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       IconButton(
                         key: const ValueKey('micListenButton'),
-                        icon: const Icon(Icons.headphones),
+                        icon: const Icon(Icons.headphones_outlined),
                         tooltip: 'Listen to this mic',
                         color:
-                            _micListening ? context.rewindTokens.accent : null,
+                            _micListening ? context.rewindTokens.armed : null,
                         onPressed: _handleMicListenToggle,
                       ),
                     ],
@@ -1315,6 +1333,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+      _ResetToDefaults(
+        describe: 'Buffer length, video quality and audio settings on this '
+            'page go back to their defaults. Your hotkeys, storage limits and '
+            'per-game settings are not touched.',
+        onReset: () => _resetFields((live, fresh) {
+          live.defaultBufferSeconds = fresh.defaultBufferSeconds;
+          live.captureFps = fresh.captureFps;
+          live.captureMaxHeight = fresh.captureMaxHeight;
+          live.audioMode = fresh.audioMode;
+          live.captureMicrophone = fresh.captureMicrophone;
+          live.micDeviceUid = fresh.micDeviceUid;
+          live.micVolume = fresh.micVolume;
+          live.gameAudioVolume = fresh.gameAudioVolume;
+          live.micAutoLevel = fresh.micAutoLevel;
+          live.micNoiseSuppression = fresh.micNoiseSuppression;
+          live.captureOnlyInGame = fresh.captureOnlyInGame;
+          live.autoSwitchCapture = fresh.autoSwitchCapture;
+        }),
+      ),
     ]);
   }
 
@@ -1378,128 +1415,186 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _hotkeysPage(BuildContext context) {
+    final saveUnset = widget.settings.hotkey.isEmpty;
+    final recordUnset = widget.settings.recordHotkey.isEmpty;
     return _settingsPage(context, 'Hotkeys', [
-      _FieldRow(
-        label: 'Save clip',
-        control: SizedBox(
-          width: 300,
-          child: _HotkeyRecorderField(
-            key: const ValueKey('saveHotkeyField'),
-            value: widget.settings.hotkey,
-            onChanged: _handleHotkeyChanged,
-            onRecording: widget.onHotkeyRecording,
-          ),
+      _SettingsSection(
+        title: 'Shortcuts',
+        description: 'These work while a game is focused, which is the whole '
+            'point — you never have to leave the game to save a clip.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _FieldRow(
+              label: 'Save clip',
+              stretch: false,
+              control: SizedBox(
+                width: _hotkeyFieldWidth,
+                child: _HotkeyRecorderField(
+                  key: const ValueKey('saveHotkeyField'),
+                  value: widget.settings.hotkey,
+                  onChanged: _handleHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+              ),
+            ),
+            // Clearing a hotkey is a real, reachable state, and the ✕ that
+            // does it said nothing about the consequence. For an app whose
+            // entire premise is a hotkey, "there is now no hotkey" has to be
+            // spelled out where it happens.
+            if (saveUnset)
+              const _UnsetHotkeyNote(
+                key: ValueKey('saveHotkeyUnsetNote'),
+                text: 'No shortcut set — saving a clip now needs the '
+                    'recorder panel or the tray menu.',
+              ),
+            _FieldRow(
+              label: 'Record',
+              stretch: false,
+              control: SizedBox(
+                width: _hotkeyFieldWidth,
+                child: _HotkeyRecorderField(
+                  key: const ValueKey('recordHotkeyField'),
+                  value: widget.settings.recordHotkey,
+                  onChanged: _handleRecordHotkeyChanged,
+                  onRecording: widget.onHotkeyRecording,
+                ),
+              ),
+            ),
+            if (recordUnset)
+              const _UnsetHotkeyNote(
+                key: ValueKey('recordHotkeyUnsetNote'),
+                text: 'No shortcut set — recording can still be started from '
+                    'the recorder panel or the tray menu.',
+              ),
+          ],
         ),
       ),
-      _FieldRow(
-        label: 'Record',
-        control: SizedBox(
-          width: 300,
-          child: _HotkeyRecorderField(
-            key: const ValueKey('recordHotkeyField'),
-            value: widget.settings.recordHotkey,
-            onChanged: _handleRecordHotkeyChanged,
-            onRecording: widget.onHotkeyRecording,
-          ),
+      const SizedBox(height: 28),
+      _SettingsSection(
+        title: 'Feedback',
+        child: _ToggleRow(
+          label: 'Sound on save',
+          hint: 'Plays a short sound when a manual save succeeds or fails, '
+              'and when recording starts or stops.',
+          value: widget.settings.playFeedbackSounds,
+          switchKey: const ValueKey('feedbackSoundsSwitch'),
+          onChanged: _handleFeedbackSoundsChanged,
         ),
       ),
-      const SizedBox(height: 12),
-      _ToggleRow(
-        label: 'Sound on save',
-        hint: 'Plays a short sound when a manual save succeeds or fails, '
-            'and when recording starts or stops.',
-        value: widget.settings.playFeedbackSounds,
-        switchKey: const ValueKey('feedbackSoundsSwitch'),
-        onChanged: _handleFeedbackSoundsChanged,
+      _ResetToDefaults(
+        describe: 'Both shortcuts go back to their defaults (Alt+F10 to save '
+            'a clip, Alt+F9 to record) and the save sound is turned back on.',
+        onReset: () => _resetFields((live, fresh) {
+          live.hotkey = fresh.hotkey;
+          live.recordHotkey = fresh.recordHotkey;
+          live.playFeedbackSounds = fresh.playFeedbackSounds;
+        }),
       ),
     ]);
   }
 
   Widget _storagePage(BuildContext context) {
+    final maxGb = widget.settings.maxStorageGb;
     return _settingsPage(context, 'Storage', [
       if (widget.library case final lib?) ...[
         ListenableBuilder(
           listenable: lib,
-          builder: (context, _) => Text(
-            '${lib.all.length} clips · ${formatSize(lib.totalBytes)}',
-            style: Theme.of(context).textTheme.bodyMuted,
+          builder: (context, _) => _StorageMeter(
+            usedBytes: lib.totalBytes,
+            clipCount: lib.all.length,
+            limitGb: maxGb,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 28),
       ],
-      _TextFieldRow(
-        label: 'Max storage (GB)',
-        field: SizedBox(
-          width: 200,
-          child: TextField(
-            key: const ValueKey('maxStorageField'),
-            controller: _maxStorageController,
-            focusNode: _maxStorageFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'Blank = unlimited'),
-            // Commit on blur/submit ONLY — see _commitLimit's doc for the
-            // typing-"15"-passes-through-"1" data-loss bug this prevents.
-            onSubmitted: (_) => _maxStorageFocus.unfocus(),
-          ),
-        ),
-      ),
-      const SizedBox(height: 8),
-      _TextFieldRow(
-        label: 'Delete clips older than (days)',
-        field: SizedBox(
-          width: 200,
-          child: TextField(
-            key: const ValueKey('maxAgeField'),
-            controller: _maxAgeController,
-            focusNode: _maxAgeFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'Blank = never'),
-            onSubmitted: (_) => _maxAgeFocus.unfocus(),
-          ),
-        ),
-        footnote: 'Limits apply when you leave the field. Oldest clips are '
-            'removed first when a limit is hit. Protected clips are never '
-            'auto-deleted.',
-      ),
-      if (widget.onCleanUpStorage != null)
-        _TrailingRow(
-          label: 'Clean up now',
-          hint: 'Apply the limits above immediately instead of waiting '
-              'for the automatic sweep.',
-          trailing: OutlinedButton(
-            key: const ValueKey('cleanUpStorageButton'),
-            onPressed: _cleaningUp ? null : _cleanUpStorage,
-            child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
-          ),
-          footnote: _cleanupResult,
-        ),
-      _TrailingRow(
-        label: 'Recordings folder',
-        hint: resolveClipsDirPath(widget.settings.clipsDirPath),
-        hintKey: const ValueKey('clipsDirLabel'),
-        // OutlinedButton, matching Clean up above: ONE style for row
-        // actions on this page — a bordered button next to a bare text link
-        // doing the same kind of job read as two different controls.
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+      _SettingsSection(
+        title: 'Limits',
+        description: 'Oldest clips go first when a limit is hit. Clips you '
+            'have kept are never deleted automatically.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            OutlinedButton(
-              key: const ValueKey('chooseClipsDirButton'),
-              onPressed: _pickClipsDir,
-              child: const Text('Choose…'),
+            _LimitFieldRow(
+              label: 'Max storage',
+              fieldKey: const ValueKey('maxStorageField'),
+              controller: _maxStorageController,
+              focusNode: _maxStorageFocus,
+              suffix: 'GB',
+              emptyLabel: 'No limit',
             ),
-            if (widget.settings.clipsDirPath != null) ...[
-              const SizedBox(width: 8),
-              OutlinedButton(
-                key: const ValueKey('resetClipsDirButton'),
-                onPressed: _resetClipsDir,
-                child: const Text('Reset'),
+            _LimitFieldRow(
+              label: 'Delete clips after',
+              fieldKey: const ValueKey('maxAgeField'),
+              controller: _maxAgeController,
+              focusNode: _maxAgeFocus,
+              suffix: 'days',
+              emptyLabel: 'Keep forever',
+            ),
+            if (widget.onCleanUpStorage != null)
+              _TrailingRow(
+                label: 'Clean up now',
+                hint: 'Apply these limits immediately instead of waiting for '
+                    'the automatic sweep.',
+                trailing: OutlinedButton(
+                  key: const ValueKey('cleanUpStorageButton'),
+                  onPressed: _cleaningUp ? null : _cleanUpStorage,
+                  child: Text(_cleaningUp ? 'Cleaning…' : 'Clean up'),
+                ),
+                footnote: _cleanupResult,
               ),
-            ],
           ],
         ),
-        footnote: 'Applies on next launch. Existing clips stay where they '
-            'are.',
+      ),
+      const SizedBox(height: 28),
+      _SettingsSection(
+        title: 'Location',
+        child: _TrailingRow(
+          label: 'Recordings folder',
+          hint: resolveClipsDirPath(widget.settings.clipsDirPath),
+          hintKey: const ValueKey('clipsDirLabel'),
+          // OutlinedButton, matching Clean up above: ONE style for row
+          // actions on this page — a bordered button next to a bare text link
+          // doing the same kind of job read as two different controls.
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton(
+                key: const ValueKey('chooseClipsDirButton'),
+                onPressed: _pickClipsDir,
+                child: const Text('Choose…'),
+              ),
+              if (widget.settings.clipsDirPath != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('resetClipsDirButton'),
+                  onPressed: _resetClipsDir,
+                  child: const Text('Reset'),
+                ),
+              ],
+            ],
+          ),
+          footnote: 'Applies on next launch. Existing clips stay where they '
+              'are.',
+        ),
+      ),
+      _ResetToDefaults(
+        describe: 'The storage limit goes back to 20 GB, clips stop expiring '
+            'by age, and the recordings folder goes back to the default '
+            'location. No clips are deleted.',
+        onReset: () {
+          _resetFields((live, fresh) {
+            live.maxStorageGb = fresh.maxStorageGb;
+            live.maxClipAgeDays = fresh.maxClipAgeDays;
+            live.clipsDirPath = fresh.clipsDirPath;
+          });
+          // The text fields hold their own copies — re-seed them or the page
+          // keeps showing the old numbers over the new settings.
+          _maxStorageController.text =
+              widget.settings.maxStorageGb?.toString() ?? '';
+          _maxAgeController.text =
+              widget.settings.maxClipAgeDays?.toString() ?? '';
+        },
       ),
     ]);
   }
@@ -1733,10 +1828,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// pairs, so it deliberately doesn't use the field-row grammar — a normal
   /// column, same shape as before the redesign.
   Widget _aboutPage(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
     return _settingsPage(context, 'About', [
+      // The version was missing entirely, which left "what version are you
+      // on?" unanswerable from inside the app — including for whoever is
+      // about to press Report an issue two rows down.
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('Rewind', style: theme.textTheme.display),
+          const SizedBox(width: 10),
+          Text(kAppVersion,
+              key: const ValueKey('appVersion'),
+              style: theme.textTheme.numeralLarge
+                  .copyWith(fontSize: 18, color: tokens.textMuted)),
+        ],
+      ),
+      const SizedBox(height: 6),
       Text(
-        'Rewind — open-source instant replay for macOS & Windows. GPLv3.',
-        style: Theme.of(context).textTheme.bodyMuted,
+        'Open-source instant replay for macOS & Windows. GPLv3.',
+        style: theme.textTheme.bodyMuted,
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -1768,6 +1881,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => openUrl('$kRepoUrl/issues'),
             icon: const Icon(Icons.bug_report_outlined, size: 18),
             label: const Text('Report an issue'),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('licensesButton'),
+            onPressed: () => showLicensePage(
+              context: context,
+              applicationName: 'Rewind',
+              applicationVersion: kAppVersion,
+              applicationLegalese: 'GPLv3. Bundled fonts are SIL OFL 1.1 — see '
+                  'docs/THIRD_PARTY.md.',
+            ),
+            icon: const Icon(Icons.description_outlined, size: 18),
+            label: const Text('Licenses'),
           ),
         ],
       ),
@@ -1832,7 +1957,11 @@ Widget _settingsPage(
   final theme = Theme.of(context);
   return SingleChildScrollView(
     padding: const EdgeInsets.fromLTRB(40, 30, 40, 40),
-    child: Center(
+    child: Align(
+      // Anchored to the sidebar's edge, not centred in whatever space is
+      // left: centring made every page drift right as the window grew, so
+      // the column floated instead of belonging to the sidebar beside it.
+      alignment: Alignment.topLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: settingsPageContentWidth),
         child: Column(
@@ -1882,6 +2011,9 @@ class _SettingsSidebar extends StatelessWidget {
   /// "out of the normal").
   final VoidCallback? onClose;
 
+  /// See `SettingsScreen.recorder`.
+  final Widget? recorder;
+
   const _SettingsSidebar({
     required this.selectedGeneralPage,
     required this.selectedGameId,
@@ -1889,6 +2021,7 @@ class _SettingsSidebar extends StatelessWidget {
     required this.onSelectGeneral,
     required this.onSelectGame,
     this.onClose,
+    this.recorder,
   });
 
   static const _items = [
@@ -1916,7 +2049,7 @@ class _SettingsSidebar extends StatelessWidget {
       'Steam',
       Icons.emoji_events_outlined
     ),
-    (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outline),
+    (_SettingsPage.about, 'settingsTab:About', 'About', Icons.info_outlined),
   ];
 
   @override
@@ -1934,12 +2067,13 @@ class _SettingsSidebar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(10, 14, 16, 12),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: _CloseButton(onClose: onClose),
               ),
             ),
+            if (recorder case final r?) r,
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Text(
@@ -2009,7 +2143,7 @@ class _SidebarGameItem extends StatelessWidget {
             color: selected ? tokens.surfaceRaised : null,
             border: Border(
               left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
+                color: selected ? tokens.interactive : Colors.transparent,
                 width: tokens.radiusRailIndicator,
               ),
             ),
@@ -2031,9 +2165,24 @@ class _SidebarGameItem extends StatelessWidget {
                   style: (selected
                           ? theme.textTheme.title
                           : theme.textTheme.body)
-                      .copyWith(color: selected ? tokens.accent : tokens.text),
+                      .copyWith(
+                          color: selected ? tokens.interactive : tokens.text),
                 ),
               ),
+              // The rail shows a live dot for a running game; this list did
+              // not, so Settings — the screen we specifically kept the
+              // recorder on — still couldn't tell you which game was live.
+              if (entry.active) ...[
+                const SizedBox(width: 6),
+                Semantics(
+                  label: '${entry.displayName} is running',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: tokens.armed, shape: BoxShape.circle),
+                    child: const SizedBox(width: 6, height: 6),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2223,8 +2372,16 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   /// events), or full (record the whole session). Full session is exclusive
   /// of highlights: it's "the whole game" instead of picked moments (the full
   /// VOD contains every highlight anyway); the buffer + hotkey still work.
-  String get _mode =>
-      _recordFullSession ? 'full' : (_autoClip ? 'highlights' : 'manual');
+  ///
+  /// [hasEvents] is not optional detail: a game with no event feed has no
+  /// Highlights CARD, so resolving to 'highlights' there selected a card that
+  /// isn't on screen and left BOTH visible radios empty — the mode looked
+  /// unset when it wasn't. `GameConfig.autoClip` defaults to true, so every
+  /// process-only game landed in exactly that state. Highlights is not a
+  /// reachable mode without an event feed, so it resolves to manual.
+  String _modeFor({required bool hasEvents}) => _recordFullSession
+      ? 'full'
+      : (_autoClip && hasEvents ? 'highlights' : 'manual');
 
   void _setMode(String mode) {
     setState(() {
@@ -2326,7 +2483,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 ),
               ],
               // Highlights mode: the event matrix + burst-quiet delay.
-              if (_mode == 'highlights' && groups.isNotEmpty) ...[
+              if (_modeFor(hasEvents: groups.isNotEmpty) == 'highlights') ...[
                 const SizedBox(height: 12),
                 Column(
                   key: const ValueKey('gameSettingsEventMatrix'),
@@ -2347,7 +2504,7 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 _postEventDelayRow(context),
               ],
               // Full session mode: the storage caveat.
-              if (_mode == 'full') ...[
+              if (_modeFor(hasEvents: groups.isNotEmpty) == 'full') ...[
                 const SizedBox(height: 10),
                 Text(
                   'Records the whole game to one continuous video, alongside '
@@ -2398,8 +2555,33 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 style: Theme.of(context).textTheme.bodyMuted),
           ),
         ),
+        _ResetToDefaults(
+          describe: 'This game stops overriding anything: capture mode, '
+              'buffer length and its name all follow your Capture defaults '
+              'again. Its clips are not touched.',
+          onReset: _resetGame,
+        ),
       ],
     );
+  }
+
+  /// Drops this game's overrides entirely rather than writing default values
+  /// into them: a game with no config row is exactly "follows the defaults",
+  /// which is what reset means here.
+  void _resetGame() {
+    final fresh = GameConfig(
+      gameId: widget.entry.gameId,
+      bufferSeconds: widget.settings.defaultBufferSeconds,
+    );
+    widget.settings.setConfig(fresh);
+    widget.onChanged(widget.settings);
+    setState(() {
+      _autoClip = fresh.autoClip;
+      _recordFullSession = fresh.recordFullSession;
+      _bufferSeconds = fresh.bufferSeconds;
+      _enabledEvents = {...fresh.enabledEvents};
+      _nameController?.text = '';
+    });
   }
 
   /// Under the event chips: how long to keep the burst debounce "quiet
@@ -2452,14 +2634,16 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
   /// ([hasEvents] false) — there's nothing to auto-clip — leaving Manual and
   /// Full session.
   Widget _captureModeCards(BuildContext context, {required bool hasEvents}) {
-    Widget card(String mode, String title, String description) => _PresetCard(
-          key: ValueKey('captureMode:$mode'),
+    final mode = _modeFor(hasEvents: hasEvents);
+    Widget card(String cardMode, String title, String description) =>
+        _PresetCard(
+          key: ValueKey('captureMode:$cardMode'),
           title: title,
           description: description,
           costLine: null,
-          selected: _mode == mode,
+          selected: mode == cardMode,
           recommended: false,
-          onTap: () => _setMode(mode),
+          onTap: () => _setMode(cardMode),
         );
 
     final cards = <Widget>[
@@ -2510,7 +2694,7 @@ class _SidebarItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final color = selected ? tokens.accent : tokens.textMuted;
+    final color = selected ? tokens.interactive : tokens.textMuted;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -2522,7 +2706,7 @@ class _SidebarItem extends StatelessWidget {
             color: selected ? tokens.surfaceRaised : null,
             border: Border(
               left: BorderSide(
-                color: selected ? tokens.accent : Colors.transparent,
+                color: selected ? tokens.interactive : Colors.transparent,
                 width: tokens.radiusRailIndicator,
               ),
             ),
@@ -2534,7 +2718,8 @@ class _SidebarItem extends StatelessWidget {
               Text(
                 label,
                 style: (selected ? theme.textTheme.title : theme.textTheme.body)
-                    .copyWith(color: selected ? tokens.accent : tokens.text),
+                    .copyWith(
+                        color: selected ? tokens.interactive : tokens.text),
               ),
             ],
           ),
@@ -2565,8 +2750,217 @@ class _CloseButton extends StatelessWidget {
         icon: const Icon(Icons.close, size: 16),
         style: IconButton.styleFrom(
           foregroundColor: tokens.textMuted,
-          shape: CircleBorder(side: BorderSide(color: tokens.hairline)),
+          // Rectangular, like every other control: this was the only circle
+          // in an app whose shape language explicitly bans pills and rounds,
+          // and it now sits directly above the recorder chip's dot, which
+          // made the odd one out obvious.
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(tokens.radiusControl),
+            side: BorderSide(color: tokens.hairline),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Says what an unset hotkey MEANS, next to the control that unsets it.
+class _UnsetHotkeyNote extends StatelessWidget {
+  final String text;
+
+  const _UnsetHotkeyNote({required this.text, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.only(
+          left: _fieldLabelWidth + _fieldLabelGap, bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outlined, size: 14, color: tokens.warn),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMuted
+                    .copyWith(color: tokens.warn)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the Storage page exists to answer: how close am I to the limit.
+///
+/// It used to print "7 clips · 270 MB" on one line and "Max storage (GB) 20"
+/// in a box below, leaving the actual question — the ratio between them — as
+/// arithmetic for the reader. A bar states it directly, and turns "you are
+/// near the cap, clips are about to be deleted" into something visible before
+/// it happens rather than after.
+class _StorageMeter extends StatelessWidget {
+  final int usedBytes;
+  final int clipCount;
+
+  /// The cap in GB, or null for no limit — in which case there is no ratio
+  /// to draw and the meter honestly shows only the total.
+  final int? limitGb;
+
+  const _StorageMeter({
+    required this.usedBytes,
+    required this.clipCount,
+    required this.limitGb,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    final limitBytes = limitGb == null ? null : limitGb! * 1024 * 1024 * 1024;
+    final fraction = limitBytes == null || limitBytes <= 0
+        ? null
+        : (usedBytes / limitBytes).clamp(0.0, 1.0);
+    // Amber past 80%: at that point the next few clips start evicting the
+    // oldest ones, which is worth seeing BEFORE it happens.
+    final nearLimit = fraction != null && fraction >= 0.8;
+    final barColor = nearLimit ? tokens.warn : tokens.interactive;
+
+    return Semantics(
+      label: limitBytes == null
+          ? '$clipCount clips using ${formatSize(usedBytes)}, no limit set'
+          : '$clipCount clips using ${formatSize(usedBytes)} of '
+              '$limitGb gigabytes, ${((fraction ?? 0) * 100).round()} percent',
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(formatSize(usedBytes),
+                    style: theme.textTheme.numeralLarge.copyWith(fontSize: 22)),
+                const SizedBox(width: 8),
+                Text(
+                  limitGb == null ? 'used' : 'of $limitGb GB',
+                  style: theme.textTheme.bodyMuted,
+                ),
+                const Spacer(),
+                Text('$clipCount ${clipCount == 1 ? 'clip' : 'clips'}',
+                    style: theme.textTheme.numeral
+                        .copyWith(color: tokens.textDim)),
+              ],
+            ),
+            if (fraction != null) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                key: const ValueKey('storageMeterBar'),
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 8,
+                  child: Row(
+                    // stretch, or the ColoredBoxes below size to ZERO height:
+                    // a childless ColoredBox has no intrinsic size, and a Row
+                    // centres rather than stretches by default — so the meter
+                    // rendered as nothing at all.
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        // Floor the fill so a small-but-real usage still
+                        // renders as a visible sliver instead of nothing —
+                        // 270 MB of 20 GB is ~1%, which rounds away.
+                        flex: (fraction * 1000).round().clamp(12, 1000),
+                        child: ColoredBox(color: barColor),
+                      ),
+                      Expanded(
+                        flex: ((1 - fraction) * 1000).round().clamp(1, 1000),
+                        // A visible track: `surfaceRaised` on `bg` is too
+                        // close to the page to read as a bar at all.
+                        child: ColoredBox(
+                            color: Colors.white.withValues(alpha: 0.13)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (nearLimit) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Near the limit — the oldest unkept clips will be removed '
+                  'to make room.',
+                  key: const ValueKey('storageNearLimitNote'),
+                  style: theme.textTheme.bodyMuted.copyWith(color: tokens.warn),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Reset to defaults", scoped to ONE page.
+///
+/// Per page rather than per row or per app, deliberately. Per row would put a
+/// reset affordance beside every control and drown the controls themselves;
+/// whole-app would make one button mean "throw away my hotkeys AND my storage
+/// limits AND my per-game setup", which is not a thing anyone wants to press
+/// by accident. A page is the unit the user is actually looking at.
+///
+/// [describe] must name what will change, in the confirmation, because
+/// "Reset to defaults" alone gives the user no way to predict the blast
+/// radius.
+class _ResetToDefaults extends StatelessWidget {
+  final String describe;
+  final VoidCallback onReset;
+
+  const _ResetToDefaults({required this.describe, required this.onReset});
+
+  Future<void> _confirm(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset to defaults?'),
+        content: Text(describe),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.rewindTokens.danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) onReset();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.only(top: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(height: 1, color: tokens.hairline),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => _confirm(context),
+            icon: const Icon(Icons.settings_backup_restore_outlined, size: 16),
+            label: const Text('Reset to defaults'),
+          ),
+        ],
       ),
     );
   }
@@ -2604,7 +2998,7 @@ class _SettingsSection extends StatelessWidget {
             width: 3,
             height: 14,
             decoration: BoxDecoration(
-              color: tokens.accent,
+              color: tokens.interactive,
               borderRadius: BorderRadius.circular(tokens.radiusRailIndicator),
             ),
           ),
@@ -2625,15 +3019,44 @@ class _SettingsSection extends StatelessWidget {
   }
 }
 
-/// A field row: a short (~150px) left-aligned label, then [control]
-/// immediately after at a shared left edge — for dropdowns/segmented
-/// controls, as opposed to [_ToggleRow] (trailing switch) or
-/// [_TextFieldRow] (label above a text-entry field).
+/// The one label column every settings row grammar shares, so a label and
+/// the control beside it line up across pages and row types.
+const double _fieldLabelWidth = 150;
+const double _fieldLabelGap = 18;
+
+/// Wide enough for the longest combo anyone binds ("Ctrl+Shift+F12") plus its
+/// ✕, and no wider — see [_FieldRow.stretch].
+const double _hotkeyFieldWidth = 300;
+
+/// Fixed so an empty field and a filled one are the same size — see the
+/// note in [_LimitFieldRow].
+const double _limitFieldHeight = 40;
+
+/// A field row: a short left-aligned label, then [control] immediately after
+/// at a shared left edge — for dropdowns/segmented controls, as opposed to
+/// [_ToggleRow] (trailing switch) or [_TextFieldRow] (label above a
+/// text-entry field).
 class _FieldRow extends StatelessWidget {
   final String label;
   final Widget control;
 
-  const _FieldRow({required this.label, required this.control});
+  /// Whether the control should fill the row. True for the dropdowns and
+  /// sliders that make up most rows — a device-name dropdown needs every pixel
+  /// it can get. False for a control that has an intrinsic size worth keeping.
+  ///
+  /// This exists because `Expanded` hands its child a TIGHT width, which
+  /// silently overrode a `SizedBox(width: 300)` around the hotkey fields: they
+  /// rendered ~760 px wide, so an eight-character combo sat at one end of the
+  /// box and its ✕ at the other. Same trap as the ListView one in CLAUDE.md —
+  /// a tight incoming constraint beats any size the child asks for, and an
+  /// `Align` is what lets the child choose again.
+  final bool stretch;
+
+  const _FieldRow({
+    required this.label,
+    required this.control,
+    this.stretch = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2643,9 +3066,126 @@ class _FieldRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(width: 150, child: Text(label, style: theme.textTheme.body)),
-          const SizedBox(width: 18),
-          Expanded(child: control),
+          SizedBox(
+              width: _fieldLabelWidth,
+              child: Text(label, style: theme.textTheme.body)),
+          const SizedBox(width: _fieldLabelGap),
+          Expanded(
+            child: stretch
+                ? control
+                : Align(alignment: Alignment.centerLeft, child: control),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A numeric limit row: label, a field sized to its content, and — under the
+/// field only — what an empty value MEANS.
+///
+/// One widget rather than a `_FieldRow` wrapping a column, because that is
+/// what broke the alignment: the row centres its label against the CONTROL,
+/// so a control that also contains a helper line (and reserved an empty line
+/// when there was none) made the label sit visibly low against the box it
+/// belongs to. The helper now lives outside the row's own alignment, indented
+/// to the field's left edge.
+///
+/// The helper also replaces the old "Blank = never" PLACEHOLDER, which was a
+/// hint impersonating a value: it vanished the moment you typed, and until
+/// then read as though the field was already set to something.
+class _LimitFieldRow extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String suffix;
+
+  /// What an empty field MEANS, shown under it whenever it is empty.
+  final String emptyLabel;
+
+  /// Goes on the inner [TextField] — callers (and tests) address the field.
+  final Key fieldKey;
+
+  const _LimitFieldRow({
+    required this.label,
+    required this.controller,
+    required this.focusNode,
+    required this.suffix,
+    required this.emptyLabel,
+    required this.fieldKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                  width: _fieldLabelWidth,
+                  child: Text(label, style: theme.textTheme.body)),
+              const SizedBox(width: _fieldLabelGap),
+              SizedBox(
+                // Sized to the content: a two-or-three digit number. A 200px
+                // box for "20" told the user to expect something longer.
+                width: 132,
+                // Fixed height, or the two fields end up DIFFERENT heights:
+                // with no text, the suffix's own padding drives the box, so
+                // an empty field rendered ~8px taller than a filled one and
+                // the two rows visibly disagreed.
+                height: _limitFieldHeight,
+                child: TextField(
+                  key: fieldKey,
+                  controller: controller,
+                  focusNode: focusNode,
+                  keyboardType: TextInputType.number,
+                  style: theme.textTheme.numeral,
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    // suffixIcon, not suffixText: Material hides prefix/suffix
+                    // TEXT while a field is empty and unfocused — i.e. exactly
+                    // when "days" is most needed to explain what to type.
+                    // Center(widthFactor: 1) hugs the text and contributes no
+                    // height of its own.
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.only(right: 12, left: 6),
+                      child: Center(
+                        widthFactor: 1,
+                        child: Text(suffix,
+                            style: theme.textTheme.body
+                                .copyWith(color: tokens.textDim)),
+                      ),
+                    ),
+                    suffixIconConstraints:
+                        const BoxConstraints(minWidth: 0, minHeight: 0),
+                  ),
+                  // Commit on blur/submit ONLY — see _commitLimit's doc for
+                  // the typing-"15"-passes-through-"1" data-loss bug this
+                  // prevents.
+                  onSubmitted: (_) => focusNode.unfocus(),
+                ),
+              ),
+            ],
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => value.text.trim().isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.only(
+                        left: _fieldLabelWidth + _fieldLabelGap, top: 6),
+                    child: Text(emptyLabel, style: theme.textTheme.bodyMuted),
+                  )
+                // Nothing at all when the field HAS a value — an empty
+                // reserved line is what pushed the label off-centre.
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -2830,7 +3370,7 @@ class _PresetCard extends StatelessWidget {
     final tokens = context.rewindTokens;
     return Material(
       color: selected
-          ? tokens.accent.withValues(alpha: 0.07)
+          ? tokens.interactive.withValues(alpha: 0.07)
           : tokens.surfaceRaised,
       borderRadius: BorderRadius.circular(tokens.radiusControl),
       child: InkWell(
@@ -2841,7 +3381,7 @@ class _PresetCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(tokens.radiusControl),
             border: Border.all(
-                color: selected ? tokens.accent : Colors.transparent),
+                color: selected ? tokens.interactive : Colors.transparent),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2851,7 +3391,7 @@ class _PresetCard extends StatelessWidget {
                 child: Icon(
                   selected ? Icons.radio_button_checked : Icons.circle_outlined,
                   size: 14,
-                  color: selected ? tokens.accent : tokens.textMuted,
+                  color: selected ? tokens.interactive : tokens.textMuted,
                 ),
               ),
               const SizedBox(width: 12),
@@ -2883,7 +3423,8 @@ class _PresetCard extends StatelessWidget {
                         style: theme.textTheme.label.copyWith(
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w500,
-                          color: selected ? tokens.accent : tokens.textMuted,
+                          color:
+                              selected ? tokens.interactive : tokens.textMuted,
                         ),
                       ),
                     ],
@@ -2908,13 +3449,13 @@ class _RecommendedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: tokens.accent),
+        border: Border.all(color: tokens.interactive),
         borderRadius: BorderRadius.circular(tokens.radiusChip),
       ),
       child: Text(
         'RECOMMENDED',
-        style: theme.textTheme.micro
-            .copyWith(color: tokens.accent, fontSize: 8.5, letterSpacing: 1),
+        style: theme.textTheme.micro.copyWith(
+            color: tokens.interactive, fontSize: 8.5, letterSpacing: 1),
       ),
     );
   }

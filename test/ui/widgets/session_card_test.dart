@@ -7,7 +7,7 @@ import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/clip_sessions.dart';
 import 'package:rewind/src/ui/theme.dart';
-import 'package:rewind/src/ui/widgets/match_card.dart';
+import 'package:rewind/src/ui/widgets/session_card.dart';
 
 void main() {
   late Directory tmp;
@@ -43,7 +43,7 @@ void main() {
 
   testWidgets('no stats: falls back to a plain clip count, no K/D/A row',
       (t) async {
-    await t.pumpWidget(app(MatchCard(
+    await t.pumpWidget(app(SessionCard(
       session: session,
       isMatch: true,
       stats: null,
@@ -65,7 +65,7 @@ void main() {
       assists: 7,
       creepScore: 145,
     );
-    await t.pumpWidget(app(MatchCard(
+    await t.pumpWidget(app(SessionCard(
       session: session,
       isMatch: true,
       stats: stats,
@@ -86,7 +86,7 @@ void main() {
       startedAt: session.startedAt,
       champion: 'Ahri',
     );
-    await t.pumpWidget(app(MatchCard(
+    await t.pumpWidget(app(SessionCard(
       session: session,
       isMatch: true,
       stats: stats,
@@ -99,9 +99,37 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
+  // The label line used to be ONE ellipsized string, so a long lead ("LEAGUE
+  // OF LEGENDS · MASTERYI · SUMMONER'S RIFT · …") truncated from the right and
+  // took the timestamp with it — the very key the grid is sorted by. The age
+  // now lays out last and never shrinks.
+  testWidgets('the age survives a lead too long for the card', (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+      champion: 'MasterYi',
+      gameMode: 'CLASSIC',
+    );
+    await t.pumpWidget(app(SessionCard(
+      session: session,
+      isMatch: true,
+      stats: stats,
+      onTap: () {},
+      gameId: 'league_of_legends',
+      displayName: 'League of Legends',
+    )));
+    await t.pump();
+
+    // relativeAge() of a just-created session.
+    expect(find.textContaining('NOW'), findsOneWidget);
+    // ...and it is its own Text, not a tail the ellipsis can eat.
+    expect(find.text('LEAGUE OF LEGENDS · MASTERYI · SUMMONER\'S RIFT'),
+        findsOneWidget);
+  });
+
   testWidgets('tapping the card invokes onTap', (t) async {
     var tapped = false;
-    await t.pumpWidget(app(MatchCard(
+    await t.pumpWidget(app(SessionCard(
       session: session,
       isMatch: true,
       stats: null,
@@ -109,7 +137,7 @@ void main() {
     )));
     await t.pump();
 
-    await t.tap(find.byType(MatchCard));
+    await t.tap(find.byType(SessionCard));
     expect(tapped, isTrue);
   });
 }

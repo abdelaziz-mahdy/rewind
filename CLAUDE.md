@@ -162,18 +162,112 @@ playback and any future headless media_kit use):**
   doesn't need real capture, e.g. testing thumbnail generation against an
   already-recorded clip).
 
-**UI layer rules (post game-centric redesign — spec:
-`docs/superpowers/specs/2026-07-13-game-centric-redesign.md`):**
+**UI layer rules (IA from `docs/superpowers/specs/2026-07-13-game-centric-redesign.md`;
+visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-design-system.md`):**
 - All styling flows through `RewindTokens` / the text-theme extension in
   `lib/src/ui/theme.dart`. NO glow/BoxShadow, no gradients, no pill radii
   (`circular(999)`), no raw hex in widgets. Hover/press overlays must
   LIGHTEN (low-alpha white) — dark-on-dark overlays are invisible.
-- Navigation: `shell.dart` (rail + recorder deck + destinations) on a sealed
+- **Hue is reserved for state; chrome is achromatic.** `interactive` (a
+  neutral steel) paints every selection, primary fill and focus ring.
+  `armed` = buffer running / game live / auto-clip on. `onAir` = a manual
+  recording. `positive` = a good outcome. `danger` = destructive or failed.
+  Never paint a nav row with a state color, or a state with `interactive`.
+  `test/theme_contrast_test.dart` enforces WCAG AA on every token pair AND
+  that `interactive` stays achromatic — retune tokens, never the test.
+- **Every digit uses the numeral role** (`textTheme.numeral` /
+  `numeralLarge`, IBM Plex Mono): timecodes, durations, sizes, K/D/A, buffer
+  seconds, counts. Never `copyWith(fontFeatures: tabularFigures)` by hand.
+- Fonts are BUNDLED (`assets/fonts/`, see `docs/THIRD_PARTY.md`). Archivo =
+  display, Inter Tight = UI, IBM Plex Mono = numerals. The first two are
+  VARIABLE: any non-default weight must set `fontVariations` as well as
+  `fontWeight`, or the engine synthesizes a fake bold instead.
+- **One pill is allowed: `Switch`** (declared in `switchTheme`). Its shape is
+  its affordance — a rectangular switch reads as a segmented control. Every
+  other stadium/pill radius stays banned.
+- One icon family: `*_outlined` for interface icons. The three transport
+  glyphs (`play_arrow`, `pause`, `stop`) stay filled — a hollow play
+  triangle is illegible at 20px.
+- Navigation: `shell.dart` = rail + destination on a sealed
   `shell_destination.dart` value. No router/state-management packages.
+- **The recorder is a BUTTON at the top of the rail, never a bar.** Two
+  persistent strips (top, then bottom) were built and rejected on sight. The
+  reason is structural, not taste: while you're gaming this window is behind
+  a fullscreen game, so permanent in-window chrome is invisible exactly when
+  it matters — which is also what ShadowPlay (overlay only) and Medal (one
+  corner button + dropdown) do. The always-on indicator belongs in the tray
+  (`TrayService` sets a live menu-bar title). Settings has no rail, so
+  `Shell` hands the same `RecorderButton` to its sidebar — that is what keeps
+  REC state visible on the screen most likely to be opened mid-match.
+- **Zero idle animation.** Nothing may animate while the app sits in the
+  background — a never-ending animation once measured ~45% app + ~45%
+  WindowServer CPU. The deck's 1s ticker is the only repeating timer and is
+  bounded on both sides (stops when a recording ends and when the buffer
+  ring fills).
+- **Focus rings go ON TOP — wrap interactive surfaces in `FocusRing`.**
+  Material's own highlight is invisible here: `InkWell` paints `focusColor`
+  into the enclosing Material's ink layer, BEHIND its child, and every
+  interactive surface in this app (nav rows, filter chips, session cards,
+  clip tiles) draws an opaque background as that child. Measured on the real
+  app, tabbing between filter chips moved ~25 levels on one row of
+  anti-aliased fringe, and moved the nav rows not one byte. Focus takes
+  `interactive` — it is an affordance, not machine state.
+- **Reduce motion is honoured, not ignored.** macOS's setting arrives as
+  `MediaQuery.disableAnimationsOf(context)`. Flutter applies it to its own
+  route transitions but NOT to anything we animate ourselves, so the two
+  places that move on purpose — the shell's destination `AnimatedSwitcher`
+  and onboarding's page turn — read it and collapse to `Duration.zero`. Any
+  new deliberate motion must do the same.
+- **Never rotate a hue and assume it stays legible.** Perceived luminance is
+  weighted 0.72 green / 0.21 red / 0.07 blue, so the event system's violet
+  arm — same saturation and lightness as its amber seed — landed at 3.3:1 and
+  failed AA while the amber sat above 7:1. Derive the lightness from the
+  requirement instead: `legibleOn(color, surface)` in `theme.dart`.
+  `theme_contrast_test.dart` checks the DERIVED badge colours, not just the
+  seed, because the seed is never painted.
+- All Clips and every game hub render the SAME `SessionCard`; they differ
+  only in scope. Don't add a second card shape for either.
+- **The `SessionCard` label line is two Texts, not one.** Context (game,
+  champion, mode) ellipsizes; the age never does. As one joined string the
+  ellipsis ate the timestamp — the key the grid is sorted by — on every
+  narrow card.
 - Beware Flutter's flex-allocation trap: several loose `Flexible(flex: 1)`
   children + a `Spacer` in one Row each get an equal SHARE of free space
   whether used or not — trailing buttons end up stranded mid-row. One
   `Expanded` filler per row.
+
+**Screenshots of the UI — read `.claude/skills/screenshots/SKILL.md` first:**
+- `screencapture` from a terminal fails here (`could not create image from
+  display`) because Screen Recording is not GRANTED — not because it's
+  impossible. The grant would go to **Terminal.app** (the responsible app),
+  and macOS only applies it after quitting and reopening it, which ends the
+  Claude Code session. So don't retry it inside a task; ask for it only when
+  you need something outside the Flutter tree (the menu-bar `● REC` title,
+  the tray menu, native window chrome). Everything in the widget tree should
+  use the test path below instead — it's deterministic and CI-safe.
+- **NEVER capture the screen from inside Rewind.** Rewind holds Screen
+  Recording permission, so a debug trigger shelling out to `screencapture`
+  works with no terminal grant — which is exactly why it's tempting. It was
+  built and removed on 2026-07-26: it starts a SECOND screen-capture client
+  beside the app's own ScreenCaptureKit session, and the replay buffer died
+  six minutes later, silently dropping eight clips across three live matches.
+  This app's whole job is capturing the screen; anything else that captures
+  the screen is competing with it.
+- The working path is an integration test that renders into a
+  `RepaintBoundary` and calls `toImage()` — pure Dart on the real GPU inside
+  the app's own process, so the OS screenshot API (and its permission) is
+  never involved. macOS's `integration_test` plugin also has no
+  `captureScreenshot` channel, so `takeScreenshot()` is not the answer either.
+- Two tours exist: `integration_test/ui_tour_test.dart` (individual screens)
+  and `integration_test/redesign_tour_test.dart` (the whole shell in five
+  states). Run with `flutter test <file> -d macos --dart-define=SHOT_DIR=after`.
+- For a BEFORE/AFTER across branches, write the tour against only the API that
+  exists on BOTH trees (go through `Shell`, whose prop list is deliberately
+  stable), keep it untracked, and `git checkout` the base branch IN PLACE to
+  re-run it. A `git worktree` fails — a fresh worktree can't resolve the macOS
+  runner's Swift Package Manager dependencies.
+- ALWAYS Read the PNGs back and look at them. A passing tour proves nothing;
+  the images are the artifact.
 
 **Testing gotchas:**
 - Never pipe `flutter test` through `tail`/`grep` when the exit code matters

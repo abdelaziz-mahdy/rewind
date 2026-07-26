@@ -6,6 +6,135 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+- **New design system: "Broadcast Deck."** Rewind now reads like the video
+  deck it is. The one rule is that **hue is reserved for state** — the mint
+  accent had come to mean seven unrelated things at once (rail selection,
+  primary buttons, the live-game dot, the focus ring, kill counts, the WIN
+  badge, auto-clip on), so a glance could not separate *where you are* from
+  *what the machine is doing*. Selection and buttons are now a neutral steel;
+  amber means the buffer is armed, red means a recording is running, green
+  means a good outcome, and nothing else carries colour.
+- **The recorder is one button in the sidebar that opens a panel** — capture
+  source, buffer length, Save clip and Record — instead of a row of controls
+  taking up permanent space. The button itself reports the state (armed,
+  recording, waiting for a game, unavailable) and how long the buffer is. It
+  appears on **Settings** too; opening Settings mid-match used to hide whether
+  anything was recording at all.
+- **The menu-bar icon now says when you're recording.** While you're gaming
+  Rewind's window is behind the game, so the menu bar is the only place that
+  can actually tell you anything — and it was staying silent, spending what it
+  knew on menu labels you had to open the menu to read.
+- **Fonts ship with the app** (Archivo, Inter Tight, IBM Plex Mono). Rewind
+  previously rendered in whatever the OS provided, so it was literally a
+  different design on Windows than on macOS. Every number in the app —
+  timecodes, durations, sizes, K/D/A, counts — is now set in a real monospace.
+- **All Clips and each game hub show the same session card.** They present the
+  same thing at the same level and used to do it two different ways, with two
+  different card sizes. All Clips also gains sorting (newest / largest / most
+  clips), and card size now follows window width instead of being fixed, so a
+  large display shows bigger clips rather than more of them.
+- **A game hub leads with how you have been playing**: matches, win rate,
+  average KDA and disk use, replacing the old "42 clips · 2.4 GB · last clip
+  2 h ago" line. Nothing is invented — a figure that was never recorded is
+  left out rather than shown as zero.
+- **Plainer language.** A hub's status now reads "IN MATCH · CLIPS ITSELF",
+  "KNOWS WHEN YOU PLAY" or "HOTKEY ONLY" instead of "LIVE CLIENT API",
+  "PROCESS DETECTION" and "MANUAL CAPTURE", which described how Rewind is
+  built rather than what you get.
+- **First run teaches the buffer** instead of describing it: a diagram of the
+  rolling window ending at NOW, and the point everything else depends on —
+  Rewind is already rolling, so you don't press record, you press rewind.
+- **Saving a clip says what it saved**: the confirmation now names the moment,
+  its game and its size, and offers "Show me". It was a bare "Clip saved".
+- The player leads with the moment ("Penta Kill") rather than the game name,
+  and its event markers gained a readable legend beneath the seek bar instead
+  of being 3px ticks you had to hover one at a time.
+
+### Added
+- **Reset to defaults**, on each Settings page and on each game's page. Scoped
+  per page rather than per app, so one button can't mean "throw away my
+  hotkeys and my storage limits and my per-game setup" at once — and the
+  confirmation names exactly what's about to change. Resetting a game simply
+  stops it overriding anything; its clips are untouched.
+
+### Fixed
+- **Settings: capture mode showed nothing selected on most games.** Auto-clip
+  defaults to on, and the mode was worked out as "auto-clip on = Highlights"
+  without checking whether Highlights was even offered — so on any game
+  without an in-game event feed (most of them) both radio buttons rendered
+  empty and the mode looked unset. It now reads Manual only, correctly.
+- **Settings → Storage now shows your storage.** It listed the total and the
+  limit as two unrelated lines and left the ratio to you; there is now a
+  usage meter, with a warning as you approach the limit and clips start being
+  evicted.
+- **Settings → About now shows the version**, and links the licenses of
+  everything bundled. Neither existed, which made "what version are you on?"
+  unanswerable from inside the app — including for anyone about to press the
+  Report an issue button next to it.
+- **"Blank = never" was a hint pretending to be a value.** The retention
+  fields now say what an empty field means underneath them, permanently, and
+  their units stay visible while they're empty.
+- **Clearing a hotkey now says what that means.** The ✕ removed the shortcut
+  silently, in an app whose whole premise is a shortcut.
+- Settings pages share one row grammar and gained section headings; fields are
+  sized to what you type into them; the content column stays anchored to the
+  sidebar instead of drifting right as the window grows; the close button is
+  no longer the only circle in the app; and a running game shows its live dot
+  in the Settings sidebar too.
+- **The window is now designed for more than one size.** The rail was a fixed
+  220px at every width — 27% of a half-screen window, on an app meant to sit
+  *beside* a game — and now collapses to icons (with tooltips, and the
+  live-game dot moved onto the game's avatar) below 1000px. On a wide display
+  the opposite problem: a 2200px window rendered a ~900px app hugging the left
+  edge, because a hub's header blocks stopped at one width while its card grid
+  ran the full window. Every block on a screen now shares one content column,
+  centred once the window outgrows it, and card size steps with that column so
+  a bigger display shows bigger clips rather than more small ones.
+- **A game hub's header had two different right edges** — the capture-settings
+  card was never actually width-capped (a `ConstrainedBox` cannot shrink below
+  a tight constraint), so it ran wider than the score band above it.
+- **WIN / LOSS badges could disappear on a bright frame.** They sat on an
+  arbitrary video still with only a colour wash behind them; they now carry
+  the same dark scrim as the K/D badge beside them.
+- **A game hub said "In match — connected to 127.0.0.1:2999".** It now says
+  what that means for the player.
+- **Win rate could read "100%" off a sample of two.** A game hub reported a
+  percentage over only the matches whose outcome Rewind managed to record —
+  on a real library that was 2 matches out of 21, both wins, so the hub
+  claimed a perfect record. It now shows a **record** ("2-0") and spells out
+  the sample whenever some matches are unrated ("RECORD · 2 OF 21"). A
+  percentage hides its own denominator, which is the wrong property for a
+  figure this sparse.
+- **Losses were never recorded at all.** Every recorded outcome in a real
+  library was a win. Rewind accepted only "Win"/"Lose" from League's match-end
+  event, so a lost match reporting any other spelling was silently dropped —
+  and nothing anywhere said so. It now accepts every plausible spelling, logs
+  the raw value when it recognises none (so the next lost match names the
+  exact token instead of vanishing), and still refuses to guess: an
+  unrecognised result stays neutral rather than being written down as a defeat
+  that never happened. A match-end that arrives after the game already closed
+  now attaches to the match that just finished instead of being dropped.
+- **Hotkey clips taken during a match now appear in that match.** They could
+  end up filed under the game's launcher instead of the live match and strand
+  themselves as one-clip groups beside the match they came from. Sessions are
+  now grouped by time as well as by stamp: a clip that falls inside a match's
+  span belongs to it. This also repairs clips already saved that way, without
+  rewriting anything on disk. Two back-to-back matches still never merge —
+  absorption requires containment, not proximity.
+
+### Accessibility
+- Screen readers can now read the recorder state, the live-game dot, clip
+  counts, K/D/A, match results, event badges, the buffer diagram and every
+  timeline marker — all of which previously conveyed their meaning through
+  colour and position alone.
+- WCAG AA contrast is enforced by a test across every colour pair rather than
+  documented in a comment, so a future palette change cannot silently regress
+  it.
+- The "⟨game⟩ is running" banner's buttons grew to a comfortable target size;
+  they were small enough, and close enough to the dismiss ✕, to invite
+  misclicks at exactly the moment a game launches.
+
 ### Added
 - **Record the whole play session (per game)**: a new "Full session" toggle
   on each game's settings page records the entire session to one continuous

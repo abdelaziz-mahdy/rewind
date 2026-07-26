@@ -15,7 +15,7 @@ import 'package:rewind/src/ui/game_hub_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
-import 'package:rewind/src/ui/widgets/match_card.dart';
+import 'package:rewind/src/ui/widgets/session_card.dart';
 import '../fakes/fake_capture_engine.dart';
 import '../fakes/fake_game_source.dart';
 
@@ -129,10 +129,13 @@ void main() {
           sessionAt: match2));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      // Each session is one MATCH card, labeled "MATCH · <age>", with a
-      // clip count in its summary line.
-      final headers = inList(find.textContaining('MATCH · '));
-      expect(headers, findsNWidgets(2));
+      // Each session is one MATCH card, labeled "MATCH" + a separate age (the
+      // two are distinct Texts so the age can't be ellipsized away — see
+      // SessionCard._ageLabel), with a clip count in its summary line.
+      expect(inList(find.text('MATCH')), findsNWidgets(2));
+      // These clips are old enough that relativeAge() yields a date, so match
+      // the separator the age Text always leads with rather than "AGO".
+      expect(inList(find.textContaining(' · 2026-07-')), findsNWidgets(2));
       expect(inList(find.text('2 clips')), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
     });
@@ -143,8 +146,8 @@ void main() {
           clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(inList(find.textContaining('SESSION · ')), findsOneWidget);
-      expect(inList(find.textContaining('MATCH · ')), findsNothing);
+      expect(inList(find.text('SESSION')), findsOneWidget);
+      expect(inList(find.text('MATCH')), findsNothing);
     });
   });
 
@@ -163,9 +166,14 @@ void main() {
           sizeBytes: 3 * 1024 * 1024));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(find.textContaining('2 clips · ${formatSize(5 * 1024 * 1024)}'),
-          findsOneWidget);
-      expect(find.textContaining('last clip'), findsOneWidget);
+      // The header's score band replaced the old "N clips · size · last
+      // clip" fact line: same facts, but reported as data a player actually
+      // opens a hub to read.
+      expect(find.byKey(const ValueKey('gameHubScoreBand')), findsOneWidget);
+      expect(find.text('SESSIONS'), findsOneWidget);
+      expect(find.text('ON DISK'), findsOneWidget);
+      expect(find.text(formatSize(5 * 1024 * 1024)), findsOneWidget);
+      expect(find.text('LAST CLIP'), findsOneWidget);
     });
   });
 
@@ -175,16 +183,17 @@ void main() {
         'League merged row: only the CLIENT open (process half active) must '
         'NOT read as in-match — the API is not even listening', (t) async {
       // Regression: sitting in the lobby (LeagueClientUx running, catalog
-      // half active) used to show "In match — connected to 127.0.0.1:2999"
+      // half active) used to claim it was in a match
       // while nothing was listening on 2999 at all.
       coordinator.settings.setConfig(GameConfig(gameId: 'league_of_legends'));
       coordinator.activeGameIds.value = {'app:league_of_legends'};
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(find.text('LIVE CLIENT API'), findsOneWidget); // the header pill
+      // The pill names what the user GETS, not the integration mechanism.
+      expect(find.text('CLIPS ITSELF'), findsOneWidget);
       expect(
           t.widget<Text>(detailLine()).data,
-          'Client open — waiting for a match. Rewind connects automatically '
+          'League is open — waiting for a match. Rewind joins automatically '
           'when one starts.');
     });
 
@@ -196,7 +205,7 @@ void main() {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
       expect(t.widget<Text>(detailLine()).data,
-          'In match — connected to 127.0.0.1:2999');
+          'In a match now — clipping your kills automatically.');
     });
 
     testWidgets('League shows the waiting state when inactive', (t) async {
@@ -213,7 +222,7 @@ void main() {
       coordinator.settings.setConfig(GameConfig(gameId: 'app:cs2'));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(find.text('PROCESS DETECTION'), findsOneWidget);
+      expect(find.text('KNOWS WHEN YOU PLAY'), findsOneWidget);
       expect(t.widget<Text>(detailLine()).data, 'Watching for cs2');
     });
 
@@ -228,7 +237,7 @@ void main() {
     testWidgets('desktop shows manual capture with the hotkey hint', (t) async {
       await _pump(t, _app(hub(gameId: 'desktop')));
 
-      expect(find.text('MANUAL CAPTURE'), findsOneWidget); // the header pill
+      expect(find.text('HOTKEY ONLY'), findsOneWidget); // the header pill
       expect(t.widget<Text>(detailLine()).data,
           'Clips saved with Alt+F10 while no game is detected.');
     });
@@ -322,7 +331,7 @@ void main() {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
       // Only the cs2 session shows — one card, and it holds only cs2's clip.
-      expect(find.byType(MatchCard), findsOneWidget);
+      expect(find.byType(SessionCard), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
     });
 
@@ -338,7 +347,7 @@ void main() {
           DateTime(2026, 7, 2, 20, 5)));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      expect(find.byType(MatchCard), findsOneWidget);
+      expect(find.byType(SessionCard), findsOneWidget);
       expect(inList(find.text('2 clips')), findsOneWidget);
     });
 
@@ -390,7 +399,7 @@ void main() {
       expect(inList(find.text('1')), findsWidgets);
 
       observer.pushed.clear();
-      await t.tap(find.byType(MatchCard));
+      await t.tap(find.byType(SessionCard));
       // No pump: the pushed route's builder (MatchClipsScreen → ClipTile →
       // media_kit) only runs next frame; assert the push happened first.
       expect(observer.pushed.single.settings.name, matchClipsScreenRouteName);

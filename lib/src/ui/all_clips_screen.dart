@@ -15,7 +15,7 @@ import 'match_clips_screen.dart';
 import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_filter_chips.dart';
-import 'widgets/game_tile_avatar.dart';
+import 'widgets/session_card.dart';
 
 /// One session in the All Clips feed, tagged with the display-name bucket it
 /// came from (see [_sessionFeed]).
@@ -79,22 +79,56 @@ MatchStats? _statsForSession(MatchStatsStore? store, ClipSession session) {
 /// ask "does this game have a live-match API" — stats only ever get
 /// recorded by League's vendor integration, so their presence is the honest
 /// proxy for MATCH vs. SESSION here.
+///
+/// Sentence case, not caps: this becomes a PAGE TITLE (the match screen's app
+/// bar). All-caps is this design system's metadata voice — section labels, the
+/// card's own context line — and a shouted title sat at odds with every other
+/// header in the app ("All clips", "League of Legends", "Capture").
 String _sessionLabel(ClipSession session, MatchStats? stats) {
-  final word = stats != null ? 'MATCH' : 'SESSION';
+  final word = stats != null ? 'Match' : 'Session';
   final count = session.clips.length;
-  return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
-      '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
+  return '$word · ${relativeAge(session.startedAt)} · '
+      '$count ${count == 1 ? 'clip' : 'clips'}';
 }
 
-/// The cross-game clip library (§3.3): header (title + count + size + open-
-/// folder), an event-kind filter row, and a newest-first FEED OF SESSIONS —
-/// each play session/match gets a tappable header (game + relative time +
-/// clip count) and its own clip grid beneath, interleaved across games by
-/// recency (not game-partitioned — the per-game hubs already own that view).
+/// How the session grid is ordered. Recency is the default and the only one
+/// that matters most of the time; the other two exist because "which of
+/// these is eating my disk" and "where is that long one" are real questions
+/// a 3 GB library can't otherwise answer.
+enum ClipSort { newest, largest, longest }
+
+extension _SortLabel on ClipSort {
+  String get label => switch (this) {
+        ClipSort.newest => 'Newest',
+        ClipSort.largest => 'Largest',
+        ClipSort.longest => 'Most clips',
+      };
+}
+
+/// The cross-game clip library: header (title + count + size + sort + open-
+/// folder), an event-kind filter row, and a grid of SESSION CARDS —
+/// interleaved across games by recency, not game-partitioned (the per-game
+/// hubs already own that view).
+///
+/// The cards are the same `SessionCard` a game hub renders. This screen and
+/// a hub show the same thing at the same level and differ only in scope, so
+/// they must not disagree about what a session is or how it is summarized;
+/// they used to use two different layouts and two different aspect ratios
+/// for identical data, which meant nothing a user learned on one transferred
+/// to the other. Tapping a card opens that session's clips, exactly as a hub
+/// card does.
 class AllClipsScreen extends StatefulWidget {
   final ClipLibrary library;
   final String hotkeyLabel;
   final VoidCallback onOpenClipsFolder;
+
+  /// How far back a save reaches right now — shown by the first-run empty
+  /// state, which teaches exactly that.
+  final int bufferSeconds;
+
+  /// Opens the Supported Games catalog. Null in tests that don't wire it,
+  /// which simply drops the empty state's primary action.
+  final VoidCallback? onAddGame;
   final ThumbnailCache? thumbnails;
 
   /// Per-match K/D and event history, keyed by (gameId, session start) — see
@@ -111,6 +145,8 @@ class AllClipsScreen extends StatefulWidget {
     required this.library,
     required this.hotkeyLabel,
     required this.onOpenClipsFolder,
+    this.bufferSeconds = 30,
+    this.onAddGame,
     this.thumbnails,
     this.matchStats,
     this.ddragon,
@@ -126,6 +162,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
   /// has no clips left in the library (e.g. the last clip of that kind was
   /// deleted).
   GameEventKind? _filterKind;
+
+  ClipSort _sort = ClipSort.newest;
 
   @override
   void initState() {
@@ -175,44 +213,6 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
     ));
   }
 
-  /// The header + clip grid for one [_SessionEntry] — stats are looked up
-  /// once here and threaded to both the header's tap (for the match label)
-  /// and every [ClipTile] (for timeline markers), so a clip opened from All
-  /// Clips finally carries the same markers it would from its game hub.
-  List<Widget> _sessionSection(BuildContext context, _SessionEntry entry) {
-    final stats = _statsForSession(widget.matchStats, entry.session);
-    return [
-      _SessionHeader(
-        key: ValueKey(
-            'sessionHeader:${entry.gameId}:${entry.session.startedAt.toIso8601String()}'),
-        gameId: entry.gameId,
-        displayName: entry.displayName,
-        session: entry.session,
-        onTap: () => _openMatch(context, entry, stats),
-      ),
-      GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-          mainAxisSpacing: clipGridSpacing,
-          crossAxisSpacing: clipGridSpacing,
-          childAspectRatio: clipGridChildAspectRatio,
-        ),
-        itemCount: entry.session.clips.length,
-        itemBuilder: (context, i) => ClipTile(
-          clip: entry.session.clips[i],
-          library: widget.library,
-          thumbnails: widget.thumbnails,
-          // The section header already names the game.
-          showGameName: false,
-          events: stats?.events ?? const [],
-        ),
-      ),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -225,6 +225,8 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
           return _EmptyLibrary(
             hotkeyLabel: widget.hotkeyLabel,
             onOpenClipsFolder: widget.onOpenClipsFolder,
+            bufferSeconds: widget.bufferSeconds,
+            onAddGame: widget.onAddGame,
           );
         }
 
@@ -234,8 +236,10 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
         final clips = List.of(visible)
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         final totalBytes = scoped.fold<int>(0, (sum, c) => sum + c.sizeBytes);
+        final sessions = _sorted(_sessionFeed(clips));
 
-        return Column(
+        return ContentColumn(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -260,10 +264,18 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                       '${scoped.length} clips · ${formatSize(totalBytes)}',
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
-                      style: Theme.of(context).textTheme.bodyMuted,
+                      style: Theme.of(context)
+                          .textTheme
+                          .numeral
+                          .copyWith(color: context.rewindTokens.textMuted),
                     ),
                   ),
                   const SizedBox(width: 12),
+                  _SortButton(
+                    sort: _sort,
+                    onChanged: (s) => setState(() => _sort = s),
+                  ),
+                  const SizedBox(width: 8),
                   _FolderButton(onPressed: widget.onOpenClipsFolder),
                 ],
               ),
@@ -278,7 +290,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
               // them — that's "nothing matches", not "library empty", so
               // the first-run guidance ("press the hotkey…") would be
               // wrong and the fix is one click away: clear the filter.
-              child: clips.isEmpty
+              child: sessions.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -296,92 +308,202 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                         ],
                       ),
                     )
-                  : ListView(
-                      key: const ValueKey('clipsList'),
-                      padding: const EdgeInsets.only(bottom: 24),
-                      children: [
-                        for (final entry in _sessionFeed(clips))
-                          ..._sessionSection(context, entry),
-                      ],
+                  : LayoutBuilder(
+                      builder: (context, constraints) => GridView.builder(
+                        key: const ValueKey('clipsList'),
+                        padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent:
+                              clipGridExtentFor(constraints.maxWidth),
+                          mainAxisSpacing: clipGridSpacing,
+                          crossAxisSpacing: clipGridSpacing,
+                          childAspectRatio: sessionCardAspectRatio,
+                        ),
+                        itemCount: sessions.length,
+                        itemBuilder: (context, i) {
+                          final entry = sessions[i];
+                          final stats = _statsForSession(
+                              widget.matchStats, entry.session);
+                          return SessionCard(
+                            key: ValueKey('sessionCard:${entry.gameId}:'
+                                '${entry.session.startedAt.toIso8601String()}'),
+                            session: entry.session,
+                            // Stats only ever get recorded by a vendor
+                            // integration, so their presence is the honest
+                            // proxy for MATCH vs SESSION here — All Clips has
+                            // no GameEntry to ask.
+                            isMatch: stats != null,
+                            stats: stats,
+                            thumbnails: widget.thumbnails,
+                            ddragon: widget.ddragon,
+                            gameId: entry.gameId,
+                            displayName: entry.displayName,
+                            onTap: () => _openMatch(context, entry, stats),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
-        );
+        ));
       },
     );
   }
+
+  List<_SessionEntry> _sorted(List<_SessionEntry> entries) {
+    final out = List.of(entries);
+    switch (_sort) {
+      case ClipSort.newest:
+        break; // _sessionFeed already returns newest-first
+      case ClipSort.largest:
+        out.sort((a, b) => _bytes(b).compareTo(_bytes(a)));
+      case ClipSort.longest:
+        out.sort(
+            (a, b) => b.session.clips.length.compareTo(a.session.clips.length));
+    }
+    return out;
+  }
+
+  static int _bytes(_SessionEntry e) =>
+      e.session.clips.fold<int>(0, (sum, c) => sum + c.sizeBytes);
 }
 
-/// A session's header row in the feed: avatar + display name + relative
-/// time + clip count, tappable (chevron affordance) to open the full
-/// [MatchClipsScreen] for that session — mirrors `GameHubScreen`'s match
-/// card tap, just reached from a cross-game feed instead of a per-game grid.
-class _SessionHeader extends StatelessWidget {
-  final String gameId;
-  final String displayName;
-  final ClipSession session;
-  final VoidCallback onTap;
+/// The header's sort control. A bordered menu button rather than a row of
+/// chips: sort is one choice out of three, and the event filter beneath it
+/// already owns the chip vocabulary for multi-valued filtering.
+class _SortButton extends StatelessWidget {
+  final ClipSort sort;
+  final ValueChanged<ClipSort> onChanged;
 
-  const _SessionHeader({
-    required this.gameId,
-    required this.displayName,
-    required this.session,
-    required this.onTap,
-    super.key,
-  });
+  const _SortButton({required this.sort, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.rewindTokens;
-    final mutedStyle =
-        Theme.of(context).textTheme.micro.copyWith(color: tokens.textMuted);
-    final count = session.clips.length;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(tokens.radiusControl),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-          child: Row(
-            children: [
-              GameTileAvatar(
-                gameId: gameId,
-                displayName: displayName,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              // One Expanded filler only (the name/age/count run) — a
-              // second loose flex widget sharing this row with it would hit
-              // the flex-allocation trap the redesign spec calls out.
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        displayName.toUpperCase(),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: mutedStyle,
-                      ),
+    final theme = Theme.of(context);
+    return PopupMenuButton<ClipSort>(
+      key: const ValueKey('sortButton'),
+      tooltip: 'Sort sessions',
+      padding: EdgeInsets.zero,
+      initialValue: sort,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        for (final s in ClipSort.values)
+          PopupMenuItem(value: s, height: 36, child: Text(s.label)),
+      ],
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          border: Border.fromBorderSide(hairlineBorder()),
+          borderRadius: BorderRadius.circular(tokens.radiusControl),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(sort.label,
+                style: theme.textTheme.label.copyWith(color: tokens.textMuted)),
+            const SizedBox(width: 4),
+            Icon(Icons.expand_more, size: 16, color: tokens.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// First run. The one screen that has to teach Rewind's central idea.
+///
+/// It used to be a grey film glyph and "No clips yet — press Alt+F10 to save
+/// your last moment", which never explains the thing everything else depends
+/// on: Rewind is ALREADY recording, and the hotkey reaches BACKWARDS. So the
+/// state shows the rolling window instead of describing it — a static bar
+/// from -Ns to NOW, in the same `armed` amber the deck's tally is using at
+/// that exact moment, so the two read as one signal.
+///
+/// Static by design: nothing in this app may animate while it sits in the
+/// background (see `TransportDeck`'s ticker note).
+class _EmptyLibrary extends StatelessWidget {
+  final String hotkeyLabel;
+  final VoidCallback onOpenClipsFolder;
+  final int bufferSeconds;
+  final VoidCallback? onAddGame;
+
+  const _EmptyLibrary({
+    required this.hotkeyLabel,
+    required this.onOpenClipsFolder,
+    this.bufferSeconds = 30,
+    this.onAddGame,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    // Scrollable: with a permission banner above it on a short window there
+    // is genuinely not enough room, and a first-run screen that overflows is
+    // worse than one that scrolls.
+    return SingleChildScrollView(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ARMED — RECORDING THE LAST $bufferSeconds SECONDS',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.micro.copyWith(color: tokens.armed),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  "Rewind is already rolling.\nYou don't press record — you press "
+                  'rewind.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.display.copyWith(height: 1.25),
+                ),
+                const SizedBox(height: 22),
+                _BufferDiagram(seconds: bufferSeconds),
+                const SizedBox(height: 18),
+                // Text.rich, not a Row: the keycap sits INSIDE the sentence, so
+                // the line wraps like prose on a narrow window instead of
+                // overflowing as a fixed-width run of three children.
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Hit '),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: _KeyCap(label: hotkeyLabel),
                     ),
-                    const SizedBox(width: 8),
-                    Text('·', style: mutedStyle),
-                    const SizedBox(width: 8),
-                    Text(relativeAge(session.startedAt), style: mutedStyle),
-                    const SizedBox(width: 8),
-                    Text(
-                      '· $count ${count == 1 ? 'clip' : 'clips'}',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: mutedStyle,
+                    const TextSpan(text: ' after something good happens'),
+                  ]),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMuted,
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    if (onAddGame != null) ...[
+                      FilledButton(
+                        key: const ValueKey('emptyAddGame'),
+                        onPressed: onAddGame,
+                        child: const Text('Add a game'),
+                      ),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: onOpenClipsFolder,
+                      icon: const Icon(Icons.folder_open_outlined, size: 16),
+                      label: const Text('Open clips folder'),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right, size: 16, color: tokens.textMuted),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -389,45 +511,68 @@ class _SessionHeader extends StatelessWidget {
   }
 }
 
-class _EmptyLibrary extends StatelessWidget {
-  final String hotkeyLabel;
-  final VoidCallback onOpenClipsFolder;
+/// The rolling window, drawn: a bar that fades in from -Ns and ends at a
+/// hard NOW edge. The whole point is the direction — the saved clip is
+/// BEHIND the playhead, not ahead of it.
+class _BufferDiagram extends StatelessWidget {
+  final int seconds;
 
-  const _EmptyLibrary({
-    required this.hotkeyLabel,
-    required this.onOpenClipsFolder,
-  });
+  const _BufferDiagram({required this.seconds});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = context.rewindTokens.textMuted;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.movie_creation_outlined,
-              size: 56, color: muted.withValues(alpha: 0.5)),
-          const SizedBox(height: 16),
-          Text('No clips yet', style: theme.textTheme.title),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Press ',
-                  style: theme.textTheme.body.copyWith(color: muted)),
-              _KeyCap(label: hotkeyLabel),
-              Text(' to save your last moment',
-                  style: theme.textTheme.body.copyWith(color: muted)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: onOpenClipsFolder,
-            icon: const Icon(Icons.folder_open_outlined, size: 18),
-            label: const Text('Open clips folder'),
-          ),
-        ],
+    final tokens = context.rewindTokens;
+    return Semantics(
+      label: 'Rewind continuously holds the last $seconds seconds; '
+          'saving keeps that window',
+      child: ExcludeSemantics(
+        child: Column(
+          children: [
+            SizedBox(
+              width: 300,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        gradient: LinearGradient(colors: [
+                          tokens.armed.withValues(alpha: 0.10),
+                          tokens.armed,
+                        ]),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 2,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: tokens.interactive,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: 300,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('-$seconds s',
+                      style: theme.textTheme.numeral
+                          .copyWith(fontSize: 10, color: tokens.textDim)),
+                  Text('NOW',
+                      style: theme.textTheme.micro
+                          .copyWith(fontSize: 9, color: tokens.textDim)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -480,13 +625,7 @@ class _KeyCap extends StatelessWidget {
         borderRadius: BorderRadius.circular(context.rewindTokens.radiusControl),
         border: Border.all(color: context.rewindTokens.hairline),
       ),
-      child: Text(
-        label,
-        style: theme.textTheme.label.copyWith(
-          fontWeight: FontWeight.w700,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
+      child: Text(label, style: theme.textTheme.numeral),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../clip/clip_library.dart';
 import '../clip/duration_prober.dart';
 import '../clip/match_export.dart';
+import '../clip/match_stats.dart';
 import '../clip/thumbnail_cache.dart';
 import '../coordinator/clip_coordinator.dart';
 import '../events/game_catalog.dart';
@@ -22,7 +23,7 @@ import 'theme.dart';
 import 'widgets/clip_tile.dart';
 import 'widgets/event_matrix.dart';
 import 'widgets/game_tile_avatar.dart';
-import 'widgets/match_card.dart';
+import 'widgets/session_card.dart';
 
 /// League has two gameIds in play (see `game_directory.dart`'s own doc on
 /// this): the vendor integration that drives auto-clip-on-event, and the
@@ -229,63 +230,74 @@ class _GameHubScreenState extends State<GameHubScreen> {
         return ListView(
           padding: EdgeInsets.zero,
           children: [
-            _header(context, entry),
-            if (_isLeague && _liveEvents.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: _liveEventsCard(context),
-              ),
-            // Placed right under the header, not at the bottom: the match
-            // list can grow unbounded, and burying settings behind it would
-            // hurt discoverability far more than a single summary row costs
-            // the "clips first" goal (see the class doc). Collapsed =
-            // summarized, never hidden — the card always shows the current
-            // config; tapping it is the only way to change it now.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: _captureSummaryCard(context, entry),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-              child: Text(isMatch ? 'Matches' : 'Sessions',
-                  style: Theme.of(context).textTheme.title),
-            ),
-            if (sessions.isEmpty)
-              _EmptyGameClips(
-                  displayName: entry.displayName,
-                  hotkeyLabel: widget.hotkeyLabel,
-                  onEditCaptureSettings: widget.onEditCaptureSettings)
-            else
-              // Keyed 'clipsList' so the pre-existing list-scoped test
-              // finders keep working across the clip-grid → match-grid
-              // change.
-              Padding(
-                key: const ValueKey('clipsList'),
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                    mainAxisSpacing: clipGridSpacing,
-                    crossAxisSpacing: clipGridSpacing,
-                    childAspectRatio: matchCardAspectRatio,
+            ContentColumn(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(context, entry, _scoreCells(entry, sessions)),
+                  if (_isLeague && _liveEvents.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: _liveEventsCard(context),
+                    ),
+                  // Placed right under the header, not at the bottom: the match
+                  // list can grow unbounded, and burying settings behind it would
+                  // hurt discoverability far more than a single summary row costs
+                  // the "clips first" goal (see the class doc). Collapsed =
+                  // summarized, never hidden — the card always shows the current
+                  // config; tapping it is the only way to change it now.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                    child: _captureSummaryCard(context, entry),
                   ),
-                  itemCount: sessions.length,
-                  itemBuilder: (context, i) {
-                    final session = sessions[i];
-                    return MatchCard(
-                      session: session,
-                      isMatch: isMatch,
-                      stats: widget.coordinator.matchStats
-                          ?.statsFor(widget.gameId, session.startedAt),
-                      thumbnails: widget.thumbnails,
-                      ddragon: widget.ddragon,
-                      onTap: () => _openMatch(context, entry, session),
-                    );
-                  },
-                ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+                    child: Text(isMatch ? 'Matches' : 'Sessions',
+                        style: Theme.of(context).textTheme.title),
+                  ),
+                  if (sessions.isEmpty)
+                    _EmptyGameClips(
+                        displayName: entry.displayName,
+                        hotkeyLabel: widget.hotkeyLabel,
+                        onEditCaptureSettings: widget.onEditCaptureSettings)
+                  else
+                    // Keyed 'clipsList' so the pre-existing list-scoped test
+                    // finders keep working across the clip-grid → match-grid
+                    // change.
+                    Padding(
+                      key: const ValueKey('clipsList'),
+                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent:
+                                clipGridExtentFor(constraints.maxWidth),
+                            mainAxisSpacing: clipGridSpacing,
+                            crossAxisSpacing: clipGridSpacing,
+                            childAspectRatio: sessionCardAspectRatio,
+                          ),
+                          itemCount: sessions.length,
+                          itemBuilder: (context, i) {
+                            final session = sessions[i];
+                            return SessionCard(
+                              session: session,
+                              isMatch: isMatch,
+                              stats: widget.coordinator.matchStats
+                                  ?.statsFor(widget.gameId, session.startedAt),
+                              thumbnails: widget.thumbnails,
+                              ddragon: widget.ddragon,
+                              onTap: () => _openMatch(context, entry, session),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                ],
               ),
+            ),
           ],
         );
       },
@@ -310,7 +322,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
     ));
   }
 
-  Widget _header(BuildContext context, GameEntry entry) {
+  Widget _header(
+      BuildContext context, GameEntry entry, List<_ScoreCell> cells) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -348,22 +361,87 @@ class _GameHubScreenState extends State<GameHubScreen> {
             key: const ValueKey('gameHubDetailLine'),
             style: theme.textTheme.bodyMuted,
           ),
-          // No fake stats: the fact row only appears once this game has a
-          // clip (§3.4 — "omit facts when zero clips").
+          // No fake stats: the band only appears once this game has a clip,
+          // and each cell is omitted rather than shown as zero when the
+          // underlying data was never recorded.
           if (entry.clipCount > 0) ...[
-            const SizedBox(height: 4),
-            Text(_factLine(entry), style: theme.textTheme.bodyMuted),
+            const SizedBox(height: 12),
+            _ScoreBand(cells: cells),
           ],
         ],
       ),
     );
   }
 
-  String _factLine(GameEntry entry) {
-    final base =
-        '${entry.clipCount} clips · ${formatSize(entry.totalSizeBytes)}';
-    final last = entry.lastClipAt;
-    return last == null ? base : '$base · last clip ${relativeAge(last)}';
+  /// The header's four-cell readout — the reason to open a hub at all.
+  ///
+  /// A hub used to end its header with "42 clips · 2.4 GB · last clip 2 h
+  /// ago": true, but it never answered the question a player actually opens
+  /// their own match history to ask. With recorded stats the band reports
+  /// matches, win rate and average KDA; without them it falls back to what
+  /// IS known. Nothing is invented — a cell whose data was never recorded is
+  /// left out rather than rendered as a zero.
+  List<_ScoreCell> _scoreCells(GameEntry entry, List<ClipSession> sessions) {
+    final store = widget.coordinator.matchStats;
+    final recorded = <MatchStats>[
+      if (store != null)
+        for (final s in sessions)
+          if (store.statsFor(widget.gameId, s.startedAt) case final m?) m,
+    ];
+    final decided = recorded.where((m) => m.result != null).toList();
+    final combat =
+        recorded.where((m) => m.kills > 0 || m.deaths > 0 || m.assists > 0);
+
+    final cells = <_ScoreCell>[
+      _ScoreCell(
+        value: '${sessions.length}',
+        label: recorded.isEmpty ? 'SESSIONS' : 'MATCHES',
+      ),
+    ];
+
+    // A RECORD, never a win-rate percentage.
+    //
+    // Rewind records a match outcome only when it is still watching at the
+    // end of the match, which in practice is the minority: on a real library
+    // (2026-07-25) 19 of 21 matches had no result at all, and both that did
+    // were wins — so a percentage rendered "100% WIN RATE" off a sample of
+    // two. A percentage hides its own denominator, which is exactly the
+    // wrong property for a figure this sparse. "2-0", with the sample spelled
+    // out whenever some matches are unrated, cannot lie the same way.
+    if (decided.isNotEmpty) {
+      final wins = decided.where((m) => m.result == MatchResult.win).length;
+      final losses = decided.length - wins;
+      final complete = decided.length == sessions.length;
+      cells.add(_ScoreCell(
+        value: '$wins-$losses',
+        label: complete
+            ? 'RECORD'
+            : 'RECORD · ${decided.length} OF ${sessions.length}',
+        positive: wins > losses,
+      ));
+    }
+
+    if (combat.isNotEmpty) {
+      final k = combat.fold<int>(0, (n, m) => n + m.kills);
+      final d = combat.fold<int>(0, (n, m) => n + m.deaths);
+      final a = combat.fold<int>(0, (n, m) => n + m.assists);
+      // The conventional KDA ratio. A no-death run divides by 1 rather than
+      // reporting infinity, which is the same convention every scoreboard
+      // the user has seen already uses.
+      final kda = (k + a) / (d == 0 ? 1 : d);
+      cells.add(_ScoreCell(value: kda.toStringAsFixed(1), label: 'AVG KDA'));
+    }
+
+    cells.add(
+        _ScoreCell(value: formatSize(entry.totalSizeBytes), label: 'ON DISK'));
+
+    if (cells.length < 4) {
+      if (entry.lastClipAt case final last?) {
+        cells.add(_ScoreCell(
+            value: relativeAge(last).toUpperCase(), label: 'LAST CLIP'));
+      }
+    }
+    return cells;
   }
 
   /// The single line folded in from the old integration-status card: for
@@ -371,16 +449,17 @@ class _GameHubScreenState extends State<GameHubScreen> {
   /// its process is currently seen running; for `desktop`, the hotkey hint.
   /// Static explanatory notes the card also used to show (e.g. "no event
   /// API for this game") are intentionally dropped here — one line only.
-  /// A session group's header: "MATCH · 2 h ago · 3 CLIPS" for games with a
-  /// real in-match API, "SESSION · …" for everything else (process-detected
+  /// The match screen's page title: "Match · 2 h ago · 3 clips" for games with
+  /// a real in-match API, "Session · …" for everything else (process-detected
   /// games and the desktop pseudo-game, where "match" would overclaim).
+  /// Sentence case for the same reason as `AllClipsScreen`'s twin — see there.
   String _sessionLabel(GameEntry entry, ClipSession session) {
     final word = entry.detection.contains(DetectionMethod.liveClientApi)
-        ? 'MATCH'
-        : 'SESSION';
+        ? 'Match'
+        : 'Session';
     final count = session.clips.length;
-    return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
-        '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
+    return '$word · ${relativeAge(session.startedAt)} · '
+        '$count ${count == 1 ? 'clip' : 'clips'}';
   }
 
   String _detailLine(GameEntry entry) {
@@ -452,70 +531,166 @@ class _GameHubScreenState extends State<GameHubScreen> {
     final matrixKinds = groups.expand((g) => g.kinds).toSet();
     final enabledEventCount =
         cfg.enabledEvents.intersection(matrixKinds).length;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: settingsMaxContentWidth),
-      child: Container(
-        key: const ValueKey('captureSummaryCard'),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(tokens.radiusCard),
-          border: Border.fromBorderSide(hairlineBorder()),
-        ),
-        // The border/clip live on this outer Container so the InkWell's
-        // hover/press overlay (painted by the Material below, atop its own
-        // `color`) stays visible instead of being painted underneath an
-        // opaque child — see EventToggleChip's identical Material→InkWell
-        // ordering for the same reason.
-        child: Material(
-          color: tokens.surface,
-          child: InkWell(
-            onTap: widget.onEditCaptureSettings,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('CAPTURE SETTINGS',
-                            style: theme.textTheme.micro
-                                .copyWith(color: tokens.textMuted)),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _SummaryChip(
-                                label:
-                                    '${widget.coordinator.settings.bufferSecondsFor(widget.gameId)} s buffer'),
-                            if (showAutoClip)
+    // Align, not a bare ConstrainedBox: a ListView gives its children TIGHT
+    // cross-axis constraints, and `ConstrainedBox` can only tighten a loose
+    // one — so the maxWidth here was silently ignored and this card ran the
+    // full window width while the score band above it stopped at 960, giving
+    // the header two different right edges.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: contentMaxWidth),
+        child: Container(
+          key: const ValueKey('captureSummaryCard'),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(tokens.radiusCard),
+            border: Border.fromBorderSide(hairlineBorder()),
+          ),
+          // The border/clip live on this outer Container so the InkWell's
+          // hover/press overlay (painted by the Material below, atop its own
+          // `color`) stays visible instead of being painted underneath an
+          // opaque child — see EventToggleChip's identical Material→InkWell
+          // ordering for the same reason.
+          child: Material(
+            color: tokens.surface,
+            child: InkWell(
+              onTap: widget.onEditCaptureSettings,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('CAPTURE SETTINGS',
+                              style: theme.textTheme.micro
+                                  .copyWith(color: tokens.textMuted)),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
                               _SummaryChip(
-                                key: const ValueKey('captureSummaryAutoClip'),
-                                label: cfg.autoClip
-                                    ? 'Auto-clip ON'
-                                    : 'Auto-clip OFF',
-                                color: cfg.autoClip
-                                    ? tokens.accent
-                                    : tokens.textMuted,
-                              ),
-                            if (showAutoClip && cfg.autoClip)
-                              _SummaryChip(label: '$enabledEventCount events'),
-                          ],
-                        ),
-                      ],
+                                  label:
+                                      '${widget.coordinator.settings.bufferSecondsFor(widget.gameId)} s buffer'),
+                              if (showAutoClip)
+                                _SummaryChip(
+                                  key: const ValueKey('captureSummaryAutoClip'),
+                                  label: cfg.autoClip
+                                      ? 'Auto-clip ON'
+                                      : 'Auto-clip OFF',
+                                  // `armed`: auto-clip being on is a standing
+                                  // machine state, not a selection.
+                                  color: cfg.autoClip
+                                      ? tokens.armed
+                                      : tokens.textMuted,
+                                ),
+                              if (showAutoClip && cfg.autoClip)
+                                _SummaryChip(
+                                    label: '$enabledEventCount events'),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text('Edit',
-                      style: theme.textTheme.label
-                          .copyWith(color: tokens.textMuted)),
-                  const SizedBox(width: 2),
-                  Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
-                ],
+                    const SizedBox(width: 12),
+                    Text('Edit',
+                        style: theme.textTheme.label
+                            .copyWith(color: tokens.textMuted)),
+                    const SizedBox(width: 2),
+                    Icon(Icons.chevron_right,
+                        size: 18, color: tokens.textMuted),
+                  ],
+                ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One cell of the hub header's score band.
+class _ScoreCell {
+  final String value;
+  final String label;
+
+  /// Tints the value with `positive` — used only where a higher number is
+  /// unambiguously better (a win rate at or above 50%).
+  final bool positive;
+
+  const _ScoreCell(
+      {required this.value, required this.label, this.positive = false});
+}
+
+/// The hub header's readout: up to four hairline-separated cells, numerals
+/// in the mono face so they align and read as data rather than prose.
+class _ScoreBand extends StatelessWidget {
+  final List<_ScoreCell> cells;
+
+  const _ScoreBand({required this.cells});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: contentMaxWidth),
+      child: Container(
+        key: const ValueKey('gameHubScoreBand'),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          border: Border.fromBorderSide(hairlineBorder()),
+          color: tokens.surface,
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < cells.length; i++)
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: i == 0
+                      ? null
+                      : BoxDecoration(
+                          border: Border(left: hairlineBorder()),
+                        ),
+                  child: Semantics(
+                    label: '${cells[i].label.toLowerCase()} '
+                        '${cells[i].value}',
+                    child: ExcludeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cells[i].value,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.numeralLarge.copyWith(
+                              fontSize: 19,
+                              color: cells[i].positive
+                                  ? tokens.positive
+                                  : tokens.text,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cells[i].label,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: theme.textTheme.micro
+                                .copyWith(color: tokens.textDim),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -555,38 +730,52 @@ class _StatusPill extends StatelessWidget {
 
   const _StatusPill({required this.entry});
 
+  /// What the user GETS, not how Rewind is built.
+  ///
+  /// This used to read "LIVE CLIENT API" / "PROCESS DETECTION" / "MANUAL
+  /// CAPTURE" — implementation vocabulary that tells a player nothing they
+  /// can act on. The distinction that matters to them is whether the game
+  /// clips itself, whether Rewind at least knows when they're playing, or
+  /// whether it's hotkey-only.
   String get _label {
     if (entry.detection.contains(DetectionMethod.liveClientApi)) {
-      return 'LIVE CLIENT API';
+      return entry.vendorActive ? 'IN MATCH · CLIPS ITSELF' : 'CLIPS ITSELF';
     }
     if (entry.detection.contains(DetectionMethod.processWatch)) {
-      return 'PROCESS DETECTION';
+      return entry.active
+          ? 'RUNNING · KNOWS WHEN YOU PLAY'
+          : 'KNOWS WHEN YOU PLAY';
     }
-    return 'MANUAL CAPTURE';
+    return 'HOTKEY ONLY';
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final color = entry.active ? tokens.accent : tokens.textMuted;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: tokens.surfaceRaised,
-        borderRadius: BorderRadius.circular(tokens.radiusChip),
-        border: Border.fromBorderSide(hairlineBorder()),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: const SizedBox(width: 6, height: 6),
+    final color = entry.active ? tokens.armed : tokens.textDim;
+    return Semantics(
+      label: entry.active ? '$_label, active now' : _label,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: tokens.surfaceRaised,
+            borderRadius: BorderRadius.circular(tokens.radiusChip),
+            border: Border.fromBorderSide(hairlineBorder()),
           ),
-          const SizedBox(width: 6),
-          Text(_label, style: theme.textTheme.micro.copyWith(color: color)),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: const SizedBox(width: 6, height: 6),
+              ),
+              const SizedBox(width: 6),
+              Text(_label, style: theme.textTheme.micro.copyWith(color: color)),
+            ],
+          ),
+        ),
       ),
     );
   }

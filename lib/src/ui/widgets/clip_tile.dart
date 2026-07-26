@@ -35,23 +35,34 @@ String formatSize(int bytes) {
   return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
 }
 
-/// Badge tint per event kind, derived from the single accent color by
+/// Badge tint per event kind, derived from [RewindTokens.eventSeed] by
 /// rotating its hue (kills warm to amber, objectives shift to violet) so the
 /// library stays legible at a glance without turning into an RGB rainbow.
+///
+/// The seed used to be `colorScheme.primary`. That stopped working when
+/// chrome went achromatic (see the broadcast-deck spec §1.3): rotating the
+/// hue of a near-grey just produces more grey, so event badges need their
+/// own saturated base.
 Color eventColor(BuildContext context, GameEventKind kind) {
-  final scheme = Theme.of(context).colorScheme;
+  final tokens = context.rewindTokens;
+  final seed = tokens.eventSeed;
   switch (kind) {
+    case GameEventKind.victory:
+      return tokens.positive;
+    // A hotkey save is an OPERATOR action, not a game moment. It used to
+    // share the accent with victories and pentakills, which made the
+    // library's most common badge also its loudest — the single biggest
+    // lie in the grid.
     case GameEventKind.manual:
     case GameEventKind.recording:
-    case GameEventKind.victory:
-      return scheme.primary;
+      return tokens.textMuted;
     case GameEventKind.defeat:
     case GameEventKind.death:
-      return scheme.error;
+      return tokens.danger;
     case GameEventKind.matchInfo:
     case GameEventKind.statsUpdate:
     case GameEventKind.other:
-      return scheme.outline;
+      return tokens.textDim;
     // The multikill ladder shares one amber HUE FAMILY (so every combat
     // highlight reads as "a kill"), but climbs toward a brighter, more
     // saturated gold as the tier rises — a pentakill must be unmistakable
@@ -61,41 +72,51 @@ Color eventColor(BuildContext context, GameEventKind kind) {
     // penta.
     case GameEventKind.kill:
     case GameEventKind.ace:
-      return _combatAmber(scheme.primary, 0);
+      return _combatAmber(seed, 0);
     case GameEventKind.doubleKill:
-      return _combatAmber(scheme.primary, 1);
+      return _combatAmber(seed, 1);
     case GameEventKind.tripleKill:
-      return _combatAmber(scheme.primary, 2);
+      return _combatAmber(seed, 2);
     case GameEventKind.quadraKill:
-      return _combatAmber(scheme.primary, 3);
+      return _combatAmber(seed, 3);
     case GameEventKind.pentaKill:
-      return _combatAmber(scheme.primary, 4);
+      return _combatAmber(seed, 4);
     case GameEventKind.achievement:
       // A distinct gold arm — close enough to combat's amber to read as
       // "also a highlight", far enough (32 -> 48) to tell an achievement
       // badge apart from a kill badge at a glance.
-      return _rotateAccent(scheme.primary, 48); // gold
+      return _rotateSeed(seed, 48, tokens.surfaceRaised); // gold
     case GameEventKind.dragonKill:
     case GameEventKind.dragonSteal:
     case GameEventKind.baronKill:
     case GameEventKind.baronSteal:
     case GameEventKind.turretKill:
     case GameEventKind.inhibitorKill:
-      return _rotateAccent(scheme.primary, 266); // violet
+      return _rotateSeed(seed, 266, tokens.surfaceRaised); // violet
   }
 }
 
-Color _rotateAccent(Color accent, double hue) =>
-    HSLColor.fromColor(accent).withHue(hue % 360).toColor();
+/// The seed at a new hue, lightened as far as legibility requires.
+///
+/// Hue rotation alone is NOT safe: it preserves saturation and lightness but
+/// not perceived luminance, so the violet arm came out at 3.3:1 against the
+/// app's surfaces — failing WCAG AA — while the amber it was rotated from sat
+/// above 7:1. [legibleOn] derives the lightness from the requirement, which
+/// keeps any arm added later legible without anyone remembering to check.
+/// Measured against `surfaceRaised`, the lightest surface a badge sits on.
+Color _rotateSeed(Color seed, double hue, Color surface) => legibleOn(
+      HSLColor.fromColor(seed).withHue(hue % 360).toColor(),
+      surface,
+    );
 
 /// The combat-highlight color for multikill [tier] (0 = single kill … 4 =
-/// pentakill). Base is the same amber as [_rotateAccent](…, 32); each tier
-/// nudges the hue toward gold and lifts saturation + lightness, so the
-/// ladder reads as one family that visibly intensifies — a penta glows
-/// brighter than a double. Lightness climbs from the accent's own value but
-/// is capped so the brightest tier stays legible on the badge's dark fill.
-Color _combatAmber(Color accent, int tier) {
-  final base = HSLColor.fromColor(accent);
+/// pentakill). Base is [RewindTokens.eventSeed]; each tier nudges the hue
+/// toward gold and lifts saturation + lightness, so the ladder reads as one
+/// family that visibly intensifies — a penta glows brighter than a double.
+/// Lightness climbs from the seed's own value but is capped so the brightest
+/// tier stays legible on the badge's dark fill.
+Color _combatAmber(Color seed, int tier) {
+  final base = HSLColor.fromColor(seed);
   return HSLColor.fromAHSL(
     1,
     (32 + tier * 3) % 360,
@@ -147,6 +168,25 @@ enum _ClipAction { openDefault, reveal, protect, delete }
 /// `tester.getSize`/`tester.takeException`.
 const double clipGridMaxCrossAxisExtent = 300;
 const double clipGridSpacing = 16;
+
+/// Card width to ask the grid delegate for, given the space it actually has.
+///
+/// A constant 300 meant a wide window showed more small cards per row rather
+/// than fewer large ones — the wrong trade for content whose whole value is a
+/// legible video frame. Steps rather than a continuous function so the column
+/// count stays stable while a window is dragged.
+///
+/// Thresholds are set against the CONTENT COLUMN (capped at
+/// `contentMaxWidth`), not the window: measuring the window instead meant a
+/// 2200px display never crossed the old 1500/1900 marks once the column
+/// capped at 1440, so the cards silently got smaller the wider the window
+/// went.
+double clipGridExtentFor(double width) {
+  if (width >= 1200) return 380;
+  if (width >= 900) return 340;
+  return clipGridMaxCrossAxisExtent;
+}
+
 const double _footerHeight = 56;
 const double clipGridChildAspectRatio = clipGridMaxCrossAxisExtent /
     (clipGridMaxCrossAxisExtent * 9 / 16 + _footerHeight);
@@ -227,7 +267,7 @@ class _ClipTileState extends State<ClipTile> {
               // 2026-07-13-game-centric-redesign.md §2); hover only swaps
               // the fill above, no border change.
               border: Border.fromBorderSide(_focused
-                  ? BorderSide(color: tokens.accent, width: 1.5)
+                  ? BorderSide(color: tokens.interactive, width: 1.5)
                   : hairlineBorder()),
             ),
             // ClipRRect (not Container.clipBehavior) so the thumbnail
@@ -305,7 +345,7 @@ class _ClipTileState extends State<ClipTile> {
                                 // Pinned against auto-cleanup (see the
                                 // overflow menu's Protect action).
                                 Icon(
-                                  Icons.bookmark,
+                                  Icons.bookmark_outlined,
                                   key: const ValueKey('protectedLock'),
                                   size: 11,
                                   color: tokens.textMuted,
@@ -498,6 +538,6 @@ class ClipThumbnail extends StatelessWidget {
   }
 
   Widget _playGlyph(Color color) => Center(
-        child: Icon(Icons.play_arrow_rounded, size: 36, color: color),
+        child: Icon(Icons.play_arrow, size: 36, color: color),
       );
 }

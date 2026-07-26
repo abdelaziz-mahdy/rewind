@@ -9,6 +9,16 @@ class FakeCaptureEngine implements CaptureEngine {
   final List<String> calls = [];
   bool failSave = false;
 
+  /// Makes [saveClip] fail the way a dead replay output does — the exact
+  /// string the shim returns from `rewind_save_clip` when
+  /// `obs_output_active` is false. Drives the coordinator's buffer-death
+  /// recovery path.
+  bool saveFailsBufferNotRunning = false;
+
+  /// Makes a recovery [startBuffer] refuse, so a test can cover the case
+  /// where the buffer cannot be brought back.
+  bool startBufferFails = false;
+
   /// Two fake displays, mirroring what a real multi-monitor setup would
   /// report from `rewind_list_displays`.
   final List<DisplayInfo> displays = const [
@@ -50,7 +60,7 @@ class FakeCaptureEngine implements CaptureEngine {
   @override
   bool startBuffer() {
     calls.add('start');
-    return true;
+    return !startBufferFails;
   }
 
   @override
@@ -94,7 +104,7 @@ class FakeCaptureEngine implements CaptureEngine {
   @override
   String? saveClip(String outDir) {
     calls.add('save');
-    if (failSave) return null;
+    if (failSave || saveFailsBufferNotRunning) return null;
     final f = File(p.join(outDir, 'clip-${_n++}.mp4'));
     if (writeFile) {
       f
@@ -137,7 +147,9 @@ class FakeCaptureEngine implements CaptureEngine {
   @override
   void shutdown() => calls.add('shutdown');
   @override
-  String get lastError => failSave ? 'fake save failure' : '';
+  String get lastError => saveFailsBufferNotRunning
+      ? 'buffer not running'
+      : (failSave ? 'fake save failure' : '');
 
   @override
   List<DisplayInfo> listDisplays() {

@@ -174,7 +174,9 @@ void main() {
     );
     await t.pumpWidget(frame(MatchClipsScreen(
       session: session,
-      matchLabel: 'MATCH · 22 MIN AGO · 5 CLIPS',
+      // Matches what `_sessionLabel` actually produces — sentence case, since
+      // this lands in an app bar as a page title.
+      matchLabel: 'Match · 22 min ago · 5 clips',
       stats: stats,
       library: library,
       thumbnails: ThumbnailCache(FakeThumbnailGenerator()),

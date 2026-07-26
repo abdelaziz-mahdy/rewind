@@ -72,4 +72,77 @@ void main() {
     final bare = _clip('b', DateTime(2026, 7, 14, 20, 10));
     expect(Clip.fromJson(bare.toJson()).sessionAt, isNull);
   });
+
+  group('a stray clip inside a match joins that match', () {
+    test(
+        'a manual clip stamped with its own session lands in the match it '
+        'was taken during', () {
+      // The exact shape of a real library (2026-07-24): a League match with
+      // its auto-clips, and a hotkey clip saved mid-match that got stamped
+      // under the CLIENT's activation instead of the match's, stranding it
+      // as a one-clip session beside the match it came from.
+      final matchStart = DateTime(2026, 7, 24, 19, 58);
+      final match = [
+        for (var i = 0; i < 4; i++)
+          _clip('k$i', matchStart.add(Duration(minutes: 2 + i * 5)),
+              sessionAt: matchStart),
+      ];
+      final strayStamp = DateTime(2026, 7, 24, 20, 4, 34);
+      final stray = _clip('manual', strayStamp, sessionAt: strayStamp);
+
+      final sessions = groupClipsIntoSessions([...match, stray]);
+
+      expect(sessions, hasLength(1));
+      expect(sessions.single.startedAt, matchStart);
+      expect(sessions.single.clips, hasLength(5));
+      expect(sessions.single.clips.map((c) => c.path), contains(stray.path));
+    });
+
+    test('a clip OUTSIDE every match keeps its own session', () {
+      final matchStart = DateTime(2026, 7, 24, 19, 58);
+      final match = [
+        for (var i = 0; i < 3; i++)
+          _clip('k$i', matchStart.add(Duration(minutes: 2 + i * 5)),
+              sessionAt: matchStart),
+      ];
+      // Well after the last clip of the match, and past the grace window.
+      final later = DateTime(2026, 7, 24, 21, 30);
+      final sessions = groupClipsIntoSessions(
+          [...match, _clip('m', later, sessionAt: later)]);
+
+      expect(sessions, hasLength(2));
+    });
+
+    test('two real matches never merge into one', () {
+      // Containment, not proximity: neither match lies inside the other, so
+      // back-to-back matches must stay two cards no matter how close they
+      // are. (Merging them is the failure this replaced — see the
+      // 2026-07-24 "two games are getting mixed up" report.)
+      final a = DateTime(2026, 7, 24, 19, 0);
+      final b = DateTime(2026, 7, 24, 19, 40);
+      final clips = [
+        for (var i = 0; i < 3; i++)
+          _clip('a$i', a.add(Duration(minutes: 2 + i * 5)), sessionAt: a),
+        for (var i = 0; i < 3; i++)
+          _clip('b$i', b.add(Duration(minutes: 2 + i * 5)), sessionAt: b),
+      ];
+      final sessions = groupClipsIntoSessions(clips);
+
+      expect(sessions, hasLength(2));
+      expect(sessions.map((s) => s.startedAt), containsAll([a, b]));
+    });
+
+    test('a lone clip never swallows a match', () {
+      // Only a session with more than one clip can absorb, so a single
+      // manual can't become the host and rename the group.
+      final matchStart = DateTime(2026, 7, 24, 19, 58);
+      final solo = _clip('solo', matchStart.add(const Duration(minutes: 5)),
+          sessionAt: matchStart.add(const Duration(minutes: 5)));
+      final other = _clip('other', matchStart.add(const Duration(minutes: 6)),
+          sessionAt: matchStart.add(const Duration(minutes: 6)));
+
+      final sessions = groupClipsIntoSessions([solo, other]);
+      expect(sessions, hasLength(2));
+    });
+  });
 }

@@ -301,19 +301,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _TryItStepView(hotkey: _s.hotkey, landedClip: _landedClip),
       ];
 
+  /// A whole page sliding across is the biggest movement the app ever makes,
+  /// so it is the first thing macOS's "Reduce motion" should take away. The
+  /// page still changes — it just arrives instead of travelling.
+  Duration get _pageTurn => MediaQuery.disableAnimationsOf(context)
+      ? Duration.zero
+      : const Duration(milliseconds: 240);
+
   void _next() {
     if (_page >= _pageCount - 1) {
       widget.onDone();
       return;
     }
-    _controller.nextPage(
-        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+    _controller.nextPage(duration: _pageTurn, curve: Curves.easeOut);
   }
 
   void _back() {
     if (_page == 0) return;
-    _controller.previousPage(
-        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+    _controller.previousPage(duration: _pageTurn, curve: Curves.easeOut);
   }
 
   @override
@@ -371,7 +376,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: i == _page
-                                  ? tokens.accent
+                                  ? tokens.interactive
                                   : tokens.textMuted.withValues(alpha: 0.4),
                             ),
                           ),
@@ -417,7 +422,7 @@ class _StepView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(step.icon, size: 60, color: tokens.accent),
+                Icon(step.icon, size: 60, color: tokens.interactive),
                 const SizedBox(height: 20),
                 Text(step.title,
                     textAlign: TextAlign.center,
@@ -507,7 +512,7 @@ class _PermissionStepView extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.warning_amber_rounded, color: tokens.warn),
+                Icon(Icons.warning_amber_outlined, color: tokens.warn),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text('Granted. Relaunch Rewind to start capturing.',
@@ -535,14 +540,14 @@ class _PermissionStepView extends StatelessWidget {
       state = Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: tokens.accent.withValues(alpha: 0.16),
+          color: tokens.positive.withValues(alpha: 0.16),
           borderRadius: BorderRadius.circular(tokens.radiusCard),
-          border: Border.all(color: tokens.accent),
+          border: Border.all(color: tokens.positive),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check, color: tokens.accent),
+            Icon(Icons.check, color: tokens.positive),
             const SizedBox(width: 8),
             Flexible(
               child: Text("Screen Recording is granted — you're set.",
@@ -563,7 +568,7 @@ class _PermissionStepView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.screenshot_monitor_outlined,
-                    size: 60, color: tokens.accent),
+                    size: 60, color: tokens.interactive),
                 const SizedBox(height: 20),
                 Text('Grant Screen Recording',
                     textAlign: TextAlign.center,
@@ -617,14 +622,14 @@ class _TryItStepView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: tokens.accent.withValues(alpha: 0.16),
+                  color: tokens.positive.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(tokens.radiusCard),
-                  border: Border.all(color: tokens.accent),
+                  border: Border.all(color: tokens.positive),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_circle, color: tokens.accent),
+                    Icon(Icons.check_circle, color: tokens.positive),
                     const SizedBox(width: 8),
                     Text('Clip saved!', style: theme.textTheme.body),
                   ],
@@ -647,7 +652,8 @@ class _TryItStepView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.videocam_outlined, size: 60, color: tokens.accent),
+                Icon(Icons.videocam_outlined,
+                    size: 60, color: tokens.interactive),
                 const SizedBox(height: 20),
                 Text('Try it now',
                     textAlign: TextAlign.center,

@@ -26,8 +26,10 @@ import 'shell_destination.dart';
 import 'supported_games_screen.dart';
 import 'system_settings.dart';
 import 'theme.dart';
+import 'widgets/clip_tile.dart' show eventBadge, formatSize;
 import 'widgets/game_tile_avatar.dart';
 import 'widgets/nav_rail.dart';
+import 'widgets/recorder_panel.dart';
 
 /// The app's persistent scaffold (§3.1): a 220 px left rail — ending in the
 /// `RecorderCluster`, a Discord-style Save/Record/status block pinned to its
@@ -254,14 +256,60 @@ class _ShellState extends State<Shell> {
   /// clip" from Settings or an empty hub looked like it did nothing (the
   /// only success signals were an optional sound and a clip list the user
   /// might not be on).
+  ///
+  /// Saving a clip is the app's entire reason to exist, so this is not the
+  /// stock `SnackBar('Clip saved')` it used to be: it names the moment that
+  /// was captured, reports its size, and offers a way to go look at it —
+  /// which is what a user wants next and previously had to hunt for.
   void _showManualSaveToast() {
     if (!mounted) return;
     final clip = widget.coordinator.lastManualSave.value;
     if (clip == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    final theme = Theme.of(context);
+    final tokens = context.rewindTokens;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: const ValueKey('clipSavedToast'),
       behavior: SnackBarBehavior.floating,
-      duration: Duration(seconds: 3),
-      content: Text('Clip saved'),
+      duration: const Duration(seconds: 4),
+      backgroundColor: tokens.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(tokens.radiusCard),
+        side: BorderSide(color: tokens.hairline),
+      ),
+      width: 340,
+      content: Row(
+        children: [
+          Icon(Icons.check_circle_outline, size: 18, color: tokens.positive),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  clip.eventLabel ?? eventBadge(clip.event),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.label.copyWith(color: tokens.text),
+                ),
+                Text(
+                  '${displayNameFor(clip.gameId)} · '
+                  '${formatSize(clip.sizeBytes)}',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.numeral
+                      .copyWith(fontSize: 11, color: tokens.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      action: SnackBarAction(
+        label: 'Show me',
+        textColor: tokens.interactive,
+        onPressed: () => _select(GameDestination(clip.gameId)),
+      ),
     ));
   }
 
@@ -297,6 +345,9 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           hotkeyLabel: widget.hotkeyLabel,
           onOpenClipsFolder: widget.onOpenClipsFolder,
+          bufferSeconds: widget.coordinator.settings
+              .bufferSecondsFor(widget.coordinator.activeGame.value),
+          onAddGame: () => _select(const SupportedGamesDestination()),
           thumbnails: widget.thumbnails,
           matchStats: widget.coordinator.matchStats,
           ddragon: widget.ddragon,
@@ -349,19 +400,40 @@ class _ShellState extends State<Shell> {
             activeIds: widget.coordinator.activeGameIds.value,
           ),
           steamStatus: widget.steamStatus?.call(),
+          recorder: _recorder(),
         ),
     };
   }
 
+  /// The recorder, as one button at the top of the rail (see
+  /// `RecorderButton`). Built here rather than inside `NavRail` so the
+  /// Settings destination — which keeps its own sidebar and no rail — can be
+  /// handed the same widget.
+  Widget _recorder({bool compact = false}) => RecorderButton(
+        coordinator: widget.coordinator,
+        captureError: widget.captureError,
+        bufferActive: widget.bufferActive,
+        bufferAutoPaused: widget.bufferAutoPaused,
+        hotkeyLabel: widget.hotkeyLabel,
+        compact: compact,
+        displays: widget.displays,
+        capturableApps: widget.capturableApps,
+        listApps: widget.listApps,
+        onSettingsChanged: widget.onSettingsChanged,
+        onOpenSettings: () => _select(const SettingsDestination()),
+        settingsRevision: widget.settingsRevision,
+      );
+
   @override
   Widget build(BuildContext context) {
-    // Settings is full-page: it covers the whole window with its own
-    // sidebar as the ONLY nav while open, so the app rail (and the error/
-    // detected-game banners that sit above the normal content area) are not
-    // shown at all — same rule a full-screen route would follow, just
-    // without an actual Navigator push.
+    final compactRail = MediaQuery.sizeOf(context).width < navRailCompactBelow;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // Settings keeps its own sidebar as the only nav while open — but it now
+    // carries the recorder at the top of that sidebar, so the one screen a
+    // user is most likely to open MID-MATCH no longer hides whether anything
+    // is being recorded. That was the real defect; it never needed a bar.
     if (_destination is SettingsDestination) {
-      return _content(context);
+      return Scaffold(body: _content(context));
     }
     return Scaffold(
       body: Row(
@@ -370,18 +442,15 @@ class _ShellState extends State<Shell> {
           NavRail(
             coordinator: widget.coordinator,
             library: widget.library,
+            // A 220px rail is 27% of an 820px window, and this app is meant
+            // to sit BESIDE a game — a half-screen window is a normal way to
+            // use it, not an edge case.
+            compact: compactRail,
+            recorder: _recorder(compact: compactRail),
             settingsRevision: widget.settingsRevision,
             selected: _destination,
             onSelect: _select,
             onOpenLogs: _openLogs,
-            captureError: widget.captureError,
-            bufferActive: widget.bufferActive,
-            bufferAutoPaused: widget.bufferAutoPaused,
-            displays: widget.displays,
-            capturableApps: widget.capturableApps,
-            listApps: widget.listApps,
-            onSettingsChanged: widget.onSettingsChanged,
-            onOpenSettings: () => _select(const SettingsDestination()),
           ),
           Expanded(
             child: Column(
@@ -405,7 +474,28 @@ class _ShellState extends State<Shell> {
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 150),
+                    // macOS's "Reduce motion" arrives as
+                    // MediaQuery.disableAnimations. Flutter honours it for its
+                    // own route transitions but not for an AnimatedSwitcher we
+                    // built ourselves, and this one both fades AND slides the
+                    // whole content area — the largest movement in the app.
+                    // Zero duration swaps instantly instead.
+                    duration: reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 160),
+                    transitionBuilder: (child, animation) => reduceMotion
+                        ? child
+                        : FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.02),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(
+                                  parent: animation, curve: Curves.easeOut)),
+                              child: child,
+                            ),
+                          ),
                     child: KeyedSubtree(
                       key: ValueKey(_destinationKey(_destination)),
                       child: _content(context),
@@ -610,7 +700,7 @@ class _DetectedGameBanner extends StatelessWidget {
     final tokens = context.rewindTokens;
     return Container(
       key: ValueKey('detectedGameBannerRow:$gameId'),
-      height: 44,
+      height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: tokens.surfaceRaised,
@@ -635,13 +725,17 @@ class _DetectedGameBanner extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           SizedBox(
-            height: 28,
+            // 32, not 28, and no shrink-wrapped hit test: this row appears
+            // the moment a game launches — i.e. when the user is least
+            // careful — and sits a few px from a small dismiss ✕. A
+            // shrink-wrapped 28px target beside a 16px glyph is a misclick
+            // generator.
+            height: 32,
             child: FilledButton(
               key: ValueKey('detectedGameBannerRecord:$gameId'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(0, 32),
               ),
               onPressed: onRecord,
               // "Add game", not "Record": the action learns the game so
@@ -652,7 +746,8 @@ class _DetectedGameBanner extends StatelessWidget {
           ),
           IconButton(
             key: ValueKey('detectedGameBannerDismiss:$gameId'),
-            icon: const Icon(Icons.close, size: 16),
+            icon: const Icon(Icons.close, size: 18),
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
             color: tokens.textMuted,
             // Names the scope: dismissal is session-only, the banner comes
             // back next launch/game — without this the icon-only ✕ can read
@@ -683,7 +778,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amber = context.rewindTokens.warn;
+    // `danger`, matching the recorder chip's UNAVAILABLE state — the banner
+    // and the chip report the SAME condition, and the app's one rule is that
+    // a state owns a hue. Amber here read as "heads up" while the chip six
+    // pixels away read as "broken", for one fact: nothing is being captured.
+    final accent = context.rewindTokens.danger;
     // Only coach the user toward the permission pane when the failure is
     // actually about permission — the shim reports that case explicitly.
     // Any other error must stand on its own instead of misdirecting.
@@ -695,14 +794,14 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: amber.withValues(alpha: 0.15),
+        color: accent.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
-        border: Border.all(color: amber),
+        border: Border.all(color: accent),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, color: amber),
+          Icon(Icons.error_outline, color: accent),
           const SizedBox(width: 8),
           Expanded(
             child: Column(

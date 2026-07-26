@@ -49,11 +49,32 @@ class TrayService with TrayListener {
   Future<void> setBufferState(bool active) async {
     _bufferActive = active;
     await _rebuildMenu();
+    await _syncTitle();
   }
 
   Future<void> setRecordingState(bool recording) async {
     _recording = recording;
     await _rebuildMenu();
+    await _syncTitle();
+  }
+
+  /// The menu-bar title beside the icon — the ONLY always-on indicator this
+  /// app has.
+  ///
+  /// While you are gaming, Rewind's window is behind a fullscreen game, so
+  /// anything the window says about recording state is invisible at exactly
+  /// the moment it matters. That is why the app window carries no permanent
+  /// recorder chrome (see `RecorderButton`'s doc) and why this exists
+  /// instead: the state that has to be readable mid-match is readable where
+  /// you can actually see it. The tray already tracked both flags, but only
+  /// ever spent them on MENU LABELS, which requires opening the menu — i.e.
+  /// exactly the thing a glance is supposed to avoid.
+  ///
+  /// Deliberately quiet when nothing is happening: an idle title would be
+  /// permanent menu-bar clutter for no information.
+  Future<void> _syncTitle() async {
+    if (Platform.isWindows) return; // no menu-bar title concept
+    await trayManager.setTitle(_recording ? '● REC' : '');
   }
 
   Future<void> _rebuildMenu() => trayManager.setContextMenu(Menu(items: [

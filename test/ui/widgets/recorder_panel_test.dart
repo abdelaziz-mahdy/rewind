@@ -11,7 +11,7 @@ import 'package:rewind/src/obs/app_info.dart';
 import 'package:rewind/src/obs/display_info.dart';
 import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/ui/theme.dart';
-import 'package:rewind/src/ui/widgets/recorder_cluster.dart';
+import 'package:rewind/src/ui/widgets/recorder_panel.dart';
 
 import '../../fakes/fake_capture_engine.dart';
 
@@ -30,7 +30,7 @@ void main() {
   late ClipCoordinator Function(AppSettings settings) makeCoordinator;
 
   setUp(() {
-    tmp = Directory.systemTemp.createTempSync('rewind_recorder_cluster');
+    tmp = Directory.systemTemp.createTempSync('rewind_transport_deck');
     makeCoordinator = (settings) {
       final library = ClipLibrary(clipsDir: tmp);
       return ClipCoordinator(
@@ -45,19 +45,32 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  // Sized to the real 220 px rail so text-overflow/ellipsis behavior in
-  // manual testing matches, though none of these assertions depend on it.
+  // The deck spans the window, so these render at the default 800x600 test
+  // surface rather than the 220 px box the old rail-bound cluster used. At
+  // 800 the hotkey cap is deliberately dropped (see the deck's width gate),
+  // which is exactly the narrow case worth exercising by default.
   Widget app(Widget child) => MaterialApp(
         theme: rewindTheme(),
-        home: Scaffold(body: SizedBox(width: 220, child: child)),
+        home: Scaffold(
+            body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(width: 220, child: child))),
       );
 
-  // The cluster's pulsing "recording" dot runs an AnimationController.
-  // repeat() that never settles on its own — unlike pushing a full route
-  // (which pauses tickers behind it via TickerMode), a popup menu doesn't
-  // stop it — so `pumpAndSettle` would hang forever waiting for a frame
-  // that's never the last one. Bounded pumps step through the popup menu's
-  // (finite) open/close transition instead.
+  // The controls live in a popover now (see RecorderButton's doc: the window
+  // carries no permanent recorder chrome, because while you're gaming the
+  // window is behind the game). Everything except the chip itself needs the
+  // panel opened first.
+  Future<void> openPanel(WidgetTester t) async {
+    await t.tap(find.byKey(const ValueKey('recorderButton')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+  }
+
+  // The deck runs a 1 s ticker whenever a recording is live or the buffer
+  // ring is still filling, so `pumpAndSettle` can wait for a frame that is
+  // never the last one. Bounded pumps step through the popup menu's (finite)
+  // open/close transition instead.
   Future<void> settleMenu(WidgetTester t) async {
     await t.pump();
     await t.pump(const Duration(milliseconds: 300));
@@ -70,7 +83,7 @@ void main() {
       of: find.byKey(const ValueKey('recorderSourceLine')),
       matching: find.text(text));
 
-  RecorderCluster cluster({
+  RecorderButton deck({
     required AppSettings settings,
     List<DisplayInfo> displays = _displays,
     List<AppInfo> capturableApps = const [],
@@ -83,8 +96,9 @@ void main() {
     ValueListenable<bool>? bufferActive,
     ValueListenable<bool>? bufferAutoPaused,
   }) =>
-      RecorderCluster(
+      RecorderButton(
         coordinator: coordinatorOverride ?? makeCoordinator(settings),
+        hotkeyLabel: 'F9',
         captureError: captureError,
         bufferActive: bufferActive,
         bufferAutoPaused: bufferAutoPaused,
@@ -97,38 +111,43 @@ void main() {
 
   group('capture-source line', () {
     testWidgets('shows the current source: main display by default', (t) async {
-      await t.pumpWidget(app(cluster(settings: AppSettings())));
+      await t.pumpWidget(app(deck(settings: AppSettings())));
+      await openPanel(t);
       expect(sourceLine('Display 1'), findsOneWidget);
     });
 
-    testWidgets('sits ABOVE the Save clip and Record buttons', (t) async {
-      // The picker decides what those buttons capture (source → actions),
-      // and as a naked text line at the cluster's bottom it was
-      // undiscoverable — the maintainer couldn't find it.
-      await t.pumpWidget(app(cluster(settings: AppSettings())));
-      final pickerBottom =
-          t.getBottomLeft(find.byKey(const ValueKey('recorderSourceLine'))).dy;
-      final saveTop =
-          t.getTopLeft(find.widgetWithText(FilledButton, 'Save clip')).dy;
-      final recordTop =
+    testWidgets('the panel reads source -> buffer -> actions, top to bottom',
+        (t) async {
+      // The picker decides what the buttons capture, so it must precede them.
+      await t.pumpWidget(app(deck(settings: AppSettings())));
+      await openPanel(t);
+      final source =
+          t.getTopLeft(find.byKey(const ValueKey('recorderSourceLine'))).dy;
+      final buffer =
+          t.getTopLeft(find.byKey(const ValueKey('deckBufferReadout'))).dy;
+      final save = t.getTopLeft(find.byKey(const ValueKey('deckSaveClip'))).dy;
+      final record =
           t.getTopLeft(find.byKey(const ValueKey('recordButton'))).dy;
-      expect(pickerBottom, lessThanOrEqualTo(saveTop));
-      expect(saveTop, lessThan(recordTop));
+      expect(source, lessThan(buffer));
+      expect(buffer, lessThan(save));
+      expect(save, lessThan(record));
     });
 
     testWidgets('shows the app name when an app target is set', (t) async {
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(captureAppBundleId: 'com.example.two'),
         capturableApps: _apps,
       )));
+      await openPanel(t);
       expect(sourceLine('App Two'), findsOneWidget);
     });
 
     testWidgets('hidden only when nothing at all is pickable', (t) async {
       // No displays AND no apps AND no live enumerator — the degenerate
       // "capture is impossible" case is the only one that hides the line.
-      await t.pumpWidget(
-          app(cluster(settings: AppSettings(), displays: const [])));
+      await t
+          .pumpWidget(app(deck(settings: AppSettings(), displays: const [])));
+      await openPanel(t);
       expect(find.byIcon(Icons.desktop_windows_outlined), findsNothing);
       expect(find.byIcon(Icons.apps_outlined), findsNothing);
     });
@@ -139,11 +158,12 @@ void main() {
       // A single empty listDisplays() at launch must NOT hide the only
       // app-picker in the main window: apps enumerated fine, so the game is
       // still pickable here even though no display was reported.
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         displays: const [],
         capturableApps: _apps,
       )));
+      await openPanel(t);
       expect(find.byKey(const ValueKey('recorderSourceLine')), findsOneWidget);
     });
 
@@ -152,11 +172,12 @@ void main() {
         'fires onSettingsChanged', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -174,11 +195,12 @@ void main() {
       final settings = AppSettings();
       const catalogApp =
           AppInfo(bundleId: 'com.valve.cs2', name: 'Counter-Strike 2', pid: 3);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: const [..._apps, catalogApp],
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -196,11 +218,12 @@ void main() {
         (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -230,11 +253,12 @@ void main() {
         pid: 4,
         iconPath: '/Applications/App Three.app/Contents/Resources/icon.icns',
       );
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: const [..._apps, iconApp],
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -254,11 +278,12 @@ void main() {
       const wineGame = AppInfo(bundleId: '', name: 'SomeGame.exe', pid: 11);
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: const [crossover, wineGame],
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -282,11 +307,12 @@ void main() {
       );
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: const [..._apps, league],
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -311,13 +337,14 @@ void main() {
           bundleId: 'com.codeweavers.CrossOver',
           name: 'PenguinHotel-Win64-Shipping',
           pid: 11);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(
           captureAppBundleId: 'com.codeweavers.CrossOver',
           captureAppName: 'PenguinHotel-Win64-Shipping',
         ),
         capturableApps: const [crossover, wineGame],
       )));
+      await openPanel(t);
       expect(sourceLine('PenguinHotel-Win64-Shipping'), findsOneWidget);
       expect(sourceLine('CrossOver'), findsNothing);
     });
@@ -341,11 +368,12 @@ void main() {
           captureAppBundleId: 'com.example.two', captureAppName: 'App Two');
       final coordinator = makeCoordinator(settings);
       final engine = coordinator.engine as FakeCaptureEngine;
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         coordinatorOverride: coordinator,
         capturableApps: [..._apps, wineGame],
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('App Two'));
       await settleMenu(t);
@@ -369,10 +397,11 @@ void main() {
         (t) async {
       final settings = AppSettings(
           captureAppBundleId: 'com.example.two', captureAppName: 'App Two');
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('App Two'));
       await settleMenu(t);
@@ -392,14 +421,16 @@ void main() {
           bundleId: 'com.codeweavers.CrossOver',
           name: 'PenguinHotel-Win64-Shipping',
           pid: 99);
-      await t.pumpWidget(app(RecorderCluster(
+      await t.pumpWidget(app(RecorderButton(
         coordinator: makeCoordinator(AppSettings()),
+        hotkeyLabel: 'F9',
         displays: _displays,
         capturableApps: [_apps[0]],
         listApps: () => [_apps[0], lateGame],
         onSettingsChanged: (_) async {},
         onOpenSettings: () {},
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('Display 1'));
       await settleMenu(t);
@@ -411,11 +442,12 @@ void main() {
         'captureAppBundleId', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings(captureAppBundleId: 'com.example.one');
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
       await t.tap(sourceLine('App One'));
       await settleMenu(t);
@@ -434,13 +466,14 @@ void main() {
         'onSettingsChanged', (t) async {
       final calls = <AppSettings>[];
       final settings = AppSettings();
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
-      expect(find.textContaining('Buffering · 30 s'), findsOneWidget);
-      await t.tap(find.textContaining('Buffering · 30 s'));
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
       await settleMenu(t);
@@ -457,14 +490,15 @@ void main() {
       final settings = AppSettings();
       final coordinator = makeCoordinator(settings);
       coordinator.activeGame.value = 'league_of_legends';
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         coordinatorOverride: coordinator,
         onSettingsChanged: (s) async => calls.add(s),
       )));
+      await openPanel(t);
 
-      expect(find.textContaining('Buffering · 30 s'), findsOneWidget);
-      await t.tap(find.textContaining('Buffering · 30 s'));
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
       await settleMenu(t);
@@ -481,12 +515,13 @@ void main() {
         'for an unrelated rebuild', (t) async {
       final settings = AppSettings();
       final revision = ValueNotifier<int>(0);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
         settingsRevision: revision,
         onSettingsChanged: (s) async => revision.value++,
       )));
+      await openPanel(t);
 
       expect(sourceLine('Display 1'), findsOneWidget);
       await t.tap(sourceLine('Display 1'));
@@ -503,19 +538,20 @@ void main() {
         'waiting for an unrelated rebuild', (t) async {
       final settings = AppSettings();
       final revision = ValueNotifier<int>(0);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         settingsRevision: revision,
         onSettingsChanged: (s) async => revision.value++,
       )));
+      await openPanel(t);
 
-      expect(find.textContaining('Buffering · 30 s'), findsOneWidget);
-      await t.tap(find.textContaining('Buffering · 30 s'));
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('deckBufferReadout')));
       await settleMenu(t);
       await t.tap(find.text('60 s').last);
       await settleMenu(t);
 
-      expect(find.textContaining('Buffering · 60 s'), findsOneWidget);
+      expect(find.text('00:00 / 01:00'), findsOneWidget);
     });
   });
 
@@ -527,11 +563,12 @@ void main() {
       final settings = AppSettings(captureAppBundleId: 'com.example.one');
       final coordinator = makeCoordinator(settings);
       coordinator.autoSwitchedAppName.value = 'Stub App One';
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: settings,
         capturableApps: _apps,
         coordinatorOverride: coordinator,
       )));
+      await openPanel(t);
 
       expect(find.text('Stub App One (auto)'), findsOneWidget);
       // Exact match: the persisted "App One" is a substring of the
@@ -541,80 +578,146 @@ void main() {
     });
   });
 
-  group('idle status line', () {
-    testWidgets('reads "Paused" when stopped with no auto-pause signal',
+  group('tally light', () {
+    testWidgets('reads PAUSED when stopped with no auto-pause signal',
         (t) async {
       final active = ValueNotifier<bool>(false);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         bufferActive: active,
       )));
-      expect(find.text('Paused'), findsOneWidget);
-      expect(find.text('Waiting for a game'), findsNothing);
+      await openPanel(t);
+      expect(find.text('PAUSED'), findsOneWidget);
+      expect(find.text('WAITING'), findsNothing);
     });
 
     testWidgets(
-        'reads "Waiting for a game" when stopped and bufferAutoPaused is '
+        'reads WAITING FOR A GAME when stopped and bufferAutoPaused is '
         'true (the captureOnlyInGame policy, not a manual pause)', (t) async {
       final active = ValueNotifier<bool>(false);
       final autoPaused = ValueNotifier<bool>(true);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         bufferActive: active,
         bufferAutoPaused: autoPaused,
       )));
-      expect(find.text('Waiting for a game'), findsOneWidget);
-      expect(find.text('Paused'), findsNothing);
+      await openPanel(t);
+      expect(find.text('WAITING'), findsOneWidget);
+      expect(find.text('PAUSED'), findsNothing);
     });
 
-    testWidgets('flipping bufferAutoPaused live updates the label', (t) async {
+    testWidgets('flipping bufferAutoPaused live updates the tally', (t) async {
       final active = ValueNotifier<bool>(false);
       final autoPaused = ValueNotifier<bool>(false);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         bufferActive: active,
         bufferAutoPaused: autoPaused,
       )));
-      expect(find.text('Paused'), findsOneWidget);
+      await openPanel(t);
+      expect(find.text('PAUSED'), findsOneWidget);
 
       autoPaused.value = true;
       await t.pump();
-      expect(find.text('Waiting for a game'), findsOneWidget);
-      expect(find.text('Paused'), findsNothing);
+      expect(find.text('WAITING'), findsOneWidget);
+      expect(find.text('PAUSED'), findsNothing);
     });
 
-    testWidgets('"Capture unavailable" still wins over "Waiting for a game"',
-        (t) async {
+    testWidgets('UNAVAILABLE wins over every other state', (t) async {
       final active = ValueNotifier<bool>(false);
       final autoPaused = ValueNotifier<bool>(true);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         captureError: 'boom',
         bufferActive: active,
         bufferAutoPaused: autoPaused,
       )));
-      expect(find.text('Capture unavailable'), findsOneWidget);
-      expect(find.text('Waiting for a game'), findsNothing);
+      await openPanel(t);
+      expect(find.text('UNAVAILABLE'), findsOneWidget);
+      expect(find.text('WAITING'), findsNothing);
     });
 
-    testWidgets('running shows the buffering readout, not the idle label',
-        (t) async {
+    testWidgets('a running buffer reads ARMED', (t) async {
       final active = ValueNotifier<bool>(true);
       final autoPaused = ValueNotifier<bool>(false);
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         bufferActive: active,
         bufferAutoPaused: autoPaused,
       )));
-      expect(find.textContaining('Buffering'), findsOneWidget);
-      expect(find.text('Waiting for a game'), findsNothing);
-      expect(find.text('Paused'), findsNothing);
+      await openPanel(t);
+      expect(find.text('ARMED'), findsOneWidget);
+      expect(find.text('WAITING'), findsNothing);
+      expect(find.text('PAUSED'), findsNothing);
+    });
+
+    testWidgets('every tally state carries a spoken label, not colour alone',
+        (t) async {
+      // The dot conveys state by colour; without this the whole signal is
+      // invisible to a screen reader (audit F-07).
+      final handle = t.ensureSemantics();
+      final active = ValueNotifier<bool>(true);
+      await t.pumpWidget(app(deck(
+        settings: AppSettings(),
+        bufferActive: active,
+      )));
+      expect(find.bySemanticsLabel(RegExp(r'^Armed — holding the last')),
+          findsOneWidget);
+
+      active.value = false;
+      await t.pump();
+      expect(find.bySemanticsLabel('Paused — the replay buffer is stopped'),
+          findsOneWidget);
+      handle.dispose();
+    });
+  });
+
+  group('buffer ring', () {
+    testWidgets('a just-started buffer is not yet full, and fills over time',
+        (t) async {
+      // "ARMED" alone overstates a buffer that has only held four seconds:
+      // a save right now reaches back four seconds, not thirty.
+      final active = ValueNotifier<bool>(true);
+      await t.pumpWidget(app(deck(
+        settings: AppSettings(),
+        bufferActive: active,
+      )));
+      await openPanel(t);
+      // The fill is reported in words + a bar in the panel, and ONLY while
+      // it is still filling — a ring sitting at zero read as "off" rather
+      // than "filling".
+      double fill() => t.widget<BufferFill>(find.byType(BufferFill)).fill;
+      expect(find.text('00:00 / 00:30'), findsOneWidget);
+      expect(fill(), 0);
+
+      await t.pump(const Duration(seconds: 15));
+      expect(fill(), closeTo(0.5, 0.05));
+
+      await t.pump(const Duration(seconds: 15));
+      // Full: the line removes itself rather than sitting at 100%.
+      expect(find.byType(BufferFill), findsNothing);
+    });
+
+    testWidgets('the fill ticker stops once the buffer is full', (t) async {
+      // A recorder must not keep the UI repainting while you game — see
+      // `_TransportDeckState._ticker`. `pump` throwing on a pending timer is
+      // what would catch a regression here, so simply reaching the end of
+      // the test with no pending-timer failure is the assertion.
+      final active = ValueNotifier<bool>(true);
+      await t.pumpWidget(app(deck(
+        settings: AppSettings(),
+        bufferActive: active,
+      )));
+      await openPanel(t);
+      await t.pump(const Duration(seconds: 31));
+      expect(find.byType(BufferFill), findsNothing);
     });
   });
 
   group('record button', () {
     testWidgets('idle state shows an outlined "Record" button', (t) async {
-      await t.pumpWidget(app(cluster(settings: AppSettings())));
+      await t.pumpWidget(app(deck(settings: AppSettings())));
+      await openPanel(t);
       expect(find.text('Record'), findsOneWidget);
       final btn =
           t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
@@ -625,17 +728,25 @@ void main() {
         'tapping starts a recording, flipping to the filled elapsed state',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
+      await openPanel(t);
 
       await t.tap(find.byKey(const ValueKey('recordButton')));
       await t.pump();
 
       expect(coordinator.isRecording.value, isTrue);
       expect(find.text('Record'), findsNothing);
-      expect(find.textContaining('0:00'), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('recordButton')),
+              matching: find.text('0:00')),
+          findsOneWidget);
+      // The tally reports it too, so the state is legible from the far left
+      // of the deck without reading the button.
+      expect(find.text('REC 0:00'), findsOneWidget);
 
       // Stop before the test ends so no Timer is left pending (bounded
       // pumps only — see the file's pumpAndSettle caveat).
@@ -647,17 +758,21 @@ void main() {
     testWidgets('the elapsed readout ticks once a second while recording',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
+      await openPanel(t);
 
       await t.tap(find.byKey(const ValueKey('recordButton')));
       await t.pump();
-      expect(find.textContaining('0:00'), findsOneWidget);
+      Finder elapsed(String v) => find.descendant(
+          of: find.byKey(const ValueKey('recordButton')),
+          matching: find.text(v));
+      expect(elapsed('0:00'), findsOneWidget);
 
       await t.pump(const Duration(seconds: 1));
-      expect(find.textContaining('0:01'), findsOneWidget);
+      expect(elapsed('0:01'), findsOneWidget);
 
       await t.tap(find.byKey(const ValueKey('recordButton')));
       await t.pump();
@@ -668,10 +783,11 @@ void main() {
         'tapping again while recording stops it and saves a recording clip',
         (t) async {
       final coordinator = makeCoordinator(AppSettings());
-      await t.pumpWidget(app(cluster(
+      await t.pumpWidget(app(deck(
         settings: AppSettings(),
         coordinatorOverride: coordinator,
       )));
+      await openPanel(t);
 
       await t.tap(find.byKey(const ValueKey('recordButton')));
       await t.pump();
@@ -684,8 +800,9 @@ void main() {
     });
 
     testWidgets('disabled when there is a capture error', (t) async {
-      await t.pumpWidget(
-          app(cluster(settings: AppSettings(), captureError: 'boom')));
+      await t
+          .pumpWidget(app(deck(settings: AppSettings(), captureError: 'boom')));
+      await openPanel(t);
       final btn =
           t.widget<OutlinedButton>(find.byKey(const ValueKey('recordButton')));
       expect(btn.onPressed, isNull);

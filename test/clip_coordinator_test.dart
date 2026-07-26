@@ -2371,6 +2371,48 @@ void main() {
     });
   });
 
+  // libobs can stop the replay output underneath the app — a capture source
+  // breaking, another screen-capture client taking over — and it reports this
+  // to nobody. The only symptom was saveClip returning "buffer not running",
+  // logged once per lost clip and invisible in the UI: the recorder chip kept
+  // reading ARMED while eight consecutive kills across three matches were
+  // dropped (observed 2026-07-26).
+  group('the replay buffer dying underneath us', () {
+    test('a "buffer not running" save restarts the buffer', () async {
+      engine.saveFailsBufferNotRunning = true;
+      engine.calls.clear();
+
+      await coordinator.onHotkey();
+
+      expect(engine.calls, contains('start'),
+          reason: 'a dead buffer must be restarted, not just logged');
+      expect(coordinator.captureDown.value, isFalse,
+          reason: 'the restart succeeded, so capture is live again');
+    });
+
+    test('a buffer that will not restart leaves captureDown set', () async {
+      engine.saveFailsBufferNotRunning = true;
+      engine.startBufferFails = true;
+
+      await coordinator.onHotkey();
+
+      expect(coordinator.captureDown.value, isTrue,
+          reason: 'the UI must be able to stop claiming to be armed');
+    });
+
+    test('an ordinary save failure is NOT treated as a dead buffer', () async {
+      // Disk full, index write error, a mux helper hiccup: restarting the
+      // buffer neither helps nor is it safe to imply capture was down.
+      engine.failSave = true;
+      engine.calls.clear();
+
+      await coordinator.onHotkey();
+
+      expect(engine.calls, isNot(contains('start')));
+      expect(coordinator.captureDown.value, isFalse);
+    });
+  });
+
   group('audible feedback (ClipSounds)', () {
     late FakeClipSounds sounds;
 

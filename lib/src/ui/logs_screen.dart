@@ -54,7 +54,7 @@ class _LogsScreenState extends State<LogsScreen> {
   Color _color(BuildContext context, TalkerData e) {
     final scheme = Theme.of(context).colorScheme;
     if (_isError(e)) return scheme.error;
-    if (_isWarning(e)) return context.rewindTokens.accent; // amber-ish accent
+    if (_isWarning(e)) return context.rewindTokens.warn;
     return context.rewindTokens.textMuted;
   }
 
@@ -118,7 +118,7 @@ class _LogsScreenState extends State<LogsScreen> {
             ),
           IconButton(
             tooltip: 'Clear',
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Icons.delete_outlined),
             onPressed: _entries.isEmpty ? null : _clear,
           ),
         ],
@@ -226,9 +226,8 @@ class _LogRowState extends State<_LogRow> {
                 ),
                 const SizedBox(width: 10),
                 Text(widget.time,
-                    style: theme.textTheme.micro.copyWith(
-                        color: tokens.textMuted,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
+                    style: theme.textTheme.numeral
+                        .copyWith(fontSize: 11, color: tokens.textMuted)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(e.message ?? e.displayMessage,

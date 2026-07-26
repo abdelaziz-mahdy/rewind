@@ -33,9 +33,9 @@ const playerScreenRouteName = '/player';
 /// media_kit [Player] (player_screen_test.dart cannot build [PlayerScreen]
 /// itself — see that file's header comment).
 IconData volumeIcon(double volume) {
-  if (volume <= 0) return Icons.volume_off_rounded;
-  if (volume < 50) return Icons.volume_down_rounded;
-  return Icons.volume_up_rounded;
+  if (volume <= 0) return Icons.volume_off_outlined;
+  if (volume < 50) return Icons.volume_down_outlined;
+  return Icons.volume_up_outlined;
 }
 
 /// In-app playback view for a single clip. Owns a media_kit [Player] /
@@ -390,22 +390,37 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Icons.arrow_back),
             tooltip: 'Close',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
           const SizedBox(width: 4),
-          EventBadge(kind: clip.event),
-          const SizedBox(width: 8),
+          // The MOMENT leads, not the game: "Penta Kill", with the game and
+          // age as context beneath it. The header used to be the game name
+          // and a badge, which named everything except what you clicked.
           Expanded(
-            child: Text(
-              displayNameFor(clip.gameId),
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.title,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  clip.eventLabel ?? eventBadge(clip.event),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.title,
+                ),
+                Text(
+                  '${displayNameFor(clip.gameId)} · '
+                  '${relativeAge(clip.createdAt)}',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: theme.textTheme.bodyMuted,
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(relativeAge(clip.createdAt), style: theme.textTheme.bodyMuted),
+          EventBadge(kind: clip.event),
         ],
       ),
     );
@@ -458,10 +473,11 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Tabular figures so the elapsed/total readout doesn't jitter width as
-    // its digits change every second (§2's numeral treatment for durations).
-    final durationStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    // The numeral role: a real monospace with tabular figures, so the
+    // elapsed/total readout doesn't jitter width as its digits change every
+    // second.
+    final durationStyle =
+        theme.textTheme.numeral.copyWith(color: context.rewindTokens.textMuted);
     final totalMs = duration.inMilliseconds;
     final positionMs =
         position.inMilliseconds.clamp(0, totalMs > 0 ? totalMs : 0);
@@ -471,8 +487,7 @@ class _Controls extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon:
-                Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
             tooltip: playing ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
           ),
@@ -484,13 +499,26 @@ class _Controls extends StatelessWidget {
                 if (markers.isNotEmpty)
                   TimelineMarkers(
                       markers: markers, duration: duration, onSeek: onSeek),
-                Slider(
-                  value: positionMs.toDouble(),
-                  max: totalMs > 0 ? totalMs.toDouble() : 1.0,
-                  onChanged: totalMs > 0
-                      ? (v) => onSeek(Duration(milliseconds: v.round()))
-                      : null,
+                // A thicker track than Material's 4px default, painted in
+                // the achromatic `interactive`: the event markers above are
+                // the only hues on the bar, and a mint fill used to compete
+                // with them for the eye.
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(trackHeight: 5),
+                  child: Slider(
+                    value: positionMs.toDouble(),
+                    max: totalMs > 0 ? totalMs.toDouble() : 1.0,
+                    onChanged: totalMs > 0
+                        ? (v) => onSeek(Duration(milliseconds: v.round()))
+                        : null,
+                  ),
                 ),
+                if (markers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child:
+                        TimelineMarkerLegend(markers: markers, onSeek: onSeek),
+                  ),
               ],
             ),
           ),
@@ -500,7 +528,7 @@ class _Controls extends StatelessWidget {
               key: const ValueKey('trimButton'),
               icon: const Icon(Icons.content_cut),
               tooltip: trimming ? 'Close trim' : 'Trim clip',
-              color: trimming ? context.rewindTokens.accent : null,
+              color: trimming ? context.rewindTokens.armed : null,
               onPressed: onToggleTrim,
             ),
           IconButton(
@@ -601,8 +629,7 @@ class _TrimBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final timeStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final timeStyle = theme.textTheme.numeral.copyWith(color: tokens.textMuted);
     final totalMs = duration.inMilliseconds.toDouble();
     final max = totalMs > 0 ? totalMs : 1.0;
 
@@ -671,14 +698,14 @@ class _TrimBar extends StatelessWidget {
                     width: 2,
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(color: tokens.accent),
+                    child: ColoredBox(color: tokens.interactive),
                   ),
                   Positioned(
                     left: (endX - 1).clamp(0.0, w - 2),
                     width: 2,
                     top: 0,
                     bottom: 0,
-                    child: ColoredBox(color: tokens.accent),
+                    child: ColoredBox(color: tokens.interactive),
                   ),
                   // The interactive layer: a full-width RangeSlider with a
                   // transparent track — the filmstrip IS the track.
@@ -722,6 +749,11 @@ class _TrimBar extends StatelessWidget {
               const SizedBox(width: 8),
               Text(formatDuration(Duration(milliseconds: range.end.round())),
                   style: timeStyle),
+              // A separator, because without one the row ran three timecodes
+              // together — "0:00 → 0:08  0:08 selected" — and on a trim that
+              // starts at zero the last two are the same number twice.
+              const SizedBox(width: 12),
+              Text('·', style: timeStyle),
               const SizedBox(width: 12),
               Text(
                 '${formatDuration(Duration(milliseconds: (range.end - range.start).round()))} selected',

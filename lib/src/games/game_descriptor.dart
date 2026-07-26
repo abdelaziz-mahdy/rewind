@@ -151,8 +151,8 @@ final List<GameDescriptor> gameDescriptors = [
     eventGroups: _leagueEventGroups,
     hasLiveFeed: true,
     detailCopy: const LiveApiDetailCopy(
-      inMatch: 'In match — connected to 127.0.0.1:2999',
-      clientOpenWaiting: 'Client open — waiting for a match. Rewind connects '
+      inMatch: 'In a match now — clipping your kills automatically.',
+      clientOpenWaiting: 'League is open — waiting for a match. Rewind joins '
           'automatically when one starts.',
       waitingForMatch: 'Waiting for a match. Detection is automatic — start '
           'a game and Rewind connects.',

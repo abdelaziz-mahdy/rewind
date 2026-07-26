@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../clip/clip.dart';
 import '../../events/game_event.dart';
 import '../theme.dart';
+import 'focus_ring.dart';
 import 'clip_tile.dart' show eventBadge;
 
 /// "All" + one chip per [GameEventKind] present in [clips], each with a
@@ -89,46 +90,50 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final accent = tokens.accent;
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(tokens.radiusChip),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.16) : tokens.surface,
-            borderRadius: BorderRadius.circular(tokens.radiusChip),
-            border: Border.fromBorderSide(
-                selected ? BorderSide(color: accent) : hairlineBorder()),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: theme.textTheme.label.copyWith(
-                  color: selected ? accent : tokens.text,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? accent.withValues(alpha: 0.24)
-                      : tokens.surfaceRaised,
-                  borderRadius: BorderRadius.circular(tokens.radiusChip),
-                ),
-                child: Text(
-                  '$count',
-                  style: theme.textTheme.micro.copyWith(
-                    color: selected ? accent : tokens.textMuted,
+    final accent = tokens.interactive;
+    return FocusRing(
+      radius: tokens.radiusChip,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(tokens.radiusChip),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? accent.withValues(alpha: 0.16) : tokens.surface,
+              borderRadius: BorderRadius.circular(tokens.radiusChip),
+              border: Border.fromBorderSide(
+                  selected ? BorderSide(color: accent) : hairlineBorder()),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.label.copyWith(
+                    color: selected ? accent : tokens.text,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? accent.withValues(alpha: 0.24)
+                        : tokens.surfaceRaised,
+                    borderRadius: BorderRadius.circular(tokens.radiusChip),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: theme.textTheme.micro.copyWith(
+                      color: selected ? accent : tokens.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

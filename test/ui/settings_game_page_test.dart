@@ -382,6 +382,23 @@ void main() {
       // And a note explaining why Highlights is absent.
       expect(
           find.byKey(const ValueKey('noAutoClipEventsNote')), findsOneWidget);
+
+      // Manual must be SELECTED, not merely present. `GameConfig.autoClip`
+      // defaults to true and the mode used to be derived as
+      // "autoClip ? highlights : manual" regardless of whether Highlights was
+      // even offered — so a process-only game resolved to a card that isn't
+      // on screen and BOTH visible radios rendered empty. The mode looked
+      // unset on every such game.
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('captureMode:manual')),
+              matching: find.byIcon(Icons.radio_button_checked)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('captureMode:full')),
+              matching: find.byIcon(Icons.radio_button_checked)),
+          findsNothing);
     });
 
     testWidgets('Full session card is offered for a live-API game too',

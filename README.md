@@ -15,12 +15,18 @@ Rewind keeps a rolling buffer of your last N seconds of gameplay and saves a cli
 ![Rewind — the clip library, grouped by game](docs/images/screenshot.png)
 
 <p align="center">
-  <img src="docs/images/matches.png" width="49%" alt="Per-match cards showing kills / deaths, champion, and mode" />
+  <img src="docs/images/matches.png" width="49%" alt="A game hub — clips grouped into match cards showing kills / deaths / assists, champion, and mode" />
   &nbsp;
-  <img src="docs/images/settings.png" width="49%" alt="Capture settings — buffer length, display/app target, follow-the-game, mic" />
+  <img src="docs/images/recorder.png" width="49%" alt="The recorder panel — capture source, buffer fill, Save clip, and Record" />
 </p>
 
-<p align="center"><sub>Left: a game hub — clips grouped into match cards with your K/D, champion, and mode. Right: capture settings.</sub></p>
+<p align="center"><sub>Left: a game hub — clips grouped into match cards with your K/D/A, champion, and mode. Right: the recorder — what's being captured, how full the buffer is, and the two things you can do about it.</sub></p>
+
+<p align="center">
+  <img src="docs/images/settings.png" width="70%" alt="Capture settings — instant-replay length, video preset with its disk cost, and audio" />
+</p>
+
+<p align="center"><sub>Capture settings: every video preset states what it costs on disk before you pick it.</sub></p>
 
 > **Get it:** grab the macOS `.dmg`, the Windows installer, or the Windows
 > **portable zip** (unzip and run `rewind.exe`, no install) from the

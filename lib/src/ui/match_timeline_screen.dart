@@ -222,8 +222,7 @@ class _MatchTimelineBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
-    final timeStyle = theme.textTheme.bodyMuted
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final timeStyle = theme.textTheme.numeral.copyWith(color: tokens.textMuted);
     final markers = [
       for (final e in layout.events)
         ClipMarker(kind: e.stamp.kind, offset: e.at),
@@ -235,8 +234,7 @@ class _MatchTimelineBar extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon:
-                Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
             tooltip: playing ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
           ),
@@ -289,8 +287,9 @@ class _MatchTimelineBar extends StatelessWidget {
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   color: i == currentSegment
-                                      ? tokens.accent
-                                      : tokens.accent.withValues(alpha: 0.35),
+                                      ? tokens.interactive
+                                      : tokens.interactive
+                                          .withValues(alpha: 0.35),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                               ),
