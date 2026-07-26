@@ -22,6 +22,15 @@ const List<GameEventKind> combatEvents = [
   GameEventKind.quadraKill,
   GameEventKind.pentaKill,
   GameEventKind.ace,
+  // Deaths were detected from the start (they feed match K/D) but were not
+  // offered here, so the only way to learn they couldn't be clipped was to
+  // ask. Reviewing how you died is a real reason to keep a clip, and the app
+  // already lets you toggle DEFEAT and TURRET KILL, neither of which is rare.
+  // Off by default because it strictly ADDS clips to every match — how many
+  // depends entirely on how the player plays, which is not ours to assume —
+  // so it should be opted into: see `GameConfig.enabledEvents`' default set,
+  // which deliberately omits it.
+  GameEventKind.death,
 ];
 const List<GameEventKind> objectiveEvents = [
   GameEventKind.dragonKill,
