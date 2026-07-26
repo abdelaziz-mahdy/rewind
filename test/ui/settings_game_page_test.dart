@@ -320,6 +320,48 @@ void main() {
           findsOneWidget);
     });
 
+    // Deaths were detected from day one (they feed match K/D) but were not
+    // offered as a toggle, so the only way to learn they couldn't be clipped
+    // was to ask. They're selectable now, and OFF by default — deaths outrun
+    // kills roughly 2:1, so on-by-default would multiply everyone's disk use
+    // without asking.
+    testWidgets('deaths are offered, off by default, and warn when enabled',
+        (t) async {
+      final settings = AppSettings();
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [_league],
+        initialGameId: 'league_of_legends',
+      )));
+
+      final toggle = find.byKey(const ValueKey('eventToggle:death'));
+      expect(toggle, findsOneWidget, reason: 'death must be pickable');
+      expect(
+          settings
+              .configFor('league_of_legends')
+              .enabledEvents
+              .contains(GameEventKind.death),
+          isFalse,
+          reason: 'and must stay off until asked for');
+      // No volume warning while it's off — that would be noise on the
+      // default setup.
+      expect(find.byKey(const ValueKey('clipDeathsNote')), findsNothing);
+
+      await t.tap(toggle);
+      await t.pump();
+
+      expect(
+          settings
+              .configFor('league_of_legends')
+              .enabledEvents
+              .contains(GameEventKind.death),
+          isTrue);
+      expect(find.byKey(const ValueKey('clipDeathsNote')), findsOneWidget,
+          reason: 'turning it on must say what it costs');
+    });
+
     testWidgets('tapping a chip writes enabledEvents and fires onChanged',
         (t) async {
       final calls = <AppSettings>[];
