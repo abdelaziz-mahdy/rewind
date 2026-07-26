@@ -416,7 +416,38 @@ Future<void> main() async {
       // session around the buffer stop/start so a paused buffer holds no
       // live capture source (screen-recording indicator, DRM-blanked video,
       // idle GPU/CPU cost — see CHANGELOG).
-      bufferActive.value = applyBufferTransition(engine, desired: desired);
+      final t = applyBufferTransition(engine, desired: desired);
+      bufferActive.value = t.active;
+
+      // Say it. This used to be silent, so "is it actually recording?" could
+      // only be answered by saving a clip and seeing whether it worked —
+      // which is how an hour of dropped clips went unnoticed, and why a
+      // lingering macOS recording indicator couldn't be told apart from a
+      // stale one.
+      final why = manualOverride == false
+          ? 'paused from the tray'
+          : (manualOverride == true
+              ? 'resumed from the tray'
+              : (anyGameActive
+                  ? 'a game is running'
+                  : 'no game is running ("Only record while playing")'));
+      talker.info(desired
+          ? 'Replay buffer RESUMED — $why.'
+          : 'Replay buffer PAUSED — $why. Capture source released.');
+
+      if (!t.sourceOk) {
+        talker.error(desired
+            ? 'Capture source would not resume: the buffer is running but may '
+                'record nothing. ${engine?.lastError ?? ''}'
+            : 'Capture source would NOT release: macOS will keep showing its '
+                'screen-recording indicator and the idle CPU/GPU cost the '
+                'pause should have saved is still being paid. '
+                '${engine?.lastError ?? ''}');
+      }
+      if (!t.bufferOk && desired) {
+        talker
+            .error('Replay buffer would not start: ${engine?.lastError ?? ''}');
+      }
     }
     bufferAutoPaused.value = isAutoPaused(
       captureOnlyInGame: effectiveCaptureOnlyInGame,
