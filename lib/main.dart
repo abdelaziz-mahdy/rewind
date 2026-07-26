@@ -329,24 +329,6 @@ Future<void> main() async {
     // Same idea for the record hotkey: touching <clipsDir>/.record-toggle
     // starts/stops a manual recording headlessly.
     final recordTrigger = File('${clipsDir.path}/.record-toggle');
-    // Screenshot trigger: touching <clipsDir>/.screenshot writes a REAL
-    // screen capture to <clipsDir>/screenshot.png (or to the path written
-    // inside the trigger file, if any).
-    //
-    // Why this exists: the integration-test tours can only photograph the
-    // Flutter widget tree. The menu-bar title, the tray menu and the native
-    // window chrome are invisible to them, so those went unverified. A
-    // terminal can't fill the gap either — `screencapture` there fails with
-    // "could not create image from display" unless the user grants Terminal
-    // Screen Recording, which needs a restart of that terminal.
-    //
-    // Rewind, however, ALREADY holds Screen Recording permission — it is the
-    // whole point of the app, and the grant survives rebuilds via the signing
-    // identity. macOS attributes a child process's capture to the responsible
-    // app, which is the same rule that makes launching the binary from a
-    // terminal attribute to the TERMINAL (see CLAUDE.md). Spawned from here,
-    // `screencapture` is attributed to Rewind and simply works.
-    final shotTrigger = File('${clipsDir.path}/.screenshot');
     Timer.periodic(const Duration(seconds: 1), (_) async {
       if (trigger.existsSync()) {
         try {
@@ -359,23 +341,6 @@ Future<void> main() async {
           recordTrigger.deleteSync();
         } catch (_) {}
         await coordinator.toggleRecording();
-      }
-      if (shotTrigger.existsSync()) {
-        String out = '${clipsDir.path}/screenshot.png';
-        try {
-          final requested = shotTrigger.readAsStringSync().trim();
-          if (requested.isNotEmpty) out = requested;
-          shotTrigger.deleteSync();
-        } catch (_) {}
-        // -x: no shutter sound. Full screen, so the capture includes the
-        // menu bar and the window's own chrome — the two things the tours
-        // cannot photograph.
-        final res = await Process.run('screencapture', ['-x', out]);
-        if (res.exitCode == 0) {
-          talker.info('Debug screenshot written to $out');
-        } else {
-          talker.warning('Debug screenshot failed: ${res.stderr}');
-        }
       }
     });
   }

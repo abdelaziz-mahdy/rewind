@@ -45,9 +45,19 @@ blurring the cached thumbnails first leaves all of that perfectly sharp. See
 wallpaper, dock, whatever window is behind Rewind — so every shot needs
 cropping and leaks whatever the machine happened to be showing. It also can't
 be taken while anyone is using the machine, and can't be re-run after a UI
-change. (It does work from inside the app, via the debug `.screenshot`
-trigger, since Rewind holds Screen Recording permission — that is the right
-tool for the menu bar and the tray menu, which the render path cannot see.)
+change.
+
+A debug `.screenshot` trigger inside the app was tried — Rewind holds Screen
+Recording permission, so `screencapture` spawned from it worked where the same
+command from a terminal fails. **It was removed.** Running a second
+screen-capture client alongside the app's own ScreenCaptureKit session is a
+hack, and on 2026-07-26 the replay buffer died six minutes after firing it and
+silently dropped eight clips across three matches. Don't re-add it.
+
+If you need a real screen capture — the menu bar, the tray menu, native window
+chrome — grant **Terminal.app** (or whichever terminal hosts the shell) Screen
+Recording under System Settings → Privacy & Security, quit and reopen it, and
+run `screencapture` normally.
 
 The previous instructions here were ⌘⇧4 + Space + click. That is exactly why
 the old images sat stale for ten days across a full redesign.

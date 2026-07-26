@@ -35,11 +35,17 @@ Cost to state up front: macOS won't apply the grant to a running app, so
 Terminal must be quit and reopened — **which ends the Claude Code session.**
 Worth doing once, deliberately, not mid-task.
 
-Cheaper alternative for this app specifically: Rewind itself already holds
-Screen Recording permission (that is its whole job, and the grant survives
-rebuilds via the signing identity — see CLAUDE.md). A debug-only trigger
-beside `.save-now` / `.record-toggle` could capture the screen through
-Rewind's own granted process — no terminal grant, no session restart.
+**Do NOT capture through Rewind's own process.** It looks like a free win —
+Rewind holds Screen Recording permission already, so a debug trigger beside
+`.save-now` running `screencapture` needs no terminal grant and no session
+restart. It was built on 2026-07-26 and removed the same day: it starts a
+SECOND screen-capture client alongside the app's own ScreenCaptureKit
+session, and the replay buffer died six minutes later, silently dropping
+eight clips across three live matches. libobs stopped the output and told
+nobody (that failure is now logged and self-healing — see
+`ClipCoordinator._recoverIfBufferDied` — but the hack is still a hack).
+
+Grant the terminal instead, or use the render path below.
 
 ## Existing tours
 

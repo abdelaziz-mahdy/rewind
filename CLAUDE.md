@@ -245,6 +245,14 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   you need something outside the Flutter tree (the menu-bar `● REC` title,
   the tray menu, native window chrome). Everything in the widget tree should
   use the test path below instead — it's deterministic and CI-safe.
+- **NEVER capture the screen from inside Rewind.** Rewind holds Screen
+  Recording permission, so a debug trigger shelling out to `screencapture`
+  works with no terminal grant — which is exactly why it's tempting. It was
+  built and removed on 2026-07-26: it starts a SECOND screen-capture client
+  beside the app's own ScreenCaptureKit session, and the replay buffer died
+  six minutes later, silently dropping eight clips across three live matches.
+  This app's whole job is capturing the screen; anything else that captures
+  the screen is competing with it.
 - The working path is an integration test that renders into a
   `RepaintBoundary` and calls `toImage()` — pure Dart on the real GPU inside
   the app's own process, so the OS screenshot API (and its permission) is
