@@ -1,6 +1,6 @@
 ---
 name: screenshots
-description: Capture real screenshots of Rewind's UI — for design review, before/after comparison of a redesign, or to see what a screen actually looks like. Use whenever a task needs a picture of the app rather than a description. Explains why `screencapture` cannot work here.
+description: Capture real screenshots of Rewind's UI — for design review, before/after comparison of a redesign, or to see what a screen actually looks like. Use whenever a task needs a picture of the app rather than a description. Covers the integration-test path (no permission needed, deterministic) and when real `screencapture` is the right tool instead — the menu bar, the tray menu, native window chrome.
 ---
 
 # Screenshotting Rewind
