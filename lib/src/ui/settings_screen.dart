@@ -2500,18 +2500,6 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                     ],
                   ],
                 ),
-                // Only once it's ON: an unconditional warning would be noise
-                // on the default setup, where deaths aren't clipped at all.
-                if (_enabledEvents.contains(GameEventKind.death)) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Every death becomes a clip, so a match will produce '
-                    'noticeably more of them. Useful for reviewing how a '
-                    'fight went wrong — keep an eye on your storage limit.',
-                    key: const ValueKey('clipDeathsNote'),
-                    style: Theme.of(context).textTheme.bodyMuted,
-                  ),
-                ],
                 const SizedBox(height: 12),
                 _postEventDelayRow(context),
               ],

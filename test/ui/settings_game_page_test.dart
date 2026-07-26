@@ -325,8 +325,7 @@ void main() {
     // was to ask. They're selectable now, and OFF by default — deaths outrun
     // kills roughly 2:1, so on-by-default would multiply everyone's disk use
     // without asking.
-    testWidgets('deaths are offered, off by default, and warn when enabled',
-        (t) async {
+    testWidgets('deaths are offered, and off by default', (t) async {
       final settings = AppSettings();
       await t.pumpWidget(_app(SettingsScreen(
         settings: settings,
@@ -345,10 +344,6 @@ void main() {
               .contains(GameEventKind.death),
           isFalse,
           reason: 'and must stay off until asked for');
-      // No volume warning while it's off — that would be noise on the
-      // default setup.
-      expect(find.byKey(const ValueKey('clipDeathsNote')), findsNothing);
-
       await t.tap(toggle);
       await t.pump();
 
@@ -358,8 +353,6 @@ void main() {
               .enabledEvents
               .contains(GameEventKind.death),
           isTrue);
-      expect(find.byKey(const ValueKey('clipDeathsNote')), findsOneWidget,
-          reason: 'turning it on must say what it costs');
     });
 
     testWidgets('tapping a chip writes enabledEvents and fires onChanged',

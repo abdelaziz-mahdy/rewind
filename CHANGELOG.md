@@ -57,9 +57,8 @@ All notable changes to Rewind are documented here. Format based on
   so. Reviewing how a fight went wrong is a real reason to save a clip, and
   the app already let you toggle DEFEAT and TURRET KILL, neither of which is
   rare. Off by default, because it strictly adds clips to every match — how
-  many depends on how you play — so it's opt-in, and the setting says what it
-  costs once you enable it. A fight you also got a kill in still badges the
-  kill.
+  many depends on how you play — so it's opt-in. A fight you also got a kill
+  in still badges the kill.
 - **Reset to defaults**, on each Settings page and on each game's page. Scoped
   per page rather than per app, so one button can't mean "throw away my
   hotkeys and my storage limits and my per-game setup" at once — and the
