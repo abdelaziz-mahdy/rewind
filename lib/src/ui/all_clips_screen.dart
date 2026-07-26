@@ -79,11 +79,16 @@ MatchStats? _statsForSession(MatchStatsStore? store, ClipSession session) {
 /// ask "does this game have a live-match API" — stats only ever get
 /// recorded by League's vendor integration, so their presence is the honest
 /// proxy for MATCH vs. SESSION here.
+///
+/// Sentence case, not caps: this becomes a PAGE TITLE (the match screen's app
+/// bar). All-caps is this design system's metadata voice — section labels, the
+/// card's own context line — and a shouted title sat at odds with every other
+/// header in the app ("All clips", "League of Legends", "Capture").
 String _sessionLabel(ClipSession session, MatchStats? stats) {
-  final word = stats != null ? 'MATCH' : 'SESSION';
+  final word = stats != null ? 'Match' : 'Session';
   final count = session.clips.length;
-  return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
-      '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
+  return '$word · ${relativeAge(session.startedAt)} · '
+      '$count ${count == 1 ? 'clip' : 'clips'}';
 }
 
 /// How the session grid is ordered. Recency is the default and the only one

@@ -77,6 +77,11 @@ ThemeData rewindTheme() {
       backgroundColor: tokens.bg,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
+      // Material centres app-bar titles on macOS by default, which put the
+      // three AppBar screens (a match, a match timeline, the log) out of step
+      // with every screen that draws its own header — all of those start hard
+      // left. One reading edge for titles, everywhere.
+      centerTitle: false,
       titleTextStyle: TextStyle(
         fontFamily: kRewindDisplayFont,
         fontSize: 22,

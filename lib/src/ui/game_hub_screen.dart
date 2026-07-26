@@ -449,16 +449,17 @@ class _GameHubScreenState extends State<GameHubScreen> {
   /// its process is currently seen running; for `desktop`, the hotkey hint.
   /// Static explanatory notes the card also used to show (e.g. "no event
   /// API for this game") are intentionally dropped here — one line only.
-  /// A session group's header: "MATCH · 2 h ago · 3 CLIPS" for games with a
-  /// real in-match API, "SESSION · …" for everything else (process-detected
+  /// The match screen's page title: "Match · 2 h ago · 3 clips" for games with
+  /// a real in-match API, "Session · …" for everything else (process-detected
   /// games and the desktop pseudo-game, where "match" would overclaim).
+  /// Sentence case for the same reason as `AllClipsScreen`'s twin — see there.
   String _sessionLabel(GameEntry entry, ClipSession session) {
     final word = entry.detection.contains(DetectionMethod.liveClientApi)
-        ? 'MATCH'
-        : 'SESSION';
+        ? 'Match'
+        : 'Session';
     final count = session.clips.length;
-    return '$word · ${relativeAge(session.startedAt).toUpperCase()} · '
-        '$count ${count == 1 ? 'CLIP' : 'CLIPS'}';
+    return '$word · ${relativeAge(session.startedAt)} · '
+        '$count ${count == 1 ? 'clip' : 'clips'}';
   }
 
   String _detailLine(GameEntry entry) {

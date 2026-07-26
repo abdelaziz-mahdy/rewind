@@ -749,6 +749,11 @@ class _TrimBar extends StatelessWidget {
               const SizedBox(width: 8),
               Text(formatDuration(Duration(milliseconds: range.end.round())),
                   style: timeStyle),
+              // A separator, because without one the row ran three timecodes
+              // together — "0:00 → 0:08  0:08 selected" — and on a trim that
+              // starts at zero the last two are the same number twice.
+              const SizedBox(width: 12),
+              Text('·', style: timeStyle),
               const SizedBox(width: 12),
               Text(
                 '${formatDuration(Duration(milliseconds: (range.end - range.start).round()))} selected',

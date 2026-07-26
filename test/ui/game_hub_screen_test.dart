@@ -129,10 +129,13 @@ void main() {
           sessionAt: match2));
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
 
-      // Each session is one MATCH card, labeled "MATCH · <age>", with a
-      // clip count in its summary line.
-      final headers = inList(find.textContaining('MATCH · '));
-      expect(headers, findsNWidgets(2));
+      // Each session is one MATCH card, labeled "MATCH" + a separate age (the
+      // two are distinct Texts so the age can't be ellipsized away — see
+      // SessionCard._ageLabel), with a clip count in its summary line.
+      expect(inList(find.text('MATCH')), findsNWidgets(2));
+      // These clips are old enough that relativeAge() yields a date, so match
+      // the separator the age Text always leads with rather than "AGO".
+      expect(inList(find.textContaining(' · 2026-07-')), findsNWidgets(2));
       expect(inList(find.text('2 clips')), findsOneWidget);
       expect(inList(find.text('1 clip')), findsOneWidget);
     });
@@ -143,8 +146,8 @@ void main() {
           clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
       await _pump(t, _app(hub(gameId: 'app:cs2')));
 
-      expect(inList(find.textContaining('SESSION · ')), findsOneWidget);
-      expect(inList(find.textContaining('MATCH · ')), findsNothing);
+      expect(inList(find.text('SESSION')), findsOneWidget);
+      expect(inList(find.text('MATCH')), findsNothing);
     });
   });
 
