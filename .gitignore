@@ -37,5 +37,8 @@ native/third_party/
 # Packaged release artifacts (DMG / installer)
 dist/
 
-# Integration-test UI tour output (regenerable)
-screenshots/
+# Integration-test UI tour output (regenerable).
+# ANCHORED: an unanchored `screenshots/` matches at ANY depth, which silently
+# swallowed `.claude/skills/screenshots/` — the skill documenting how to
+# produce this very directory was never tracked, so no clone ever got it.
+/screenshots/
