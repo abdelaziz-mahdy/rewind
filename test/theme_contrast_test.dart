@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/clip_tile.dart' show eventColor;
 
 /// WCAG 2.1 relative luminance of an opaque color.
 double _luminance(Color c) {
@@ -83,6 +85,38 @@ void main() {
         (t.onAir.g - t.danger.g).abs() +
         (t.onAir.b - t.danger.b).abs();
     expect(delta, greaterThan(0.05));
+  });
+
+  // The token table above covers `eventSeed`, but NOTHING is ever painted in
+  // eventSeed: every badge shows a colour DERIVED from it (`eventColor`
+  // rotates the hue and climbs the multikill ladder toward brighter gold).
+  // The seed clearing AA said nothing about whether the derived colours do —
+  // a retune, or a nudge to the ladder's lightness clamp, could push the
+  // KILL badge under while every existing test stayed green.
+  testWidgets('every event badge colour clears AA on all three surfaces',
+      (t) async {
+    late BuildContext ctx;
+    await t.pumpWidget(MaterialApp(
+      theme: rewindTheme(),
+      home: Builder(builder: (c) {
+        ctx = c;
+        return const SizedBox();
+      }),
+    ));
+
+    for (final kind in GameEventKind.values) {
+      final fg = eventColor(ctx, kind);
+      for (final bg in surfaces.entries) {
+        final ratio = _contrast(fg, bg.value);
+        expect(
+          ratio,
+          greaterThanOrEqualTo(4.5),
+          reason: '${kind.name} badge on ${bg.key} is '
+              '${ratio.toStringAsFixed(2)}:1 — below the AA normal-text '
+              'threshold. Retune the token or the ladder, not this test.',
+        );
+      }
+    }
   });
 
   test('interactive is achromatic — hue may not encode state', () {

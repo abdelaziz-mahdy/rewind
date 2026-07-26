@@ -118,6 +118,31 @@ void main() {
     expect(find.text('All clips'), findsNothing); // empty state, no header
   });
 
+  // macOS's "Reduce motion" arrives as MediaQuery.disableAnimations. Flutter
+  // honours it for its own route transitions but not for an AnimatedSwitcher
+  // we built ourselves — and this one fades AND slides the whole content
+  // area, the largest movement the app makes.
+  testWidgets('reduce-motion swaps destinations with no transition', (t) async {
+    Widget wrap({required bool reduce}) => MediaQuery(
+          data: MediaQueryData(
+            size: const Size(1400, 900),
+            disableAnimations: reduce,
+          ),
+          child: _app(shell()),
+        );
+
+    await t.pumpWidget(wrap(reduce: true));
+    final switcher =
+        t.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher).first);
+    expect(switcher.duration, Duration.zero);
+
+    await t.pumpWidget(wrap(reduce: false));
+    expect(
+      t.widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher).first).duration,
+      isNot(Duration.zero),
+    );
+  });
+
   testWidgets('capture error reads UNAVAILABLE on the recorder chip',
       (t) async {
     // The chip prints its state only on the EXPANDED rail; below

@@ -301,19 +301,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _TryItStepView(hotkey: _s.hotkey, landedClip: _landedClip),
       ];
 
+  /// A whole page sliding across is the biggest movement the app ever makes,
+  /// so it is the first thing macOS's "Reduce motion" should take away. The
+  /// page still changes — it just arrives instead of travelling.
+  Duration get _pageTurn => MediaQuery.disableAnimationsOf(context)
+      ? Duration.zero
+      : const Duration(milliseconds: 240);
+
   void _next() {
     if (_page >= _pageCount - 1) {
       widget.onDone();
       return;
     }
-    _controller.nextPage(
-        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+    _controller.nextPage(duration: _pageTurn, curve: Curves.easeOut);
   }
 
   void _back() {
     if (_page == 0) return;
-    _controller.previousPage(
-        duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+    _controller.previousPage(duration: _pageTurn, curve: Curves.easeOut);
   }
 
   @override

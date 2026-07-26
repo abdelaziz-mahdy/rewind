@@ -204,8 +204,25 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   WindowServer CPU. The deck's 1s ticker is the only repeating timer and is
   bounded on both sides (stops when a recording ends and when the buffer
   ring fills).
+- **Reduce motion is honoured, not ignored.** macOS's setting arrives as
+  `MediaQuery.disableAnimationsOf(context)`. Flutter applies it to its own
+  route transitions but NOT to anything we animate ourselves, so the two
+  places that move on purpose — the shell's destination `AnimatedSwitcher`
+  and onboarding's page turn — read it and collapse to `Duration.zero`. Any
+  new deliberate motion must do the same.
+- **Never rotate a hue and assume it stays legible.** Perceived luminance is
+  weighted 0.72 green / 0.21 red / 0.07 blue, so the event system's violet
+  arm — same saturation and lightness as its amber seed — landed at 3.3:1 and
+  failed AA while the amber sat above 7:1. Derive the lightness from the
+  requirement instead: `legibleOn(color, surface)` in `theme.dart`.
+  `theme_contrast_test.dart` checks the DERIVED badge colours, not just the
+  seed, because the seed is never painted.
 - All Clips and every game hub render the SAME `SessionCard`; they differ
   only in scope. Don't add a second card shape for either.
+- **The `SessionCard` label line is two Texts, not one.** Context (game,
+  champion, mode) ellipsizes; the age never does. As one joined string the
+  ellipsis ate the timestamp — the key the grid is sorted by — on every
+  narrow card.
 - Beware Flutter's flex-allocation trap: several loose `Flexible(flex: 1)`
   children + a `Spacer` in one Row each get an equal SHARE of free space
   whether used or not — trailing buttons end up stranded mid-row. One

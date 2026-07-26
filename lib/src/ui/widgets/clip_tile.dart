@@ -85,19 +85,29 @@ Color eventColor(BuildContext context, GameEventKind kind) {
       // A distinct gold arm — close enough to combat's amber to read as
       // "also a highlight", far enough (32 -> 48) to tell an achievement
       // badge apart from a kill badge at a glance.
-      return _rotateSeed(seed, 48); // gold
+      return _rotateSeed(seed, 48, tokens.surfaceRaised); // gold
     case GameEventKind.dragonKill:
     case GameEventKind.dragonSteal:
     case GameEventKind.baronKill:
     case GameEventKind.baronSteal:
     case GameEventKind.turretKill:
     case GameEventKind.inhibitorKill:
-      return _rotateSeed(seed, 266); // violet
+      return _rotateSeed(seed, 266, tokens.surfaceRaised); // violet
   }
 }
 
-Color _rotateSeed(Color seed, double hue) =>
-    HSLColor.fromColor(seed).withHue(hue % 360).toColor();
+/// The seed at a new hue, lightened as far as legibility requires.
+///
+/// Hue rotation alone is NOT safe: it preserves saturation and lightness but
+/// not perceived luminance, so the violet arm came out at 3.3:1 against the
+/// app's surfaces — failing WCAG AA — while the amber it was rotated from sat
+/// above 7:1. [legibleOn] derives the lightness from the requirement, which
+/// keeps any arm added later legible without anyone remembering to check.
+/// Measured against `surfaceRaised`, the lightest surface a badge sits on.
+Color _rotateSeed(Color seed, double hue, Color surface) => legibleOn(
+      HSLColor.fromColor(seed).withHue(hue % 360).toColor(),
+      surface,
+    );
 
 /// The combat-highlight color for multikill [tier] (0 = single kill … 4 =
 /// pentakill). Base is [RewindTokens.eventSeed]; each tier nudges the hue

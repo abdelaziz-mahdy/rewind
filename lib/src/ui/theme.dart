@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Broadcast-deck dark theme: near-black surfaces, ACHROMATIC chrome, and
@@ -593,3 +595,36 @@ const double settingsMaxContentWidth = 960;
 /// scannable settings list wants ~600-760px, not the wider 960 a
 /// label-left/control-right hub panel can still get away with.
 const double settingsPageContentWidth = 720;
+
+/// WCAG 2.1 relative luminance of an opaque color.
+double _relativeLuminance(Color c) {
+  double channel(double v) =>
+      v <= 0.03928 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4) as double;
+  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+}
+
+/// Contrast ratio between two opaque colors, 1.0 (identical) to 21.0.
+double contrastRatio(Color a, Color b) {
+  final la = _relativeLuminance(a);
+  final lb = _relativeLuminance(b);
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+/// [color] with just enough lightness added to clear [minRatio] against
+/// [surface], keeping its hue and saturation.
+///
+/// Exists because rotating a hue does NOT preserve legibility: perceived
+/// luminance is weighted 0.72 green / 0.21 red / 0.07 blue, so the event
+/// system's violet arm — the same saturation and lightness as its amber seed,
+/// just a different hue — landed at 3.3:1 and failed AA while the amber it
+/// was derived from sat comfortably above 7:1. Fixing that one violet by hand
+/// would leave the next arm anyone adds to fail the same way; deriving the
+/// lightness from the requirement means every arm is legible by construction.
+Color legibleOn(Color color, Color surface, {double minRatio = 4.5}) {
+  var hsl = HSLColor.fromColor(color);
+  while (
+      contrastRatio(hsl.toColor(), surface) < minRatio && hsl.lightness < 1.0) {
+    hsl = hsl.withLightness((hsl.lightness + 0.02).clamp(0.0, 1.0));
+  }
+  return hsl.toColor();
+}

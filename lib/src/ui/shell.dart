@@ -427,6 +427,7 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final compactRail = MediaQuery.sizeOf(context).width < navRailCompactBelow;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     // Settings keeps its own sidebar as the only nav while open — but it now
     // carries the recorder at the top of that sidebar, so the one screen a
     // user is most likely to open MID-MATCH no longer hides whether anything
@@ -473,18 +474,28 @@ class _ShellState extends State<Shell> {
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 160),
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.02),
-                          end: Offset.zero,
-                        ).animate(CurvedAnimation(
-                            parent: animation, curve: Curves.easeOut)),
-                        child: child,
-                      ),
-                    ),
+                    // macOS's "Reduce motion" arrives as
+                    // MediaQuery.disableAnimations. Flutter honours it for its
+                    // own route transitions but not for an AnimatedSwitcher we
+                    // built ourselves, and this one both fades AND slides the
+                    // whole content area — the largest movement in the app.
+                    // Zero duration swaps instantly instead.
+                    duration: reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 160),
+                    transitionBuilder: (child, animation) => reduceMotion
+                        ? child
+                        : FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.02),
+                                end: Offset.zero,
+                              ).animate(CurvedAnimation(
+                                  parent: animation, curve: Curves.easeOut)),
+                              child: child,
+                            ),
+                          ),
                     child: KeyedSubtree(
                       key: ValueKey(_destinationKey(_destination)),
                       child: _content(context),
