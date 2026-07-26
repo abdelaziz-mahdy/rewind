@@ -237,9 +237,14 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   `Expanded` filler per row.
 
 **Screenshots of the UI — read `.claude/skills/screenshots/SKILL.md` first:**
-- `screencapture` from a terminal CANNOT work here (`could not create image
-  from display`) — Claude Code has no Screen Recording TCC grant. Don't retry
-  it and don't conclude screenshots are impossible.
+- `screencapture` from a terminal fails here (`could not create image from
+  display`) because Screen Recording is not GRANTED — not because it's
+  impossible. The grant would go to **Terminal.app** (the responsible app),
+  and macOS only applies it after quitting and reopening it, which ends the
+  Claude Code session. So don't retry it inside a task; ask for it only when
+  you need something outside the Flutter tree (the menu-bar `● REC` title,
+  the tray menu, native window chrome). Everything in the widget tree should
+  use the test path below instead — it's deterministic and CI-safe.
 - The working path is an integration test that renders into a
   `RepaintBoundary` and calls `toImage()` — pure Dart on the real GPU inside
   the app's own process, so the OS screenshot API (and its permission) is

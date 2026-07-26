@@ -7,19 +7,39 @@ description: Capture real screenshots of Rewind's UI — for design review, befo
 
 ## The one thing to know first
 
-**`screencapture` from a terminal DOES NOT WORK.** It fails with
-`could not create image from display`, because the terminal (and therefore
-Claude Code) has no Screen Recording TCC grant. Don't try it, don't ask the
-user to fix it, don't conclude that screenshots are impossible.
-
-Rewind already has a working path that sidesteps TCC entirely: an
-**integration test** that renders the widget tree into a `RepaintBoundary` and
-calls `toImage()`. That is pure Dart on the real GPU, inside the app's own
-process — the OS screenshot API is never involved, so no permission applies.
+**Default to the integration-test path, which sidesteps TCC entirely:** it
+renders the widget tree into a `RepaintBoundary` and calls `toImage()`. Pure
+Dart on the real GPU, inside the app's own process — the OS screenshot API is
+never involved, so no permission applies. Deterministic, and the only option
+that works for before/after comparison or in CI.
 
 (macOS's `integration_test` plugin also doesn't implement the
 `captureScreenshot` channel, which is why `binding.takeScreenshot()` isn't the
 answer either. `toImage` is.)
+
+**`screencapture` fails from this shell** with `could not create image from
+display` — but because Screen Recording isn't *granted*, NOT because it's
+impossible. Verified 2026-07-26; the grant would go to **Terminal.app**
+(`Terminal → login → zsh → claude`), not to Claude Code. `TCC.db` can't be
+read to check (SIP), so probe it: `screencapture -x /tmp/probe.png`.
+
+Ask for that grant only when the thing you need is **outside the Flutter
+tree**, because the test path genuinely cannot reach it:
+
+- the menu-bar `● REC` title (`TrayService.setTitle`) and the tray menu —
+  still unverified on this branch for exactly this reason
+- the native title bar and its drag region (open audit finding F-14)
+- the real macOS Screen Recording permission dialog
+
+Cost to state up front: macOS won't apply the grant to a running app, so
+Terminal must be quit and reopened — **which ends the Claude Code session.**
+Worth doing once, deliberately, not mid-task.
+
+Cheaper alternative for this app specifically: Rewind itself already holds
+Screen Recording permission (that is its whole job, and the grant survives
+rebuilds via the signing identity — see CLAUDE.md). A debug-only trigger
+beside `.save-now` / `.record-toggle` could capture the screen through
+Rewind's own granted process — no terminal grant, no session restart.
 
 ## Existing tours
 
