@@ -20,17 +20,19 @@ class MainFlutterWindow: NSWindow {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
 
+    // NO frame autosave. It was tried (2026-07-26) and cost a launch: with a
+    // saved frame present, `setFrameUsingName` inside `awakeFromNib` left the
+    // app running with an AppKit run loop but no Flutter engine at all — no
+    // Dart, no logging, no capture, and a window that never appeared. It only
+    // looked fine in testing because the first run after the change had no
+    // saved frame yet, so it took the other branch.
+    //
+    // Remembering the window size is worth having, but it belongs somewhere
+    // that cannot take the engine down with it.
+    let frame = self.frame
     self.contentMinSize = MainFlutterWindow.minimumContentSize
-
-    // Remember where the user put the window, and only impose the default on
-    // a first launch that has nothing saved — otherwise every launch would
-    // stomp a size they had deliberately chosen.
-    let autosaveName = NSWindow.FrameAutosaveName("RewindMainWindow")
-    if !self.setFrameUsingName(autosaveName) {
-      self.setContentSize(MainFlutterWindow.defaultContentSize)
-      self.center()
-    }
-    self.setFrameAutosaveName(autosaveName)
+    self.setContentSize(MainFlutterWindow.defaultContentSize)
+    self.setFrameOrigin(frame.origin)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

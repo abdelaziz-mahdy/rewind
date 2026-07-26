@@ -82,6 +82,13 @@ class ClipCoordinator {
   /// notify.
   final ValueNotifier<Clip?> lastManualSave = ValueNotifier(null);
 
+  /// True while the replay buffer is known to be dead — libobs stopped the
+  /// output underneath us and a restart didn't take (see
+  /// [_recoverIfBufferDied]). The UI reads this so "nothing is being
+  /// captured" can't keep rendering as ARMED, which is exactly how an
+  /// evening of clips was lost without anyone noticing.
+  final ValueNotifier<bool> captureDown = ValueNotifier(false);
+
   /// Whether a real capture backend is wired up (false in dev mode).
   bool get captureAvailable => engine != null;
 
@@ -1162,5 +1169,39 @@ class ClipCoordinator {
   void _reportSaveError(String msg) {
     lastSaveError.value = null;
     lastSaveError.value = msg;
+    _recoverIfBufferDied(msg);
+  }
+
+  /// libobs can stop the replay output underneath us — the capture source
+  /// breaking, or another screen-capture client taking over — and it tells
+  /// nobody. Before this, the ONLY symptom was `saveClip` returning "buffer
+  /// not running", logged once per lost clip and invisible in the UI: the
+  /// recorder chip went on reading ARMED, the tray went on reading armed, and
+  /// an entire evening's clips were silently dropped (observed 2026-07-26,
+  /// eight consecutive kills across three matches, none saved).
+  ///
+  /// So: say it loudly, stop the UI claiming to be armed, and try once to
+  /// bring the buffer back rather than making the user notice and restart the
+  /// app. A failed restart leaves [captureDown] set, which is what the
+  /// recorder chip reads to show UNAVAILABLE.
+  void _recoverIfBufferDied(String msg) {
+    if (!msg.toLowerCase().contains('buffer not running')) return;
+    final capture = engine;
+    if (capture == null) return;
+
+    talker.error(
+        'Replay buffer stopped without notice — a clip was lost. Restarting '
+        'it now; if this repeats, the capture source is the thing to look at.');
+    captureDown.value = true;
+
+    final restarted = capture.startBuffer();
+    if (restarted) {
+      captureDown.value = false;
+      talker.warning('Replay buffer restarted. The clip that triggered this '
+          'is gone, but capture is live again.');
+    } else {
+      talker.error('Replay buffer would NOT restart: ${capture.lastError}. '
+          'Nothing is being captured until this is resolved.');
+    }
   }
 }
