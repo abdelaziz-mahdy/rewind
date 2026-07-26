@@ -204,6 +204,14 @@ visual system superseded by `docs/superpowers/specs/2026-07-25-broadcast-deck-de
   WindowServer CPU. The deck's 1s ticker is the only repeating timer and is
   bounded on both sides (stops when a recording ends and when the buffer
   ring fills).
+- **Focus rings go ON TOP — wrap interactive surfaces in `FocusRing`.**
+  Material's own highlight is invisible here: `InkWell` paints `focusColor`
+  into the enclosing Material's ink layer, BEHIND its child, and every
+  interactive surface in this app (nav rows, filter chips, session cards,
+  clip tiles) draws an opaque background as that child. Measured on the real
+  app, tabbing between filter chips moved ~25 levels on one row of
+  anti-aliased fringe, and moved the nav rows not one byte. Focus takes
+  `interactive` — it is an affordance, not machine state.
 - **Reduce motion is honoured, not ignored.** macOS's setting arrives as
   `MediaQuery.disableAnimationsOf(context)`. Flutter applies it to its own
   route transitions but NOT to anything we animate ourselves, so the two

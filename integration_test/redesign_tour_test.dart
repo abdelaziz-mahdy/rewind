@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:rewind/src/clip/clip.dart';
@@ -214,6 +215,22 @@ void main() {
     await t.pumpWidget(frame(shell(seeded())));
     await t.pump(const Duration(milliseconds: 600));
     await shoot('01-shell-all-clips');
+  });
+
+  // Focus is the one state no other shot can show, and the easiest to ship
+  // broken: it only appears when someone navigates by keyboard, which is
+  // never how the app gets clicked through during development.
+  testWidgets('shell — keyboard focus walked into the content', (t) async {
+    await t.pumpWidget(frame(shell(seeded())));
+    await t.pump(const Duration(milliseconds: 400));
+    // Five stops in lands on a filter chip — an opaque surface, which is
+    // exactly the case Material's own ink highlight could not show.
+    for (var i = 0; i < 5; i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.tab);
+      await t.pump();
+    }
+    await t.pump(const Duration(milliseconds: 300));
+    await shoot('07-shell-keyboard-focus');
   });
 
   testWidgets('shell — recorder panel open', (t) async {

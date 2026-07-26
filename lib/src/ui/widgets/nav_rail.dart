@@ -6,6 +6,7 @@ import '../../clip/clip_library.dart';
 import '../game_directory.dart';
 import '../shell_destination.dart';
 import '../theme.dart';
+import 'focus_ring.dart';
 import 'game_tile_avatar.dart';
 
 /// The persistent 220 px left rail: wordmark, All Clips, one row per library
@@ -209,44 +210,47 @@ class _NavItem extends StatelessWidget {
       // tooltip is a guessing game.
       message: compact ? label : '',
       waitDuration: const Duration(milliseconds: 400),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 48,
-            padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 16),
-            decoration: BoxDecoration(
-              color: selected ? tokens.surfaceRaised : null,
-              border: Border(
-                left: BorderSide(
-                  color: selected ? tokens.interactive : Colors.transparent,
-                  width: tokens.radiusRailIndicator,
+      child: FocusRing(
+        radius: 0,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              height: 48,
+              padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 16),
+              decoration: BoxDecoration(
+                color: selected ? tokens.surfaceRaised : null,
+                border: Border(
+                  left: BorderSide(
+                    color: selected ? tokens.interactive : Colors.transparent,
+                    width: tokens.radiusRailIndicator,
+                  ),
                 ),
               ),
-            ),
-            child: compact
-                ? Center(child: Icon(icon, size: 18, color: color))
-                : Row(
-                    children: [
-                      Icon(icon, size: 18, color: color),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          label,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          style: (selected
-                                  ? theme.textTheme.title
-                                  : theme.textTheme.body)
-                              .copyWith(
-                                  color: selected
-                                      ? tokens.interactive
-                                      : tokens.text),
+              child: compact
+                  ? Center(child: Icon(icon, size: 18, color: color))
+                  : Row(
+                      children: [
+                        Icon(icon, size: 18, color: color),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            label,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            style: (selected
+                                    ? theme.textTheme.title
+                                    : theme.textTheme.body)
+                                .copyWith(
+                                    color: selected
+                                        ? tokens.interactive
+                                        : tokens.text),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+            ),
           ),
         ),
       ),
@@ -280,31 +284,62 @@ class _GameRow extends StatelessWidget {
     return Tooltip(
       message: entry.displayName,
       waitDuration: const Duration(milliseconds: 500),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 48,
-            // Tighter than the header padding to give long names more room.
-            padding: EdgeInsets.only(
-                left: compact ? 0 : 12, right: compact ? 0 : 12),
-            decoration: BoxDecoration(
-              color: selected ? tokens.surfaceRaised : null,
-              border: Border(
-                left: BorderSide(
-                  color: selected ? tokens.interactive : Colors.transparent,
-                  width: tokens.radiusRailIndicator,
+      child: FocusRing(
+        radius: 0,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              height: 48,
+              // Tighter than the header padding to give long names more room.
+              padding: EdgeInsets.only(
+                  left: compact ? 0 : 12, right: compact ? 0 : 12),
+              decoration: BoxDecoration(
+                color: selected ? tokens.surfaceRaised : null,
+                border: Border(
+                  left: BorderSide(
+                    color: selected ? tokens.interactive : Colors.transparent,
+                    width: tokens.radiusRailIndicator,
+                  ),
                 ),
               ),
-            ),
-            child: compact
-                // Collapsed: the avatar alone, with the live dot tucked onto
-                // its corner so "this game is running" survives the collapse
-                // — it is the one piece of state the rail carries.
-                ? Center(
-                    child: Stack(
-                      clipBehavior: Clip.none,
+              child: compact
+                  // Collapsed: the avatar alone, with the live dot tucked onto
+                  // its corner so "this game is running" survives the collapse
+                  // — it is the one piece of state the rail carries.
+                  ? Center(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          GameTileAvatar(
+                            gameId: entry.gameId,
+                            displayName: entry.displayName,
+                            iconPath: entry.iconPath,
+                            size: 26,
+                          ),
+                          if (entry.active)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: Semantics(
+                                label: '${entry.displayName} is running',
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: tokens.armed,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: tokens.surface, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    )
+                  : Row(
                       children: [
                         GameTileAvatar(
                           gameId: entry.gameId,
@@ -312,80 +347,53 @@ class _GameRow extends StatelessWidget {
                           iconPath: entry.iconPath,
                           size: 26,
                         ),
-                        if (entry.active)
-                          Positioned(
-                            right: -2,
-                            top: -2,
-                            child: Semantics(
-                              label: '${entry.displayName} is running',
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: tokens.armed,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color: tokens.surface, width: 1.5),
-                                ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            entry.displayName,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            // Selected reads prominent via color + weight, NOT a
+                            // larger font — a bigger font just truncated sooner.
+                            style: theme.textTheme.body.copyWith(
+                              color:
+                                  selected ? tokens.interactive : tokens.text,
+                              fontWeight:
+                                  selected ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        if (entry.active) ...[
+                          const SizedBox(width: 6),
+                          // `armed`, not the selection color: this dot reports
+                          // that the GAME is running, which is machine state —
+                          // the row's own highlight already says where you are.
+                          Semantics(
+                            label: '${entry.displayName} is running',
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                  color: tokens.armed, shape: BoxShape.circle),
+                              child: const SizedBox(width: 6, height: 6),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        Semantics(
+                          label: '${entry.clipCount} '
+                              '${entry.clipCount == 1 ? 'clip' : 'clips'}',
+                          child: ExcludeSemantics(
+                            child: Text(
+                              '${entry.clipCount}',
+                              style: theme.textTheme.numeral.copyWith(
+                                fontSize: 12,
+                                color: tokens.textMuted,
                               ),
                             ),
                           ),
+                        ),
                       ],
                     ),
-                  )
-                : Row(
-                    children: [
-                      GameTileAvatar(
-                        gameId: entry.gameId,
-                        displayName: entry.displayName,
-                        iconPath: entry.iconPath,
-                        size: 26,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          entry.displayName,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          // Selected reads prominent via color + weight, NOT a
-                          // larger font — a bigger font just truncated sooner.
-                          style: theme.textTheme.body.copyWith(
-                            color: selected ? tokens.interactive : tokens.text,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      if (entry.active) ...[
-                        const SizedBox(width: 6),
-                        // `armed`, not the selection color: this dot reports
-                        // that the GAME is running, which is machine state —
-                        // the row's own highlight already says where you are.
-                        Semantics(
-                          label: '${entry.displayName} is running',
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                                color: tokens.armed, shape: BoxShape.circle),
-                            child: const SizedBox(width: 6, height: 6),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(width: 8),
-                      Semantics(
-                        label: '${entry.clipCount} '
-                            '${entry.clipCount == 1 ? 'clip' : 'clips'}',
-                        child: ExcludeSemantics(
-                          child: Text(
-                            '${entry.clipCount}',
-                            style: theme.textTheme.numeral.copyWith(
-                              fontSize: 12,
-                              color: tokens.textMuted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            ),
           ),
         ),
       ),

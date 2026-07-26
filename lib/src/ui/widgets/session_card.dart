@@ -8,6 +8,7 @@ import '../clip_sessions.dart';
 import '../theme.dart';
 import 'clip_tile.dart';
 import 'dragon_art.dart';
+import 'focus_ring.dart';
 import 'game_tile_avatar.dart';
 
 /// Match cards tile in the same column-count grid as clip tiles, but with a
@@ -118,116 +119,120 @@ class SessionCard extends StatelessWidget {
     final newest = session.clips.first; // clips are newest-first
     final count = session.clips.length;
 
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(tokens.radiusCard),
-        child: Container(
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: BorderRadius.circular(tokens.radiusCard),
-            border: Border.fromBorderSide(hairlineBorder()),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(tokens.radiusCard),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ClipThumbnail(clip: newest, thumbnails: thumbnails),
-                      if (_hasChampion || _hasKd)
-                        Positioned(
-                          left: 8,
-                          top: 8,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_hasChampion) ...[
-                                _ChampionPortrait(
-                                    ddragon: ddragon, stats: stats!),
-                                const SizedBox(width: 6),
+    return FocusRing(
+      radius: tokens.radiusCard,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(tokens.radiusCard),
+          child: Container(
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              borderRadius: BorderRadius.circular(tokens.radiusCard),
+              border: Border.fromBorderSide(hairlineBorder()),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(tokens.radiusCard),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ClipThumbnail(clip: newest, thumbnails: thumbnails),
+                        if (_hasChampion || _hasKd)
+                          Positioned(
+                            left: 8,
+                            top: 8,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_hasChampion) ...[
+                                  _ChampionPortrait(
+                                      ddragon: ddragon, stats: stats!),
+                                  const SizedBox(width: 6),
+                                ],
+                                if (_hasKd)
+                                  _KdBadge(stats: stats!, large: true),
                               ],
-                              if (_hasKd) _KdBadge(stats: stats!, large: true),
+                            ),
+                          ),
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (stats?.result != null) ...[
+                                MatchResultBadge(result: stats!.result!),
+                                const SizedBox(height: 6),
+                              ],
+                              _CountPill(count: count),
                             ],
                           ),
                         ),
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            if (stats?.result != null) ...[
-                              MatchResultBadge(result: stats!.result!),
-                              const SizedBox(height: 6),
-                            ],
-                            _CountPill(count: count),
-                          ],
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                SizedBox(
-                  height: _sessionFooterHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (gameId case final id?) ...[
-                              GameTileAvatar(
-                                gameId: id,
-                                displayName: displayName ?? id,
-                                size: 14,
+                  SizedBox(
+                    height: _sessionFooterHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (gameId case final id?) ...[
+                                GameTileAvatar(
+                                  gameId: id,
+                                  displayName: displayName ?? id,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              // The age is laid out AFTER the context and never
+                              // shrinks: it is the grid's sort key, so a narrow
+                              // card must drop the mode or the champion before
+                              // it drops "2 H AGO". Ellipsizing one joined
+                              // string truncated from the right and took the
+                              // timestamp with it every time.
+                              Flexible(
+                                child: Text(
+                                  _contextLabel(),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: theme.textTheme.micro
+                                      .copyWith(color: tokens.textMuted),
+                                ),
                               ),
-                              const SizedBox(width: 6),
-                            ],
-                            // The age is laid out AFTER the context and never
-                            // shrinks: it is the grid's sort key, so a narrow
-                            // card must drop the mode or the champion before
-                            // it drops "2 H AGO". Ellipsizing one joined
-                            // string truncated from the right and took the
-                            // timestamp with it every time.
-                            Flexible(
-                              child: Text(
-                                _contextLabel(),
-                                overflow: TextOverflow.ellipsis,
+                              Text(
+                                ' · ${_ageLabel()}',
                                 maxLines: 1,
                                 style: theme.textTheme.micro
                                     .copyWith(color: tokens.textMuted),
                               ),
-                            ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          if (_hasKd)
+                            _KdLine(stats: stats!)
+                          else
                             Text(
-                              ' · ${_ageLabel()}',
-                              maxLines: 1,
-                              style: theme.textTheme.micro
+                              '$count ${count == 1 ? 'clip' : 'clips'}',
+                              style: theme.textTheme.body
                                   .copyWith(color: tokens.textMuted),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        if (_hasKd)
-                          _KdLine(stats: stats!)
-                        else
-                          Text(
-                            '$count ${count == 1 ? 'clip' : 'clips'}',
-                            style: theme.textTheme.body
-                                .copyWith(color: tokens.textMuted),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
