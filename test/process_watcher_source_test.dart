@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/events/game_registry.dart';
 import 'package:rewind/src/events/process_watcher_source.dart';
@@ -245,16 +247,23 @@ void main() {
   });
 
   group('SystemProcessLister', () {
-    test('returns a non-empty list containing the current dart process',
+    // Asserts on the ONE process guaranteed to be running: this one. The
+    // earlier version looked for any "dart"-ish name, which passed only
+    // because an analysis server or pub process happened to be up alongside
+    // the test — under full-suite load the harness runs in `flutter_tester`
+    // and nothing matched, so it failed at random.
+    test('returns a non-empty list containing the process running this test',
         () async {
       const lister = SystemProcessLister();
       final names = await lister.runningProcessNames();
+      final self =
+          Platform.resolvedExecutable.split(Platform.pathSeparator).last;
 
       expect(names, isNotEmpty);
       expect(
-        names.any((n) => n.toLowerCase().contains('dart')),
+        names.any((n) => n.toLowerCase() == self.toLowerCase()),
         isTrue,
-        reason: 'expected to find a "dart"-ish process among: $names',
+        reason: 'expected to find this process ($self) among: $names',
       );
     });
   });

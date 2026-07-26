@@ -220,6 +220,26 @@ void main() {
     expect(find.text('Alt+F9'), findsOneWidget); // record hotkey
   });
 
+  // The rows wrapped the field in SizedBox(width: 300), but _FieldRow's
+  // Expanded handed it a TIGHT width that overrode it — the field rendered at
+  // the full pane width, stranding a 7-character combo and its ✕ at opposite
+  // ends of a near-empty box.
+  testWidgets('the hotkey field keeps its own width, not the pane\'s',
+      (t) async {
+    t.view.physicalSize = const Size(1600, 1200);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+
+    await t.pumpWidget(_app(SettingsScreen(
+      settings: AppSettings(),
+      onChanged: (_) async {},
+      displays: const [],
+    )));
+    await openPage(t, 'Hotkey');
+
+    expect(t.getSize(find.byKey(const ValueKey('saveHotkeyField'))).width, 300);
+  });
+
   testWidgets(
       'recording a combo in the record hotkey field updates '
       'settings.recordHotkey without touching settings.hotkey', (t) async {

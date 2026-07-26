@@ -99,6 +99,34 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
+  // The label line used to be ONE ellipsized string, so a long lead ("LEAGUE
+  // OF LEGENDS · MASTERYI · SUMMONER'S RIFT · …") truncated from the right and
+  // took the timestamp with it — the very key the grid is sorted by. The age
+  // now lays out last and never shrinks.
+  testWidgets('the age survives a lead too long for the card', (t) async {
+    final stats = MatchStats(
+      gameId: 'league_of_legends',
+      startedAt: session.startedAt,
+      champion: 'MasterYi',
+      gameMode: 'CLASSIC',
+    );
+    await t.pumpWidget(app(SessionCard(
+      session: session,
+      isMatch: true,
+      stats: stats,
+      onTap: () {},
+      gameId: 'league_of_legends',
+      displayName: 'League of Legends',
+    )));
+    await t.pump();
+
+    // relativeAge() of a just-created session.
+    expect(find.textContaining('NOW'), findsOneWidget);
+    // ...and it is its own Text, not a tail the ellipsis can eat.
+    expect(find.text('LEAGUE OF LEGENDS · MASTERYI · SUMMONER\'S RIFT'),
+        findsOneWidget);
+  });
+
   testWidgets('tapping the card invokes onTap', (t) async {
     var tapped = false;
     await t.pumpWidget(app(SessionCard(

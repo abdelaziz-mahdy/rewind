@@ -1427,8 +1427,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             _FieldRow(
               label: 'Save clip',
+              stretch: false,
               control: SizedBox(
-                width: 300,
+                width: _hotkeyFieldWidth,
                 child: _HotkeyRecorderField(
                   key: const ValueKey('saveHotkeyField'),
                   value: widget.settings.hotkey,
@@ -1449,8 +1450,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             _FieldRow(
               label: 'Record',
+              stretch: false,
               control: SizedBox(
-                width: 300,
+                width: _hotkeyFieldWidth,
                 child: _HotkeyRecorderField(
                   key: const ValueKey('recordHotkeyField'),
                   value: widget.settings.recordHotkey,
@@ -3022,6 +3024,10 @@ class _SettingsSection extends StatelessWidget {
 const double _fieldLabelWidth = 150;
 const double _fieldLabelGap = 18;
 
+/// Wide enough for the longest combo anyone binds ("Ctrl+Shift+F12") plus its
+/// ✕, and no wider — see [_FieldRow.stretch].
+const double _hotkeyFieldWidth = 300;
+
 /// Fixed so an empty field and a filled one are the same size — see the
 /// note in [_LimitFieldRow].
 const double _limitFieldHeight = 40;
@@ -3034,7 +3040,23 @@ class _FieldRow extends StatelessWidget {
   final String label;
   final Widget control;
 
-  const _FieldRow({required this.label, required this.control});
+  /// Whether the control should fill the row. True for the dropdowns and
+  /// sliders that make up most rows — a device-name dropdown needs every pixel
+  /// it can get. False for a control that has an intrinsic size worth keeping.
+  ///
+  /// This exists because `Expanded` hands its child a TIGHT width, which
+  /// silently overrode a `SizedBox(width: 300)` around the hotkey fields: they
+  /// rendered ~760 px wide, so an eight-character combo sat at one end of the
+  /// box and its ✕ at the other. Same trap as the ListView one in CLAUDE.md —
+  /// a tight incoming constraint beats any size the child asks for, and an
+  /// `Align` is what lets the child choose again.
+  final bool stretch;
+
+  const _FieldRow({
+    required this.label,
+    required this.control,
+    this.stretch = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3048,7 +3070,11 @@ class _FieldRow extends StatelessWidget {
               width: _fieldLabelWidth,
               child: Text(label, style: theme.textTheme.body)),
           const SizedBox(width: _fieldLabelGap),
-          Expanded(child: control),
+          Expanded(
+            child: stretch
+                ? control
+                : Align(alignment: Alignment.centerLeft, child: control),
+          ),
         ],
       ),
     );

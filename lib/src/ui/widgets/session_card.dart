@@ -85,11 +85,11 @@ class SessionCard extends StatelessWidget {
   bool get _hasChampion =>
       stats?.champion != null && stats!.champion!.isNotEmpty;
 
-  /// The muted top line: "MATCH · 2 H AGO", enriched with the League match's
-  /// champion and mode when captured — e.g. "AHRI · ARENA · 2 H AGO". On the
-  /// cross-game grid the game's own name leads instead, since that is what
-  /// tells two cards apart there.
-  String _labelLine() {
+  /// The muted top line MINUS its timestamp: "AHRI · ARENA", led by the game's
+  /// own name on the cross-game grid, since that is what tells two cards apart
+  /// there. The age is rendered separately (see [_ageLabel]) so it survives —
+  /// this half is the part allowed to ellipsize.
+  String _contextLabel() {
     final parts = <String>[];
     if (displayName case final n? when n.isNotEmpty) {
       parts.add(n.toUpperCase());
@@ -103,12 +103,13 @@ class SessionCard extends StatelessWidget {
         when m.isNotEmpty) {
       parts.add(m.toUpperCase());
     }
-    parts.add(relativeAge(session.startedAt).toUpperCase());
-    // "MATCH"/"SESSION" prefix stays only when there's nothing more specific
-    // to lead with — a game name, or a champion + mode, already reads as one.
-    if (parts.length == 1) parts.insert(0, isMatch ? 'MATCH' : 'SESSION');
+    // "MATCH"/"SESSION" stays only when there's nothing more specific to lead
+    // with — a game name, or a champion + mode, already reads as one.
+    if (parts.isEmpty) parts.add(isMatch ? 'MATCH' : 'SESSION');
     return parts.join(' · ');
   }
+
+  String _ageLabel() => relativeAge(session.startedAt).toUpperCase();
 
   @override
   Widget build(BuildContext context) {
@@ -190,14 +191,26 @@ class SessionCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 6),
                             ],
-                            Expanded(
+                            // The age is laid out AFTER the context and never
+                            // shrinks: it is the grid's sort key, so a narrow
+                            // card must drop the mode or the champion before
+                            // it drops "2 H AGO". Ellipsizing one joined
+                            // string truncated from the right and took the
+                            // timestamp with it every time.
+                            Flexible(
                               child: Text(
-                                _labelLine(),
+                                _contextLabel(),
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
                                 style: theme.textTheme.micro
                                     .copyWith(color: tokens.textMuted),
                               ),
+                            ),
+                            Text(
+                              ' · ${_ageLabel()}',
+                              maxLines: 1,
+                              style: theme.textTheme.micro
+                                  .copyWith(color: tokens.textMuted),
                             ),
                           ],
                         ),

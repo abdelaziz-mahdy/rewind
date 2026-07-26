@@ -767,7 +767,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amber = context.rewindTokens.warn;
+    // `danger`, matching the recorder chip's UNAVAILABLE state — the banner
+    // and the chip report the SAME condition, and the app's one rule is that
+    // a state owns a hue. Amber here read as "heads up" while the chip six
+    // pixels away read as "broken", for one fact: nothing is being captured.
+    final accent = context.rewindTokens.danger;
     // Only coach the user toward the permission pane when the failure is
     // actually about permission — the shim reports that case explicitly.
     // Any other error must stand on its own instead of misdirecting.
@@ -779,14 +783,14 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: amber.withValues(alpha: 0.15),
+        color: accent.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(context.rewindTokens.radiusCard),
-        border: Border.all(color: amber),
+        border: Border.all(color: accent),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_outlined, color: amber),
+          Icon(Icons.error_outline, color: accent),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
