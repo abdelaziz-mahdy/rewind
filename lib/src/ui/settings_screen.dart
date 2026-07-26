@@ -2505,9 +2505,9 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
                 if (_enabledEvents.contains(GameEventKind.death)) ...[
                   const SizedBox(height: 10),
                   Text(
-                    'Clipping deaths roughly triples how many clips a match '
-                    'produces — you die more than you kill. Worth it to review '
-                    'how a fight went wrong; keep an eye on your storage limit.',
+                    'Every death becomes a clip, so a match will produce '
+                    'noticeably more of them. Useful for reviewing how a '
+                    'fight went wrong — keep an eye on your storage limit.',
                     key: const ValueKey('clipDeathsNote'),
                     style: Theme.of(context).textTheme.bodyMuted,
                   ),

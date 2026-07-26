@@ -13,8 +13,8 @@ enum GameEventKind {
   pentaKill,
   ace,
   // The player died. Always counted for match K/D; auto-clipped only if the
-  // user turns it on (off by default — deaths outrun kills about 2:1, so
-  // enabling it multiplies both clip count and disk use).
+  // user turns it on (off by default — it strictly adds clips to every
+  // match, so it belongs behind an opt-in).
   death,
   // A Steam achievement unlock (see `SteamAchievementWatcher`) — rare and
   // always worth keeping, so it ranks just below `ace` (see [clipPriority]).
