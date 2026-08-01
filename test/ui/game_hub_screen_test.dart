@@ -315,6 +315,30 @@ void main() {
       expect(tapped, isTrue);
     });
 
+    // The strip and the score band used to be two separately bordered bars,
+    // each with its own padding and heading, stacked above the grid — between
+    // them they pushed the matches (the reason to open a hub) past the fold.
+    testWidgets('rides INSIDE the score band once the game has clips',
+        (t) async {
+      library.add(
+          clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('gameHubScoreBand')),
+              matching: summaryCard()),
+          findsOneWidget);
+    });
+
+    testWidgets('stands alone on a hub with no clips yet (no band to ride in)',
+        (t) async {
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      expect(find.byKey(const ValueKey('gameHubScoreBand')), findsNothing);
+      expect(summaryCard(), findsOneWidget);
+    });
+
     testWidgets('the old inline editor is gone', (t) async {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
       expect(find.byKey(const ValueKey('captureSettingsToggle')), findsNothing);

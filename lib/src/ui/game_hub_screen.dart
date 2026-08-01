@@ -284,12 +284,18 @@ class _GameHubScreenState extends State<GameHubScreen> {
                   // list can grow unbounded, and burying settings behind it would
                   // hurt discoverability far more than a single summary row costs
                   // the "clips first" goal (see the class doc). Collapsed =
-                  // summarized, never hidden — the card always shows the current
+                  // summarized, never hidden — the strip always shows the current
                   // config; tapping it is the only way to change it now.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                    child: _captureSummaryCard(context, entry),
-                  ),
+                  //
+                  // With clips, it rides inside the score band (see `_header`);
+                  // this standalone card is the no-clips-yet case, where there
+                  // is no band for it to ride in.
+                  if (entry.clipCount == 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                      child:
+                          _captureSummaryCard(context, entry, standalone: true),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
                     child: Text(isMatch ? 'Matches' : 'Sessions',
@@ -411,7 +417,12 @@ class _GameHubScreenState extends State<GameHubScreen> {
           // underlying data was never recorded.
           if (entry.clipCount > 0) ...[
             const SizedBox(height: 12),
-            _ScoreBand(cells: cells),
+            // The capture strip rides in the band's own card rather than
+            // stacking a second bordered bar under it.
+            _ScoreBand(
+              cells: cells,
+              footer: _captureSummaryCard(context, entry),
+            ),
           ],
         ],
       ),
@@ -554,16 +565,23 @@ class _GameHubScreenState extends State<GameHubScreen> {
     );
   }
 
-  /// The glanceable capture-settings summary card (§ "collapsed = summarized,
-  /// never hidden" — the user must be able to READ their config from the hub
-  /// without opening anything, and only leaves the hub to CHANGE it). One
-  /// bounded, tappable row-card: a micro-label plus chips reporting the
-  /// buffer length and — only for games with an event source
+  /// The glanceable capture-settings strip (§ "collapsed = summarized, never
+  /// hidden" — the user must be able to READ their config from the hub
+  /// without opening anything, and only leaves the hub to CHANGE it): chips
+  /// reporting the buffer length and — only for games with an event source
   /// ([eventGroupsFor]) — the auto-clip on/off state and enabled-event count.
-  /// The whole card opens Settings on this game's MY GAMES page via
+  /// Tapping anywhere opens Settings on this game's MY GAMES page via
   /// [GameHubScreen.onEditCaptureSettings]; there is no inline editing here
   /// anymore (see `settings_screen.dart`'s `_GameSettingsPage`).
-  Widget _captureSummaryCard(BuildContext context, GameEntry entry) {
+  ///
+  /// One row, and no "CAPTURE SETTINGS" heading: the chips already name
+  /// themselves ("30 s buffer", "Auto-clip ON"), so the heading spent a whole
+  /// line — plus this card's own border and padding — restating what the row
+  /// below it said. It now rides inside the score band ([_ScoreBand.footer]),
+  /// which is where [standalone] comes in: a hub with no clips yet has no
+  /// band to ride in, so the strip draws its own card.
+  Widget _captureSummaryCard(BuildContext context, GameEntry entry,
+      {bool standalone = false}) {
     final theme = Theme.of(context);
     final tokens = context.rewindTokens;
     final cfg = _configSnapshot();
@@ -576,6 +594,55 @@ class _GameHubScreenState extends State<GameHubScreen> {
     final matrixKinds = groups.expand((g) => g.kinds).toSet();
     final enabledEventCount =
         cfg.enabledEvents.intersection(matrixKinds).length;
+    final strip = Material(
+      color: standalone ? tokens.surface : Colors.transparent,
+      child: InkWell(
+        onTap: widget.onEditCaptureSettings,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _SummaryChip(
+                        label:
+                            '${widget.coordinator.settings.bufferSecondsFor(widget.gameId)} s buffer'),
+                    if (showAutoClip)
+                      _SummaryChip(
+                        key: const ValueKey('captureSummaryAutoClip'),
+                        label: cfg.autoClip ? 'Auto-clip ON' : 'Auto-clip OFF',
+                        // `armed`: auto-clip being on is a standing
+                        // machine state, not a selection.
+                        color: cfg.autoClip ? tokens.armed : tokens.textMuted,
+                      ),
+                    if (showAutoClip && cfg.autoClip)
+                      _SummaryChip(label: '$enabledEventCount events'),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Edit',
+                  style:
+                      theme.textTheme.label.copyWith(color: tokens.textMuted)),
+              const SizedBox(width: 2),
+              Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Riding inside the score band: no card of its own, and no width clamp —
+    // the band already applies both.
+    if (!standalone) {
+      return KeyedSubtree(
+          key: const ValueKey('captureSummaryCard'), child: strip);
+    }
+
     // Align, not a bare ConstrainedBox: a ListView gives its children TIGHT
     // cross-axis constraints, and `ConstrainedBox` can only tighten a loose
     // one — so the maxWidth here was silently ignored and this card ran the
@@ -597,61 +664,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
           // `color`) stays visible instead of being painted underneath an
           // opaque child — see EventToggleChip's identical Material→InkWell
           // ordering for the same reason.
-          child: Material(
-            color: tokens.surface,
-            child: InkWell(
-              onTap: widget.onEditCaptureSettings,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('CAPTURE SETTINGS',
-                              style: theme.textTheme.micro
-                                  .copyWith(color: tokens.textMuted)),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _SummaryChip(
-                                  label:
-                                      '${widget.coordinator.settings.bufferSecondsFor(widget.gameId)} s buffer'),
-                              if (showAutoClip)
-                                _SummaryChip(
-                                  key: const ValueKey('captureSummaryAutoClip'),
-                                  label: cfg.autoClip
-                                      ? 'Auto-clip ON'
-                                      : 'Auto-clip OFF',
-                                  // `armed`: auto-clip being on is a standing
-                                  // machine state, not a selection.
-                                  color: cfg.autoClip
-                                      ? tokens.armed
-                                      : tokens.textMuted,
-                                ),
-                              if (showAutoClip && cfg.autoClip)
-                                _SummaryChip(
-                                    label: '$enabledEventCount events'),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text('Edit',
-                        style: theme.textTheme.label
-                            .copyWith(color: tokens.textMuted)),
-                    const SizedBox(width: 2),
-                    Icon(Icons.chevron_right,
-                        size: 18, color: tokens.textMuted),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          child: strip,
         ),
       ),
     );
@@ -672,11 +685,23 @@ class _ScoreCell {
 }
 
 /// The hub header's readout: up to four hairline-separated cells, numerals
-/// in the mono face so they align and read as data rather than prose.
+/// in the mono face so they align and read as data rather than prose — plus
+/// the capture-settings strip as a [footer] under a hairline, inside the SAME
+/// card.
+///
+/// These were two stacked bars, each with its own border, padding and heading.
+/// Between them they pushed the match grid — the reason to open a hub — past
+/// the fold on a normal window, which is exactly the "clips first" goal they
+/// were meant to serve. One card, two rows: what you did, then how it is being
+/// captured.
 class _ScoreBand extends StatelessWidget {
   final List<_ScoreCell> cells;
 
-  const _ScoreBand({required this.cells});
+  /// The capture-settings strip, or null on a hub with no clips yet (where
+  /// the strip stands alone — there are no cells to sit under).
+  final Widget? footer;
+
+  const _ScoreBand({required this.cells, this.footer});
 
   @override
   Widget build(BuildContext context) {
@@ -691,49 +716,60 @@ class _ScoreBand extends StatelessWidget {
           border: Border.fromBorderSide(hairlineBorder()),
           color: tokens.surface,
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < cells.length; i++)
-              Expanded(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: i == 0
-                      ? null
-                      : BoxDecoration(
-                          border: Border(left: hairlineBorder()),
-                        ),
-                  child: Semantics(
-                    label: '${cells[i].label.toLowerCase()} '
-                        '${cells[i].value}',
-                    child: ExcludeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            cells[i].value,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: theme.textTheme.numeralLarge.copyWith(
-                              fontSize: 19,
-                              color: cells[i].positive
-                                  ? tokens.positive
-                                  : tokens.text,
+            Row(
+              children: [
+                for (var i = 0; i < cells.length; i++)
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: i == 0
+                          ? null
+                          : BoxDecoration(
+                              border: Border(left: hairlineBorder()),
                             ),
+                      child: Semantics(
+                        label: '${cells[i].label.toLowerCase()} '
+                            '${cells[i].value}',
+                        child: ExcludeSemantics(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                cells[i].value,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                style: theme.textTheme.numeralLarge.copyWith(
+                                  fontSize: 19,
+                                  color: cells[i].positive
+                                      ? tokens.positive
+                                      : tokens.text,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                cells[i].label,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                style: theme.textTheme.micro
+                                    .copyWith(color: tokens.textDim),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cells[i].label,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: theme.textTheme.micro
-                                .copyWith(color: tokens.textDim),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+              ],
+            ),
+            if (footer case final f?)
+              DecoratedBox(
+                decoration:
+                    BoxDecoration(border: Border(top: hairlineBorder())),
+                child: f,
               ),
           ],
         ),
