@@ -19,19 +19,37 @@ String eventBadge(GameEventKind kind) => kind.name
     .replaceAllMapped(RegExp('([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}')
     .toUpperCase();
 
-/// "just now" / "N min ago" / "N h ago" / a plain date once a day has passed.
+/// "just now" / "N min ago" / "N h ago" / "N days ago" / a plain date after a
+/// week.
+///
+/// The days bucket is not optional padding: without it this jumped straight
+/// from "23 h ago" to a bare `2026-07-29`, so one row of cards could carry two
+/// different time systems ("16 H AGO" beside a date) and a three-day-old match
+/// made the reader convert a date to work out how old it was. A date only
+/// starts being the more useful answer once "N days ago" gets big enough to
+/// need counting itself.
 String relativeAge(DateTime time, {DateTime? now}) {
   final diff = (now ?? DateTime.now()).difference(time);
   if (diff.inMinutes < 1) return 'just now';
   if (diff.inHours < 1) return '${diff.inMinutes} min ago';
   if (diff.inHours < 24) return '${diff.inHours} h ago';
+  if (diff.inDays < 7) {
+    return '${diff.inDays} ${diff.inDays == 1 ? 'day' : 'days'} ago';
+  }
   return '${time.year}-${time.month.toString().padLeft(2, '0')}-'
       '${time.day.toString().padLeft(2, '0')}';
 }
 
-/// "N.N MB" under 10 MB (one decimal), "N MB" at or above.
+/// "N.N MB" under 10 MB (one decimal), "N MB" at or above, "N.N GB" past a
+/// gigabyte.
+///
+/// The GB step matters because the storage LIMIT this number is measured
+/// against is set in GB ("of 20 GB" on the Settings screen). Without it a
+/// library reported "1014 MB" and left the user dividing by 1024 to compare it
+/// with their own cap.
 String formatSize(int bytes) {
   final mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} GB';
   return mb < 10 ? '${mb.toStringAsFixed(1)} MB' : '${mb.round()} MB';
 }
 
