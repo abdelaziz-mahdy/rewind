@@ -165,11 +165,15 @@ class SessionCard extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              if (stats?.result != null) ...[
-                                MatchResultBadge(result: stats!.result!),
-                                const SizedBox(height: 6),
-                              ],
+                              // Count first, badge under it: the count is the
+                              // one thing EVERY card has, so leading with it
+                              // keeps it on the same line across a grid where
+                              // only some matches have a decided result.
                               _CountPill(count: count),
+                              if (stats?.result != null) ...[
+                                const SizedBox(height: 6),
+                                MatchResultBadge(result: stats!.result!),
+                              ],
                             ],
                           ),
                         ),
