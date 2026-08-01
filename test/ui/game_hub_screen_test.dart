@@ -462,5 +462,27 @@ void main() {
       await _pump(t, _app(hub(gameId: 'app:cs2')));
       expect(find.byKey(const ValueKey('liveEventsSlot')), findsNothing);
     });
+
+    // The feed used to keep every event of the session, so kills from the
+    // PREVIOUS match sat under a LIVE heading labelled "18 min ago".
+    test('an event ages out of the feed after the live window', () {
+      final now = DateTime(2026, 8, 1, 12);
+      GameEvent at(Duration ago) => GameEvent(
+            gameId: 'league_of_legends',
+            kind: GameEventKind.kill,
+            time: now.subtract(ago),
+          );
+
+      expect(isStaleLiveEvent(at(Duration.zero), now), isFalse);
+      expect(
+          isStaleLiveEvent(
+              at(liveEventWindow - const Duration(minutes: 1)), now),
+          isFalse);
+      expect(isStaleLiveEvent(at(liveEventWindow), now), isTrue);
+      expect(
+          isStaleLiveEvent(
+              at(liveEventWindow + const Duration(minutes: 8)), now),
+          isTrue);
+    });
   });
 }
