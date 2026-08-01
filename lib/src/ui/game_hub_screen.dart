@@ -373,8 +373,13 @@ class _GameHubScreenState extends State<GameHubScreen> {
           Row(
             children: [
               GameTileAvatar(
+                key: const ValueKey('gameHubAvatar'),
                 gameId: entry.gameId,
                 displayName: entry.displayName,
+                // Same GameEntry the rail draws from: without this the rail
+                // showed a game's real app icon while the top of its own hub
+                // showed a monogram of the same game.
+                iconPath: entry.iconPath,
                 size: 40,
               ),
               const SizedBox(width: 12),

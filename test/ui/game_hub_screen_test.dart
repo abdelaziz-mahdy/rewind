@@ -14,6 +14,7 @@ import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_hub_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/game_tile_avatar.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
 import 'package:rewind/src/ui/widgets/session_card.dart';
 import '../fakes/fake_capture_engine.dart';
@@ -411,6 +412,23 @@ void main() {
           find.text('No Counter-Strike 2 clips yet — press Alt+F10 during '
               'a game.'),
           findsOneWidget);
+    });
+  });
+
+  group('header avatar', () {
+    // The rail passes `entry.iconPath` to its own GameTileAvatar; the hub
+    // header did not, so a game showed its real app icon in the rail and a
+    // monogram at the top of its own hub.
+    testWidgets('carries the real app icon the rail draws from', (t) async {
+      final settings = coordinator.settings;
+      settings.setConfig(GameConfig(
+          gameId: 'app:cs2', iconPath: '/Applications/cs2.app/icon.icns'));
+
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      final avatar =
+          t.widget<GameTileAvatar>(find.byKey(const ValueKey('gameHubAvatar')));
+      expect(avatar.iconPath, '/Applications/cs2.app/icon.icns');
     });
   });
 

@@ -351,6 +351,13 @@ class _ShellState extends State<Shell> {
           thumbnails: widget.thumbnails,
           matchStats: widget.coordinator.matchStats,
           ddragon: widget.ddragon,
+          // The same directory the rail builds, so a game's card in the
+          // cross-game grid carries the same icon its rail row does.
+          gameIconPaths: gameIconPathsFrom(buildGameDirectory(
+            settings: widget.coordinator.settings,
+            clips: widget.library.all,
+            activeIds: widget.coordinator.activeGameIds.value,
+          )),
         ),
       GameDestination(gameId: final id) => GameHubScreen(
           key: ValueKey('gameHubScreen:$id'),

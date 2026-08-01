@@ -76,6 +76,18 @@ const _desktopId = 'desktop';
 Iterable<GameDescriptor> get _mergedDescriptors =>
     gameDescriptors.where((d) => d.mergedGameIds.length > 1);
 
+/// Every gameId that resolves to a real app icon, from a built directory.
+///
+/// Keyed by EVERY id a clip could be filed under, not just the entry's own:
+/// a merged row (League) owns two ids, and the cross-game grid tags each
+/// session with whichever of them its newest clip carries.
+Map<String, String> gameIconPathsFrom(List<GameEntry> entries) => {
+      for (final e in entries)
+        if (e.iconPath case final path? when path.isNotEmpty)
+          for (final id in {e.gameId, ...descriptorFor(e.gameId).mergedGameIds})
+            id: path,
+    };
+
 /// Builds the game directory: the union of every game with a [GameConfig]
 /// row, clips in the library, or live activity, plus the pinned `desktop`
 /// pseudo-game — merged, sorted, and stats-annotated per the redesign
