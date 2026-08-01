@@ -66,6 +66,20 @@ All notable changes to Rewind are documented here. Format based on
   stops it overriding anything; its clips are untouched.
 
 ### Fixed
+- **Match cards printed K/D/A twice.** The same three numbers appeared over
+  the thumbnail as "7/6/11" and again in the footer as "7 K 6 D 11 A" — two
+  notations for one fact, taking most of a small card's ink between them. The
+  footer copy stays: it sits on an opaque surface, labels what each number
+  means, and has room for creep score.
+- **Library sizes now roll over to GB.** A library was reported as "1014 MB"
+  while the storage limit it is measured against is set in GB, leaving you to
+  divide by 1024 to compare the two.
+- **Ages no longer jump from hours straight to a date.** "16 h ago" was
+  followed by a bare `2026-07-29` the moment a day passed, so one row of cards
+  could carry two different time systems. Days are now counted up to a week.
+- **A game's real icon now appears on its own hub and its cards**, not just in
+  the rail. (League is deliberately unaffected — its app icon is Riot's
+  official logo, which their policy forbids using, so it keeps the monogram.)
 - **Settings: capture mode showed nothing selected on most games.** Auto-clip
   defaults to on, and the mode was worked out as "auto-clip on = Highlights"
   without checking whether Highlights was even offered — so on any game
