@@ -23,12 +23,22 @@ import 'capture_engine.dart';
 /// Returns the resulting buffer-active state: whatever `startBuffer()`
 /// reports on ON, always `false` on OFF. A null [engine] (dev mode, no
 /// capture backend) no-ops safely in both directions.
-bool applyBufferTransition(CaptureEngine? engine, {required bool desired}) {
+/// The outcome of one transition, so callers can LOG what actually happened
+/// rather than assuming it worked. Every step here can fail independently —
+/// and when suspend fails, the capture source keeps running: macOS goes on
+/// showing its screen-recording indicator and the CPU/GPU cost the pause was
+/// supposed to save is still being paid, with nothing on screen or in the log
+/// to say so.
+typedef BufferTransition = ({bool active, bool sourceOk, bool bufferOk});
+
+BufferTransition applyBufferTransition(CaptureEngine? engine,
+    {required bool desired}) {
   if (desired) {
-    engine?.resumeCapture();
-    return engine?.startBuffer() ?? false;
+    final sourceOk = engine?.resumeCapture() ?? true;
+    final bufferOk = engine?.startBuffer() ?? false;
+    return (active: bufferOk, sourceOk: sourceOk, bufferOk: bufferOk);
   }
-  engine?.stopBuffer();
-  engine?.suspendCapture();
-  return false;
+  final bufferOk = engine?.stopBuffer() ?? true;
+  final sourceOk = engine?.suspendCapture() ?? true;
+  return (active: false, sourceOk: sourceOk, bufferOk: bufferOk);
 }

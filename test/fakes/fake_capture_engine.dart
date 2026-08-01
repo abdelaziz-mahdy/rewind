@@ -19,6 +19,11 @@ class FakeCaptureEngine implements CaptureEngine {
   /// where the buffer cannot be brought back.
   bool startBufferFails = false;
 
+  /// Makes [suspendCapture] refuse — the case where a paused buffer leaves
+  /// the capture source live, so macOS keeps its screen-recording indicator
+  /// up and the idle cost the pause should have saved is still paid.
+  bool suspendCaptureFails = false;
+
   /// Two fake displays, mirroring what a real multi-monitor setup would
   /// report from `rewind_list_displays`.
   final List<DisplayInfo> displays = const [
@@ -79,6 +84,7 @@ class FakeCaptureEngine implements CaptureEngine {
   @override
   bool suspendCapture() {
     calls.add('suspendCapture');
+    if (suspendCaptureFails) return false;
     captureSuspended = true;
     return true;
   }
