@@ -470,9 +470,20 @@ class _GameHubScreenState extends State<GameHubScreen> {
       final complete = decided.length == sessions.length;
       cells.add(_ScoreCell(
         value: '$wins-$losses',
+        // "RECORD · 3 OF 4" read like a page counter — a dot-separated pair
+        // of numbers next to a cell that already says "4 MATCHES". As a
+        // sentence it says what it means: the record is what the matches
+        // Rewind actually saw the end of add up to.
+        //
+        // A match goes unrecorded either because Rewind was not watching when
+        // it ended (app closed, game closed early) or because the client
+        // reported no usable result (remake, spectator, an older client, or a
+        // Result spelling `_gameEndKinds` refuses to guess at). Both are
+        // outside what a four-cell readout can explain, so it states the
+        // sample rather than implying a reason.
         label: complete
             ? 'RECORD'
-            : 'RECORD · ${decided.length} OF ${sessions.length}',
+            : 'RECORD FROM ${decided.length} OF ${sessions.length}',
         positive: wins > losses,
       ));
     }
