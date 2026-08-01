@@ -34,6 +34,19 @@ import 'widgets/session_card.dart';
 /// uses, rather than a second hardcoded copy of League's ids (Task 21).
 Set<String> _matchIdsFor(String gameId) => descriptorFor(gameId).mergedGameIds;
 
+/// How long a moment stays in the hub's LIVE EVENTS feed.
+///
+/// The feed is a "what just happened" strip, not a match log — every event is
+/// already permanently recorded on the clip it produced. Without an expiry the
+/// strip kept kills from the PREVIOUS match sitting next to the current one,
+/// all of them labelled with an age that grew past "18 min ago" while still
+/// under a heading that says LIVE.
+const liveEventWindow = Duration(minutes: 10);
+
+/// Whether [event] has aged out of the LIVE EVENTS feed as of [now].
+bool isStaleLiveEvent(GameEvent event, DateTime now) =>
+    now.difference(event.time) >= liveEventWindow;
+
 /// The Game Hub (§3.4) — the centerpiece of the game-as-entry-point IA.
 ///
 /// Progressive disclosure (maintainer review, "best UI/UX is not show all
@@ -110,6 +123,18 @@ class _GameHubScreenState extends State<GameHubScreen> {
   StreamSubscription<GameEvent>? _eventsSub;
   final List<GameEvent> _liveEvents = [];
 
+  /// Refreshes the "N min ago" labels, which are otherwise only recomputed
+  /// when a NEW event arrives — a quiet stretch left every chip frozen at the
+  /// age it had when the last kill landed. Also what ages events out of the
+  /// feed.
+  ///
+  /// Bounded on both sides per the deck's no-idle-timer rule: it only starts
+  /// when the first event arrives and cancels itself the moment the feed
+  /// empties, so an idle hub (the common case — this window sits behind a
+  /// fullscreen game) runs no timer at all. 30 s is half the labels'
+  /// one-minute granularity, so no chip is ever more than 30 s stale.
+  Timer? _ageTicker;
+
   @override
   void initState() {
     super.initState();
@@ -125,15 +150,30 @@ class _GameHubScreenState extends State<GameHubScreen> {
           .listen((e) {
         setState(() {
           _liveEvents.insert(0, e);
+          _liveEvents.removeWhere((x) => isStaleLiveEvent(x, DateTime.now()));
           if (_liveEvents.length > 20) _liveEvents.removeLast();
         });
+        _startAgeTicker();
       });
     }
+  }
+
+  void _startAgeTicker() {
+    _ageTicker ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      setState(() {
+        _liveEvents.removeWhere((e) => isStaleLiveEvent(e, DateTime.now()));
+      });
+      if (_liveEvents.isEmpty) {
+        _ageTicker?.cancel();
+        _ageTicker = null;
+      }
+    });
   }
 
   @override
   void dispose() {
     _eventsSub?.cancel();
+    _ageTicker?.cancel();
     super.dispose();
   }
 
