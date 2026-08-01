@@ -73,8 +73,12 @@ void main() {
     )));
     await t.pump();
 
-    // "12" appears twice: the on-thumbnail badge AND the footer scoreboard.
-    expect(find.text('12'), findsNWidgets(2));
+    // ONCE, in the footer. The thumbnail used to carry a second copy as
+    // "12/3/7" — the same three numbers in a second notation, on a card
+    // small enough that between them they took most of its ink.
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
     expect(find.text('145 CS'), findsOneWidget);
   });
 
