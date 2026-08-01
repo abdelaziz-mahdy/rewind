@@ -319,4 +319,32 @@ void main() {
 
     expect(byId(entries, 'app:marvel_rivals').iconPath, isNull);
   });
+
+  group('gameIconPathsFrom', () {
+    test('keys every id a clip could be filed under, not just the row id', () {
+      final settings = AppSettings();
+      settings.setConfig(GameConfig(
+          gameId: 'app:cs2', iconPath: '/Applications/cs2.app/icon.icns'));
+      final entries = buildGameDirectory(
+        settings: settings,
+        clips: [],
+        activeIds: {},
+      );
+
+      expect(gameIconPathsFrom(entries)['app:cs2'],
+          '/Applications/cs2.app/icon.icns');
+    });
+
+    test('a game with no captured icon contributes no key', () {
+      final settings = AppSettings();
+      settings.setConfig(GameConfig(gameId: 'app:cs2'));
+      final entries = buildGameDirectory(
+        settings: settings,
+        clips: [],
+        activeIds: {},
+      );
+
+      expect(gameIconPathsFrom(entries).containsKey('app:cs2'), isFalse);
+    });
+  });
 }

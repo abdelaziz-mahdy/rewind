@@ -29,17 +29,16 @@ const double _portraitSize = 28;
 /// [displayName] so each card names its game; a hub omits it, since its whole
 /// grid is already one game.
 ///
-/// The card: a play session summarized. The
-/// thumbnail is the session's newest clip, with the champion portrait (when
-/// [ddragon] is wired up and the match reports one — see [DDragon.
-/// championSquare]) and the match's KILLS / DEATHS / ASSISTS scoreboard (a
-/// bold readout, shown both over the thumbnail and in the footer, plus creep
-/// score in the footer) pinned over its top-left — deliberately NOT an
-/// event-type badge, which read as a misleading "1 kill" count. Games/old
-/// matches with no recorded K/D fall back to a clip count; no champion (or
-/// no [ddragon]) falls back to a monogram, same as `GameTileAvatar`'s
-/// contract — never a broken image or a hole. Tapping opens the session's
-/// clips (see [onTap]).
+/// The card: a play session summarized. The thumbnail is the session's newest
+/// clip, carrying only the champion portrait (when [ddragon] is wired up and
+/// the match reports one — see [DDragon.championSquare]) plus the clip count
+/// and any decided result. The match's KILLS / DEATHS / ASSISTS scoreboard
+/// lives in the footer ONCE, with creep score — deliberately NOT an
+/// event-type badge, which read as a misleading "1 kill" count, and no longer
+/// duplicated over the thumbnail. Games/old matches with no recorded K/D fall
+/// back to a clip count; no champion (or no [ddragon]) falls back to a
+/// monogram, same as `GameTileAvatar`'s contract — never a broken image or a
+/// hole. Tapping opens the session's clips (see [onTap]).
 class SessionCard extends StatelessWidget {
   final ClipSession session;
 
@@ -65,6 +64,11 @@ class SessionCard extends StatelessWidget {
   final String? gameId;
   final String? displayName;
 
+  /// The game's real app icon (see `GameEntry.iconPath`), when one was ever
+  /// captured. Null renders the monogram tile — the same contract
+  /// `GameTileAvatar` has everywhere else.
+  final String? iconPath;
+
   const SessionCard({
     required this.session,
     required this.isMatch,
@@ -74,6 +78,7 @@ class SessionCard extends StatelessWidget {
     this.ddragon,
     this.gameId,
     this.displayName,
+    this.iconPath,
     super.key,
   });
 
@@ -142,22 +147,21 @@ class SessionCard extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         ClipThumbnail(clip: newest, thumbnails: thumbnails),
-                        if (_hasChampion || _hasKd)
+                        // K/D/A is NOT repeated here. It used to sit beside
+                        // the portrait as "7/6/11" while the footer printed
+                        // the same three numbers as "7 K 6 D 11 A" — two
+                        // notations for one fact, on a card small enough that
+                        // between them they took most of its ink. The footer
+                        // copy wins: it sits on an opaque surface (this one
+                        // needed a scrim to survive an arbitrary video frame),
+                        // it labels what each number means, and it has room
+                        // for creep score.
+                        if (_hasChampion)
                           Positioned(
                             left: 8,
                             top: 8,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_hasChampion) ...[
-                                  _ChampionPortrait(
-                                      ddragon: ddragon, stats: stats!),
-                                  const SizedBox(width: 6),
-                                ],
-                                if (_hasKd)
-                                  _KdBadge(stats: stats!, large: true),
-                              ],
-                            ),
+                            child: _ChampionPortrait(
+                                ddragon: ddragon, stats: stats!),
                           ),
                         Positioned(
                           right: 8,
@@ -195,6 +199,7 @@ class SessionCard extends StatelessWidget {
                                 GameTileAvatar(
                                   gameId: id,
                                   displayName: displayName ?? id,
+                                  iconPath: iconPath,
                                   size: 14,
                                 ),
                                 const SizedBox(width: 6),
@@ -325,53 +330,6 @@ class _KdLine extends StatelessWidget {
               style: theme.textTheme.numeral
                   .copyWith(fontSize: 11, color: tokens.textDim)),
       ],
-    );
-  }
-}
-
-/// The K/D/A scoreboard chip over the thumbnail's top-left: a dark scrim so
-/// it stays legible over any frame, kills tinted with the accent and deaths
-/// with the error color. [large] bumps the type for the on-thumbnail copy.
-class _KdBadge extends StatelessWidget {
-  final MatchStats stats;
-  final bool large;
-
-  const _KdBadge({required this.stats, this.large = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.rewindTokens;
-    final base =
-        theme.textTheme.numeral.copyWith(fontSize: large ? 12.5 : 10.5);
-    final numStyle = base.copyWith(fontWeight: FontWeight.w600);
-    final slash = base.copyWith(color: Colors.white.withValues(alpha: 0.6));
-    return Semantics(
-      label: '${stats.kills} kills, ${stats.deaths} deaths, '
-          '${stats.assists} assists',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.6),
-            borderRadius:
-                BorderRadius.circular(context.rewindTokens.radiusChip),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('${stats.kills}',
-                  style: numStyle.copyWith(color: tokens.positive)),
-              Text('/', style: slash),
-              Text('${stats.deaths}',
-                  style: numStyle.copyWith(color: theme.colorScheme.error)),
-              Text('/', style: slash),
-              Text('${stats.assists}',
-                  style: numStyle.copyWith(color: Colors.white)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

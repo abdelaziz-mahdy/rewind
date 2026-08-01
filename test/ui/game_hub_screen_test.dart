@@ -14,6 +14,7 @@ import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_hub_screen.dart';
 import 'package:rewind/src/ui/match_clips_screen.dart';
 import 'package:rewind/src/ui/theme.dart';
+import 'package:rewind/src/ui/widgets/game_tile_avatar.dart';
 import 'package:rewind/src/ui/widgets/clip_tile.dart' show formatSize;
 import 'package:rewind/src/ui/widgets/session_card.dart';
 import '../fakes/fake_capture_engine.dart';
@@ -314,6 +315,30 @@ void main() {
       expect(tapped, isTrue);
     });
 
+    // The strip and the score band used to be two separately bordered bars,
+    // each with its own padding and heading, stacked above the grid — between
+    // them they pushed the matches (the reason to open a hub) past the fold.
+    testWidgets('rides INSIDE the score band once the game has clips',
+        (t) async {
+      library.add(
+          clip('a', 'app:cs2', GameEventKind.manual, DateTime(2026, 7, 1)));
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('gameHubScoreBand')),
+              matching: summaryCard()),
+          findsOneWidget);
+    });
+
+    testWidgets('stands alone on a hub with no clips yet (no band to ride in)',
+        (t) async {
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      expect(find.byKey(const ValueKey('gameHubScoreBand')), findsNothing);
+      expect(summaryCard(), findsOneWidget);
+    });
+
     testWidgets('the old inline editor is gone', (t) async {
       await _pump(t, _app(hub(gameId: 'league_of_legends')));
       expect(find.byKey(const ValueKey('captureSettingsToggle')), findsNothing);
@@ -411,6 +436,94 @@ void main() {
           find.text('No Counter-Strike 2 clips yet — press Alt+F10 during '
               'a game.'),
           findsOneWidget);
+    });
+  });
+
+  group('the RECORD cell', () {
+    // "RECORD · 3 OF 4" read like a page counter, next to a cell that already
+    // says "4 MATCHES". A match goes unrecorded when Rewind was not watching
+    // at the end, or when the client reported no usable result.
+    ClipCoordinator withStats(MatchStatsStore store) => ClipCoordinator(
+          registry: GameRegistry(sources: []),
+          library: library,
+          storage: StorageManager(library),
+          settings: AppSettings(),
+          outDir: tmp.path,
+          engine: FakeCaptureEngine(),
+          matchStats: store,
+        );
+
+    testWidgets('names its sample when some matches have no result', (t) async {
+      final first = DateTime(2026, 7, 14, 20);
+      final second = DateTime(2026, 7, 14, 22);
+      final store = MatchStatsStore(dir: tmp);
+      store.recordKill('league_of_legends', first);
+      store.recordOutcome('league_of_legends', first, MatchResult.loss);
+      store.recordKill('league_of_legends', second); // no outcome recorded
+      library.add(Clip(
+          path: '${tmp.path}/a.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.kill,
+          createdAt: first,
+          sizeBytes: 1,
+          sessionAt: first));
+      library.add(Clip(
+          path: '${tmp.path}/b.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.kill,
+          createdAt: second,
+          sizeBytes: 1,
+          sessionAt: second));
+
+      await _pump(
+          t,
+          _app(hub(
+            gameId: 'league_of_legends',
+            coordinatorOverride: withStats(store),
+          )));
+
+      expect(find.text('RECORD FROM 1 OF 2'), findsOneWidget);
+      expect(find.text('0-1'), findsOneWidget);
+    });
+
+    testWidgets('is a bare RECORD when every match has one', (t) async {
+      final stamp = DateTime(2026, 7, 14, 20);
+      final store = MatchStatsStore(dir: tmp);
+      store.recordKill('league_of_legends', stamp);
+      store.recordOutcome('league_of_legends', stamp, MatchResult.win);
+      library.add(Clip(
+          path: '${tmp.path}/a.mp4',
+          gameId: 'league_of_legends',
+          event: GameEventKind.kill,
+          createdAt: stamp,
+          sizeBytes: 1,
+          sessionAt: stamp));
+
+      await _pump(
+          t,
+          _app(hub(
+            gameId: 'league_of_legends',
+            coordinatorOverride: withStats(store),
+          )));
+
+      expect(find.text('RECORD'), findsOneWidget);
+    });
+  });
+
+  group('header avatar', () {
+    // The rail passes `entry.iconPath` to its own GameTileAvatar; the hub
+    // header did not, so a game showed its real app icon in the rail and a
+    // monogram at the top of its own hub.
+    testWidgets('carries the real app icon the rail draws from', (t) async {
+      final settings = coordinator.settings;
+      settings.setConfig(GameConfig(
+          gameId: 'app:cs2', iconPath: '/Applications/cs2.app/icon.icns'));
+
+      await _pump(t, _app(hub(gameId: 'app:cs2')));
+
+      final avatar =
+          t.widget<GameTileAvatar>(find.byKey(const ValueKey('gameHubAvatar')));
+      expect(avatar.iconPath, '/Applications/cs2.app/icon.icns');
     });
   });
 

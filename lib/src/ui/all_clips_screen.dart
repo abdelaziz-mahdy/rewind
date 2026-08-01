@@ -141,6 +141,12 @@ class AllClipsScreen extends StatefulWidget {
   /// `GameHubScreen.ddragon`.
   final DDragon? ddragon;
 
+  /// Real app icons by gameId (see `GameEntry.iconPath`), so a card in this
+  /// cross-game grid shows the same icon the rail does for that game. Absent
+  /// ids fall back to the monogram tile. Optional — a caller with no game
+  /// directory in hand (every test that doesn't care) gets monograms.
+  final Map<String, String> gameIconPaths;
+
   const AllClipsScreen({
     required this.library,
     required this.hotkeyLabel,
@@ -150,6 +156,7 @@ class AllClipsScreen extends StatefulWidget {
     this.thumbnails,
     this.matchStats,
     this.ddragon,
+    this.gameIconPaths = const {},
     super.key,
   });
 
@@ -338,6 +345,7 @@ class _AllClipsScreenState extends State<AllClipsScreen> {
                             ddragon: widget.ddragon,
                             gameId: entry.gameId,
                             displayName: entry.displayName,
+                            iconPath: widget.gameIconPaths[entry.gameId],
                             onTap: () => _openMatch(context, entry, stats),
                           );
                         },
