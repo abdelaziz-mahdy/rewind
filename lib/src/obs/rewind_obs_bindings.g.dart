@@ -150,6 +150,12 @@ external int rewind_perf_stats_json(
   int json_cap,
 );
 
+@ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Int)>()
+external int rewind_drain_obs_log(
+  ffi.Pointer<ffi.Char> json_out,
+  int json_cap,
+);
+
 final class __mbstate_t extends ffi.Union {
   @ffi.Array.multi([128])
   external ffi.Array<ffi.Char> __mbstate8;

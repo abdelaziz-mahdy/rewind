@@ -54,6 +54,19 @@ Internally the shim is split by platform: `rewind_obs.c` holds the shared API la
 | `rewind_stop_buffer()` | Stop buffering |
 | `rewind_obs_shutdown()` | Tear down libobs |
 | `rewind_last_error()` | Human-readable last error string |
+| `rewind_drain_obs_log(char*, int)` | libobs' own log lines since the last call, as JSON |
+
+`rewind_drain_obs_log` is the app's window into libobs itself. libobs
+explains its failures through `blog()`, whose default handler writes to
+stderr — discarded by a packaged `.app`, so the component that knows *why*
+capture stopped was the one component nothing recorded. `rewind_obs_init`
+installs a handler that parks those lines in a ring instead; Dart drains it
+(`forwardObsLog`, lib/src/log/obs_log.dart) onto the app logger, so they reach
+the Logs screen and the session log file. It is a ring the app pulls from,
+rather than a callback: libobs logs from the encoder, graphics and capture
+threads, none of which may call into Dart. The perf monitor's existing tick
+collects it — no second timer — and every capture failure drains it
+immediately so the explanation sits beside the error.
 
 The shim is where OS-specific capture selection happens: on macOS it configures a ScreenCaptureKit-based source, on Windows a DXGI-duplication/Windows-Graphics-Capture source — but that choice is internal; the Dart-facing API is identical.
 

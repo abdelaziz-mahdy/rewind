@@ -347,6 +347,17 @@ class FakeCaptureEngine implements CaptureEngine {
   /// Null (the default) mirrors a shim-level failure.
   String? perfStatsJsonValue;
 
+  /// Queued libobs log lines the next [drainObsLog] returns, then clears —
+  /// the same drain-once contract the shim's ring has.
+  final List<ObsLogLine> obsLogLines = [];
+
+  @override
+  List<ObsLogLine> drainObsLog() {
+    final out = List<ObsLogLine>.from(obsLogLines);
+    obsLogLines.clear();
+    return out;
+  }
+
   @override
   String? perfStatsJson() {
     calls.add('perfStatsJson');

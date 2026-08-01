@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../obs/capture_engine.dart';
+import 'obs_log.dart';
 import 'log.dart';
 
 /// How many days' worth of perf-*.jsonl files to keep; older ones are
@@ -111,6 +112,11 @@ class PerfMonitor {
   /// also public so tests can trigger samples deterministically instead of
   /// waiting on real wall-clock time between [Timer] ticks.
   void sampleOnce() {
+    // This is the app's one always-on timer, so it is also what collects
+    // libobs' own log (see forwardObsLog) — a second periodic timer just to
+    // poll a log ring would break the deck's no-idle-timer rule for nothing.
+    forwardObsLog(_engine);
+
     final json = _engine?.perfStatsJson();
     Map<String, dynamic>? stats;
     if (json != null) {

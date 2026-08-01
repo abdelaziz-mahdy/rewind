@@ -137,6 +137,12 @@ static void perf_process_stats(double *cpu_user_s, double *cpu_sys_s, long long 
  * libobs. */
 #include <util/platform.h>
 
+/* base_set_log_handler()/LOG_* for the libobs log ring (see
+ * rewind_drain_obs_log), and libobs' pthread shim, which is what makes the
+ * ring's mutex portable to the Windows build (MSVC has no pthread.h). */
+#include <util/base.h>
+#include <util/threading.h>
+
 /* path_exists() below is the one place this shared file needs an OS file-
  * existence check; pull in just enough of a platform header for that (not
  * the platform's full capture/audio/encoder API surface, which stays
@@ -735,7 +741,105 @@ static void rw_release_capture_scene(void) {
     g_capture_scene = NULL;
 }
 
+/* ---- libobs' own log ------------------------------------------------------
+ *
+ * libobs writes everything through blog(), whose default handler prints to
+ * stderr — which a bundled .app discards. So the one component that knows why
+ * capture stopped was the only one nothing recorded: an app-side log could
+ * say "buffer not running" but never why the output stopped.
+ *
+ * The handler runs on whatever thread logged (encoder, graphics, the SCK
+ * callback), so it must not call back into Dart. It parks lines in a ring
+ * instead, and Dart drains them (see rewind_drain_obs_log) onto its own
+ * logger. A ring, not an unbounded buffer: libobs logs steadily, and nothing
+ * guarantees a drain ever comes.
+ */
+#define RW_LOG_RING_LINES 256
+#define RW_LOG_LINE_MAX   512
+
+static char g_log_ring[RW_LOG_RING_LINES][RW_LOG_LINE_MAX];
+static int g_log_level[RW_LOG_RING_LINES];
+static int g_log_head = 0;   /* next slot to write */
+static int g_log_count = 0;  /* undrained lines held */
+static int g_log_dropped = 0; /* undrained lines the ring overwrote */
+static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void rw_log_handler(int level, const char *format, va_list args,
+                           void *param) {
+    (void)param;
+    /* LOG_DEBUG is per-frame in places; it would push the lines that matter
+     * out of the ring long before anything drained it. */
+    if (level > LOG_INFO) return;
+
+    char line[RW_LOG_LINE_MAX];
+    vsnprintf(line, sizeof(line), format, args);
+    /* libobs logs multi-line blocks (the video/audio settings dumps) as ONE
+     * blog() call. The JSON escaper drops control characters, which would
+     * run those lines together into "base resolution:1660x1080output
+     * resolution:..." — so separate them here, while the structure is still
+     * known. */
+    for (char *c = line; *c; c++) {
+        if (*c == '\n' || *c == '\r' || *c == '\t') *c = ' ';
+    }
+
+    pthread_mutex_lock(&g_log_mutex);
+    if (g_log_count == RW_LOG_RING_LINES)
+        g_log_dropped++;
+    else
+        g_log_count++;
+    g_log_level[g_log_head] = level;
+    snprintf(g_log_ring[g_log_head], RW_LOG_LINE_MAX, "%s", line);
+    g_log_head = (g_log_head + 1) % RW_LOG_RING_LINES;
+    pthread_mutex_unlock(&g_log_mutex);
+}
+
+int rewind_drain_obs_log(char *json_out, int json_cap) {
+    if (!json_out || json_cap < 3) return fail("log buffer too small");
+
+    pthread_mutex_lock(&g_log_mutex);
+    int count = g_log_count, dropped = g_log_dropped;
+    int start = (g_log_head - count + RW_LOG_RING_LINES) % RW_LOG_RING_LINES;
+    g_log_count = 0;
+    g_log_dropped = 0;
+
+    int n = 0;
+    json_out[n++] = '[';
+    /* A ring that wrapped means libobs said things nobody will ever read.
+     * Reported as its own entry rather than dropped silently — a gap in this
+     * log is exactly the kind of thing that makes the next failure
+     * un-diagnosable. */
+    if (dropped > 0) {
+        n += snprintf(json_out + n, (size_t)(json_cap - n),
+                      "{\"level\":%d,\"message\":\"%d libobs log line(s) were "
+                      "dropped before this drain\"}", LOG_WARNING, dropped);
+    }
+    for (int i = 0; i < count; i++) {
+        int idx = (start + i) % RW_LOG_RING_LINES;
+        char escaped[RW_LOG_LINE_MAX * 2] = "";
+        json_escape_append(g_log_ring[idx], escaped, sizeof(escaped));
+        /* +4 leaves room for the closing bracket and NUL even if this entry
+         * is the one that fills the buffer; the rest stay in the ring only
+         * if the caller's buffer was too small for them, which the count
+         * mismatch on the next drain would show up as dropped lines. */
+        int need = (int)strlen(escaped) + 48;
+        if (n + need + 4 >= json_cap) break;
+        n += snprintf(json_out + n, (size_t)(json_cap - n),
+                      "%s{\"level\":%d,\"message\":\"%s\"}",
+                      n > 1 ? "," : "", g_log_level[idx], escaped);
+    }
+    json_out[n++] = ']';
+    json_out[n] = '\0';
+    pthread_mutex_unlock(&g_log_mutex);
+
+    set_error("");
+    return 0;
+}
+
 int rewind_obs_init(const char *out_dir, int seconds) {
+    /* Installed before anything else so libobs' own startup — module loads,
+     * encoder selection, the reasons any of it fails — lands in the ring too.
+     * Idempotent: base_set_log_handler just stores the pointer. */
+    base_set_log_handler(rw_log_handler, NULL);
     if (g_initialized) return 0;
     g_seconds = seconds > 0 ? seconds : 30;
 
@@ -1473,6 +1577,15 @@ int rewind_perf_stats_json(char *json_out, int json_cap) {
 }
 
 #else /* !REWIND_USE_LIBOBS: self-contained stub */
+
+/* No libobs, so no libobs log to forward — an empty array, never an error,
+ * so callers need no stub/real branch of their own. */
+int rewind_drain_obs_log(char *json_out, int json_cap) {
+    if (!json_out || json_cap < 3) { set_error("log buffer too small"); return 1; }
+    snprintf(json_out, (size_t)json_cap, "[]");
+    set_error("");
+    return 0;
+}
 
 int rewind_obs_init(const char *out_dir, int seconds) {
     (void)out_dir; (void)seconds;

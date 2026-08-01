@@ -11,6 +11,7 @@ import '../events/game_event.dart';
 import '../events/game_registry.dart';
 import '../games/game_descriptor.dart' show descriptorFor;
 import '../log/log.dart';
+import '../log/obs_log.dart';
 import '../obs/app_info.dart';
 import '../obs/capture_engine.dart';
 import '../settings/app_settings.dart';
@@ -759,6 +760,10 @@ class ClipCoordinator {
             : 'Clip save failed';
         _reportSaveError(msg);
         talker.error('Clip save failed: $msg');
+        // Whatever libobs has to say about this is the actual explanation —
+        // pull it now so it sits beside the failure rather than up to a perf
+        // tick later.
+        forwardObsLog(capture);
         if (manual) _feedback((s) => s.saveFailed());
         return;
       }
@@ -1217,6 +1222,9 @@ class ClipCoordinator {
     talker.error(
         'Replay buffer stopped without notice — a clip was lost. Restarting '
         'it now; if this repeats, the capture source is the thing to look at.');
+    // The lines libobs emitted when the output died are the whole reason this
+    // path is guesswork otherwise.
+    forwardObsLog(capture);
     captureDown.value = true;
 
     final restarted = capture.startBuffer();
@@ -1227,6 +1235,7 @@ class ClipCoordinator {
     } else {
       talker.error('Replay buffer would NOT restart: ${capture.lastError}. '
           'Nothing is being captured until this is resolved.');
+      forwardObsLog(capture);
     }
   }
 }
