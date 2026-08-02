@@ -72,6 +72,14 @@ All notable changes to Rewind are documented here. Format based on
   stops it overriding anything; its clips are untouched.
 
 ### Fixed
+- **Rewind no longer holds your microphone (or a screen-capture stream) while
+  paused.** With "only record while playing" on and no game running, macOS
+  showed its microphone indicator anyway — the app was listening while its own
+  UI said it was idle. Pausing released the video source and nothing else; the
+  mic and the system-audio source both stayed open. System audio was the worse
+  half: on macOS it is a ScreenCaptureKit stream, so a paused Rewind also kept
+  the screen-recording indicator lit and held that stream around the clock.
+  Both are now released when capture pauses and rebuilt when it resumes.
 - **Match cards printed K/D/A twice.** The same three numbers appeared over
   the thumbnail as "7/6/11" and again in the footer as "7 K 6 D 11 A" — two
   notations for one fact, taking most of a small card's ink between them. The
