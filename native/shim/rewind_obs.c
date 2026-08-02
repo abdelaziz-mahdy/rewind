@@ -138,10 +138,12 @@ static void perf_process_stats(double *cpu_user_s, double *cpu_sys_s, long long 
 #include <util/platform.h>
 
 /* base_set_log_handler()/LOG_* for the libobs log ring (see
- * rewind_drain_obs_log), and libobs' pthread shim, which is what makes the
- * ring's mutex portable to the Windows build (MSVC has no pthread.h). */
+ * rewind_drain_obs_log). NOT util/threading.h for its mutex: that header
+ * includes <pthread.h> unconditionally, which MSVC does not have and the
+ * vendored SDK's include path does not carry (libobs builds its own
+ * w32-pthreads for this) — it broke the Windows CI build. The ring locks
+ * with each platform's own primitive instead; see RW_LOG_LOCK below. */
 #include <util/base.h>
-#include <util/threading.h>
 
 /* path_exists() below is the one place this shared file needs an OS file-
  * existence check; pull in just enough of a platform header for that (not
@@ -152,8 +154,10 @@ static void perf_process_stats(double *cpu_user_s, double *cpu_sys_s, long long 
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <pthread.h> /* the log ring's lock off Windows (see RW_LOG_LOCK) */
 #include <unistd.h>
 #endif
+#include <stdarg.h> /* va_list, for the libobs log handler */
 
 /* ---- shared mutable state (declared extern in rewind_obs_internal.h;
  * read/written by both the API layer below and whichever platform backend
@@ -762,7 +766,18 @@ static int g_log_level[RW_LOG_RING_LINES];
 static int g_log_head = 0;   /* next slot to write */
 static int g_log_count = 0;  /* undrained lines held */
 static int g_log_dropped = 0; /* undrained lines the ring overwrote */
-static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* Statically initialised on both platforms, so the handler is safe from the
+ * first line libobs logs — there is no init hook that runs before
+ * base_set_log_handler. */
+#ifdef _WIN32
+static SRWLOCK g_log_lock = SRWLOCK_INIT;
+#define RW_LOG_LOCK() AcquireSRWLockExclusive(&g_log_lock)
+#define RW_LOG_UNLOCK() ReleaseSRWLockExclusive(&g_log_lock)
+#else
+static pthread_mutex_t g_log_lock = PTHREAD_MUTEX_INITIALIZER;
+#define RW_LOG_LOCK() pthread_mutex_lock(&g_log_lock)
+#define RW_LOG_UNLOCK() pthread_mutex_unlock(&g_log_lock)
+#endif
 
 static void rw_log_handler(int level, const char *format, va_list args,
                            void *param) {
@@ -782,7 +797,7 @@ static void rw_log_handler(int level, const char *format, va_list args,
         if (*c == '\n' || *c == '\r' || *c == '\t') *c = ' ';
     }
 
-    pthread_mutex_lock(&g_log_mutex);
+    RW_LOG_LOCK();
     if (g_log_count == RW_LOG_RING_LINES)
         g_log_dropped++;
     else
@@ -790,13 +805,13 @@ static void rw_log_handler(int level, const char *format, va_list args,
     g_log_level[g_log_head] = level;
     snprintf(g_log_ring[g_log_head], RW_LOG_LINE_MAX, "%s", line);
     g_log_head = (g_log_head + 1) % RW_LOG_RING_LINES;
-    pthread_mutex_unlock(&g_log_mutex);
+    RW_LOG_UNLOCK();
 }
 
 int rewind_drain_obs_log(char *json_out, int json_cap) {
     if (!json_out || json_cap < 3) return fail("log buffer too small");
 
-    pthread_mutex_lock(&g_log_mutex);
+    RW_LOG_LOCK();
     int count = g_log_count, dropped = g_log_dropped;
     int start = (g_log_head - count + RW_LOG_RING_LINES) % RW_LOG_RING_LINES;
     g_log_count = 0;
@@ -829,7 +844,7 @@ int rewind_drain_obs_log(char *json_out, int json_cap) {
     }
     json_out[n++] = ']';
     json_out[n] = '\0';
-    pthread_mutex_unlock(&g_log_mutex);
+    RW_LOG_UNLOCK();
 
     set_error("");
     return 0;
