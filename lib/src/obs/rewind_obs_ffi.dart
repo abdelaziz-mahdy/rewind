@@ -141,6 +141,10 @@ class RewindObs {
   /// always-on system audio).
   int setMicEnabled(bool enabled) => b.rewind_set_mic_enabled(enabled ? 1 : 0);
 
+  /// See `rewind_set_mic_hold` — keeps the mic alive while capture is
+  /// suspended, for the Settings mic test.
+  int setMicHold(bool hold) => b.rewind_set_mic_hold(hold ? 1 : 0);
+
   /// Raw JSON array from `rewind_list_audio_inputs_json`, or null on
   /// failure.
   String? listAudioInputsJson() =>

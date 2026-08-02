@@ -118,7 +118,18 @@ class MicTestMeter extends StatefulWidget {
   /// (which then reports levels as unavailable).
   final String? Function()? pollLevels;
 
-  const MicTestMeter({this.pollLevels, super.key});
+  /// Takes/releases the shim's mic hold (see `CaptureEngine.setMicHold`)
+  /// around a test.
+  ///
+  /// Capture releases the microphone while it is suspended — "only record
+  /// while playing" with no game up is the common case — so without this the
+  /// meter would read silence exactly when a user is most likely to be
+  /// setting their mic up. Optional: a caller that doesn't wire it (tests,
+  /// and any build with no capture engine) still gets the meter, reading
+  /// whatever the engine reports.
+  final void Function(bool hold)? onMicHold;
+
+  const MicTestMeter({this.pollLevels, this.onMicHold, super.key});
 
   @override
   State<MicTestMeter> createState() => _MicTestMeterState();
@@ -136,12 +147,16 @@ class _MicTestMeterState extends State<MicTestMeter> {
 
   @override
   void dispose() {
+    // Release the hold on the way out: leaving a screen mid-test must not
+    // leave Rewind holding the microphone open for the rest of the session.
+    if (_testing) widget.onMicHold?.call(false);
     _poll?.cancel();
     super.dispose();
   }
 
   void _toggleTesting() {
     if (_testing) {
+      widget.onMicHold?.call(false);
       _poll?.cancel();
       setState(() {
         _poll = null;
@@ -151,6 +166,7 @@ class _MicTestMeterState extends State<MicTestMeter> {
       });
       return;
     }
+    widget.onMicHold?.call(true);
     setState(() {
       _poll = Timer.periodic(const Duration(milliseconds: 100), (_) => _tick());
     });

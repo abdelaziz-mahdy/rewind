@@ -164,6 +164,18 @@ int rewind_set_capture_window(uint32_t window_id);
  * Returns 0 on success. */
 int rewind_set_mic_enabled(int enabled);
 
+/* Keeps the microphone source alive while capture is SUSPENDED (see
+ * rewind_capture_suspend), for the Settings mic test — the one feature that
+ * needs live mic input with nothing being recorded.
+ *
+ * Suspending capture releases the mic, so that a paused Rewind is not holding
+ * the microphone (and lighting the OS's microphone indicator) while it
+ * records nothing. The hold is not a preference and is never persisted: it is
+ * the test's own lease, and must be released when the test stops. It cannot
+ * turn the mic on by itself — rewind_set_mic_enabled(0) still wins.
+ * Returns 0 on success. */
+int rewind_set_mic_hold(int hold);
+
 /* Enumerate audio INPUT devices (microphones) as a compact JSON array
  * written into `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
  *   [{"uid":"...","name":"...","default":true|false}]

@@ -85,6 +85,11 @@ external int rewind_set_mic_enabled(
   int enabled,
 );
 
+@ffi.Native<ffi.Int Function(ffi.Int)>()
+external int rewind_set_mic_hold(
+  int hold,
+);
+
 @ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Int)>()
 external int rewind_list_audio_inputs_json(
   ffi.Pointer<ffi.Char> json_out,

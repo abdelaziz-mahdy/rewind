@@ -235,6 +235,22 @@ obs_source_t *g_sysaudio = NULL;
 obs_source_t *g_mic = NULL;
 int g_mic_enabled = 0; /* preference; applied at init if set early */
 
+/* Whether rewind_capture_suspend() has released the capture session. Gates
+ * the mic alongside it (see rw_mic_should_exist): a suspended Rewind records
+ * nothing, and an open mic it never reads still lights the OS's microphone
+ * indicator — which reads, correctly, as the app listening while idle. */
+static int g_capture_suspended = 0;
+
+/* Set by rewind_set_mic_hold: keeps the mic alive while suspended, for the
+ * Settings mic test, which is the one feature that needs live input with
+ * nothing being recorded. */
+static int g_mic_hold = 0;
+
+/* Defined with the other mic plumbing below; declared here because the
+ * suspend/resume pair (further up the file) drives it too. */
+static int rw_sync_mic_source(void);
+static void rw_release_system_audio(void);
+
 /* Preferred microphone device uid (see rewind_set_mic_device), "" = system
  * default ("default" device_id, per platform). */
 char g_mic_device_uid[256] = "";
@@ -1136,6 +1152,19 @@ int rewind_stop_buffer(void) {
  * g_capture is what actually stops the stream — not merely detaching it
  * from the scene. */
 int rewind_capture_suspend(void) {
+    /* Set before the g_capture test: the mic and system audio must be
+     * released even on the idempotent path (already suspended, or suspended
+     * before a capture source was ever built), or a paused Rewind keeps the
+     * OS's indicators lit for its whole runtime. */
+    g_capture_suspended = 1;
+    rw_sync_mic_source();
+    /* System audio is a ScreenCaptureKit stream on macOS
+     * ("sck_audio_capture", see rw_plat_rebuild_system_audio) — capturing
+     * desktop or per-app audio IS screen capture as far as the OS is
+     * concerned. Leaving it up while suspended kept the screen-recording
+     * indicator lit next to a UI that said "paused", and left Rewind holding
+     * an SCK stream around the clock rather than only while it records. */
+    rw_release_system_audio();
     if (!g_initialized || !g_capture) { set_error(""); return 0; }
     rw_attach_capture(NULL);
     obs_source_release(g_capture);
@@ -1152,6 +1181,13 @@ int rewind_capture_suspend(void) {
  * g_window_id currently hold — the existing platform rebuild path, not a
  * parallel one. */
 int rewind_capture_resume(void) {
+    g_capture_suspended = 0;
+    /* Audio comes back before video: a resume is followed immediately by the
+     * buffer starting, and a clip whose first seconds have no sound is the
+     * failure this ordering avoids. */
+    rw_sync_mic_source();
+    rw_plat_rebuild_system_audio();
+    rw_apply_game_volume();
     if (!g_initialized || g_capture) { set_error(""); return 0; }
     return rw_plat_init_capture_source();
 }
@@ -1338,21 +1374,43 @@ int rewind_set_capture_quality(int fps, int max_height) {
     return 0;
 }
 
-int rewind_set_mic_enabled(int enabled) {
-    g_mic_enabled = enabled ? 1 : 0;
+/* Whether a mic source should exist RIGHT NOW.
+ *
+ * Three independent conditions, which is why this is one predicate rather
+ * than three call sites deciding for themselves:
+ *   - the user wants mic in their clips at all (g_mic_enabled),
+ *   - capture is not suspended (rewind_capture_suspend) — a paused buffer
+ *     records nothing, so holding the mic open would light the OS's
+ *     microphone indicator while Rewind is deliberately idle,
+ *   - unless the mic test is holding it open (rewind_set_mic_hold), which
+ *     is the one case that needs live input with nothing recording.
+ */
+/* Releases the system-audio source, if any. The rebuild counterpart lives in
+ * each platform backend (rw_plat_rebuild_system_audio) because WHAT to build
+ * is platform-specific; tearing it down is not. */
+static void rw_release_system_audio(void) {
+    if (!g_sysaudio) return;
+    obs_set_output_source(1, NULL);
+    obs_source_release(g_sysaudio);
+    g_sysaudio = NULL;
+}
 
-    /* Before init the preference is just remembered (applied by
-     * rewind_obs_init); after init, create/tear down the mic source live. */
-    if (!g_initialized) {
-        set_error("");
-        return 0;
-    }
-    if (g_mic_enabled && !g_mic) {
+static int rw_mic_should_exist(void) {
+    return g_mic_enabled && (!g_capture_suspended || g_mic_hold);
+}
+
+/* Creates or releases the mic source so it matches rw_mic_should_exist().
+ * Idempotent; returns non-zero only when a wanted source could not be made. */
+static int rw_sync_mic_source(void) {
+    if (!g_initialized) return 0; /* preference only; init applies it */
+
+    const int want = rw_mic_should_exist();
+    if (want && !g_mic) {
         g_mic = rw_plat_create_mic_source();
         if (!g_mic) return fail("microphone source failed (permission not granted?)");
         obs_set_output_source(2, g_mic);
         rw_apply_mic_prefs(g_mic);
-    } else if (!g_mic_enabled && g_mic) {
+    } else if (!want && g_mic) {
         /* Stop monitoring on the outgoing source before release — see
          * rewind_set_mic_monitoring's doc on this being a safety net
          * independent of whatever g_mic_monitoring itself is currently set
@@ -1368,6 +1426,16 @@ int rewind_set_mic_enabled(int enabled) {
     }
     set_error("");
     return 0;
+}
+
+int rewind_set_mic_enabled(int enabled) {
+    g_mic_enabled = enabled ? 1 : 0;
+    return rw_sync_mic_source();
+}
+
+int rewind_set_mic_hold(int hold) {
+    g_mic_hold = hold ? 1 : 0;
+    return rw_sync_mic_source();
 }
 
 int rewind_list_audio_inputs_json(char *json_out, int json_cap) {
@@ -1762,6 +1830,12 @@ int rewind_set_capture_window(uint32_t window_id) {
 
 int rewind_set_mic_enabled(int enabled) {
     (void)enabled;
+    set_error("");
+    return 0;
+}
+
+int rewind_set_mic_hold(int hold) {
+    (void)hold;
     set_error("");
     return 0;
 }

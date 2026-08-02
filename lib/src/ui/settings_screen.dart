@@ -79,6 +79,11 @@ class SettingsScreen extends StatefulWidget {
   /// working — the meter then reports levels as unavailable.
   final String? Function()? audioLevels;
 
+  /// Takes/releases the shim's mic hold around a mic test (see
+  /// `CaptureEngine.setMicHold`) — capture releases the microphone while
+  /// suspended, so the meter needs it back for the duration of a test.
+  final void Function(bool hold)? onMicHold;
+
   /// Called with `true` when the hotkey recorder starts listening and
   /// `false` whenever it stops (a captured combo, Escape, clicking away, or
   /// the field being torn down mid-record) — so the caller can suspend the
@@ -164,6 +169,7 @@ class SettingsScreen extends StatefulWidget {
     this.audioInputs = const [],
     this.onSetMicMonitoring,
     this.audioLevels,
+    this.onMicHold,
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
@@ -1255,7 +1261,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (widget.settings.captureMicrophone)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: MicTestMeter(pollLevels: widget.audioLevels),
+                child: MicTestMeter(
+                  pollLevels: widget.audioLevels,
+                  onMicHold: widget.onMicHold,
+                ),
               ),
             // Echo guidance lives IN the app (maintainer: "document it to
             // the users so they know what to do"): there is no echo

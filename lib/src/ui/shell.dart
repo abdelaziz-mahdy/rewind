@@ -117,6 +117,10 @@ class Shell extends StatefulWidget {
   /// `SettingsScreen.audioLevels`).
   final String? Function()? audioLevels;
 
+  /// Takes/releases the shim's mic hold around a Settings mic test — capture
+  /// releases the microphone while suspended (see `CaptureEngine.setMicHold`).
+  final void Function(bool hold)? onMicHold;
+
   /// Resolves the live `SteamStatsWatcher.status` notifier for the embedded
   /// Settings destination's Steam page — a GETTER, not the notifier itself,
   /// re-read every time Settings builds (a keyless watcher exists
@@ -160,6 +164,7 @@ class Shell extends StatefulWidget {
     this.onSetCaptureApp,
     this.onSetMicMonitoring,
     this.audioLevels,
+    this.onMicHold,
     this.thumbnails,
     this.ddragon,
     this.steamStatus,
@@ -392,6 +397,7 @@ class _ShellState extends State<Shell> {
           audioInputs: widget.audioInputs,
           onSetMicMonitoring: widget.onSetMicMonitoring,
           audioLevels: widget.audioLevels,
+          onMicHold: widget.onMicHold,
           onHotkeyRecording: widget.onHotkeyRecording,
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,

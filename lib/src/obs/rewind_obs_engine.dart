@@ -79,6 +79,8 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   bool setMicEnabled(bool enabled) => _obs.setMicEnabled(enabled) == 0;
+  @override
+  bool setMicHold(bool hold) => _obs.setMicHold(hold) == 0;
 
   @override
   List<AudioInputInfo> listAudioInputs() {

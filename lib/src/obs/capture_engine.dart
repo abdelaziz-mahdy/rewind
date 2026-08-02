@@ -106,6 +106,17 @@ abstract class CaptureEngine {
   /// failure.
   bool setMicEnabled(bool enabled);
 
+  /// Holds the microphone open while capture is suspended, for the Settings
+  /// mic test (see `rewind_set_mic_hold`).
+  ///
+  /// Suspending capture releases the mic, so a paused Rewind is not holding
+  /// the microphone — and lighting the OS's microphone indicator — while it
+  /// records nothing. The test is the one feature that needs live input with
+  /// nothing recording, so it takes this lease and MUST release it when it
+  /// stops. Not a preference, never persisted, and it cannot turn a disabled
+  /// mic on.
+  bool setMicHold(bool hold);
+
   /// Enumerate audio INPUT devices (microphones). Safe to call before
   /// [init]. Returns an empty list if enumeration failed, or on a platform
   /// where it isn't implemented yet (Windows/Linux currently — see
