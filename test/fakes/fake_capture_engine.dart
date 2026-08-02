@@ -200,6 +200,16 @@ class FakeCaptureEngine implements CaptureEngine {
   /// Last value passed to [setMicEnabled].
   bool? micEnabled;
 
+  @override
+  bool setMicHold(bool hold) {
+    calls.add('setMicHold:$hold');
+    micHold = hold;
+    return true;
+  }
+
+  /// Last value passed to [setMicHold] — the mic test's lease.
+  bool? micHold;
+
   /// Two fake audio inputs, mirroring what a real machine's microphones
   /// would report from `rewind_list_audio_inputs_json`. Mutable so tests can
   /// exercise the empty-list ("picker hides") case.

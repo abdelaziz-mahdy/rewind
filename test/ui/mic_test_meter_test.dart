@@ -137,4 +137,43 @@ void main() {
       await t.pump();
     });
   });
+
+  // Capture releases the microphone while suspended, so a paused Rewind is
+  // not holding the mic open. The test is the one thing that needs live input
+  // with nothing recording — it leases the mic, and must give it back.
+  group('the mic hold', () {
+    testWidgets('is taken while testing and released when testing stops',
+        (t) async {
+      final holds = <bool>[];
+      await t.pumpWidget(_app(MicTestMeter(
+        pollLevels: () => _levelsJson(micPeak: -20),
+        onMicHold: holds.add,
+      )));
+
+      expect(holds, isEmpty); // nothing held before the user asks
+
+      await t.tap(find.byKey(const ValueKey('micTestButton')));
+      await t.pump(const Duration(milliseconds: 150));
+      expect(holds, [true]);
+
+      await t.tap(find.byKey(const ValueKey('micTestButton')));
+      await t.pump();
+      expect(holds, [true, false]);
+    });
+
+    testWidgets('is released when the screen goes away mid-test', (t) async {
+      final holds = <bool>[];
+      await t.pumpWidget(_app(MicTestMeter(
+        pollLevels: () => _levelsJson(micPeak: -20),
+        onMicHold: holds.add,
+      )));
+      await t.tap(find.byKey(const ValueKey('micTestButton')));
+      await t.pump(const Duration(milliseconds: 150));
+
+      await t.pumpWidget(_app(const SizedBox()));
+      await t.pump();
+
+      expect(holds, [true, false]);
+    });
+  });
 }

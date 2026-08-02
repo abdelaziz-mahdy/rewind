@@ -577,6 +577,7 @@ Future<void> main() async {
     onSetCaptureApp: (bundleId) => engine?.setCaptureApp(bundleId),
     onSetMicMonitoring: (enabled) => engine?.setMicMonitoring(enabled),
     audioLevels: () => engine?.audioLevelsJson(),
+    onMicHold: (hold) => engine?.setMicHold(hold),
     onCleanUpStorage: () async {
       // Same enforcement as the automatic sweep, but user-triggered from
       // Settings → Storage; returns the removals so the tab can report
@@ -638,6 +639,10 @@ class RewindApp extends StatefulWidget {
   /// Forwarded to the embedded Settings destination's mic-test meter (see
   /// `SettingsScreen.audioLevels`).
   final String? Function()? audioLevels;
+
+  /// Takes/releases the shim's mic hold around a Settings mic test — capture
+  /// releases the microphone while suspended (see `CaptureEngine.setMicHold`).
+  final void Function(bool hold)? onMicHold;
   final Future<List<Clip>> Function()? onCleanUpStorage;
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
@@ -685,6 +690,7 @@ class RewindApp extends StatefulWidget {
     this.onSetCaptureApp,
     this.onSetMicMonitoring,
     this.audioLevels,
+    this.onMicHold,
     this.onCleanUpStorage,
     this.thumbnails,
     this.ddragon,
@@ -768,6 +774,7 @@ class _RewindAppState extends State<RewindApp> {
               onSetCaptureApp: widget.onSetCaptureApp,
               onSetMicMonitoring: widget.onSetMicMonitoring,
               audioLevels: widget.audioLevels,
+              onMicHold: widget.onMicHold,
               thumbnails: widget.thumbnails,
               ddragon: widget.ddragon,
               steamStatus: widget.steamStatus,
