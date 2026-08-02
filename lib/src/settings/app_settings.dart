@@ -131,6 +131,16 @@ class AppSettings {
   /// Null means NEVER (age cleanup off — the default).
   int? maxClipAgeDays;
 
+  /// How many days of diagnostic logs to keep — session logs AND the perf
+  /// samples beside them (see `pruneLogs`). Null means keep them forever.
+  ///
+  /// Separate from the clip limits above because it is a different kind of
+  /// data with a different failure mode: clips are the product, logs are
+  /// evidence. Two weeks is long enough to still hold the logs for "it broke
+  /// last weekend" while keeping the directory in the tens of megabytes —
+  /// perf sampling alone writes ~150 KB per session hour.
+  int? logRetentionDays;
+
   /// Whether the first-run getting-started guide has been completed (or
   /// skipped). False shows it on launch; the guide is re-openable from
   /// Settings regardless.
@@ -213,6 +223,7 @@ class AppSettings {
     this.micNoiseSuppression = true,
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
+    this.logRetentionDays = 14,
     this.onboardingComplete = false,
     this.clipsDirPath,
     this.captureOnlyInGame = true,
@@ -269,6 +280,7 @@ class AppSettings {
         'micNoiseSuppression': micNoiseSuppression,
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
+        'logRetentionDays': logRetentionDays,
         'onboardingComplete': onboardingComplete,
         'clipsDirPath': clipsDirPath,
         'captureOnlyInGame': captureOnlyInGame,
@@ -312,6 +324,12 @@ class AppSettings {
         maxStorageGb:
             j.containsKey('maxStorageGb') ? j['maxStorageGb'] as int? : 20,
         maxClipAgeDays: j['maxClipAgeDays'] as int?,
+        // Absent in settings written before this existed: take the default
+        // rather than reading null as "keep forever", which would silently
+        // turn cleanup OFF for every existing install.
+        logRetentionDays: j.containsKey('logRetentionDays')
+            ? j['logRetentionDays'] as int?
+            : 14,
         onboardingComplete: j['onboardingComplete'] as bool? ?? false,
         clipsDirPath: j['clipsDirPath'] as String?,
         // Absent key (a settings file predating this feature, or predating

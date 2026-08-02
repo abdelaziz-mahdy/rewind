@@ -1348,6 +1348,7 @@ void main() {
       await t.enterText(field, '');
       await blur(t);
       expect(settings.maxClipAgeDays, isNull);
+      expect(settings.logRetentionDays, AppSettings().logRetentionDays);
     });
 
     testWidgets(
@@ -2145,6 +2146,53 @@ void main() {
       await t.pumpAndSettle();
 
       expect(settings.hotkey, 'Ctrl+6');
+    });
+
+    testWidgets('log retention is settable, and empty means keep forever',
+        (t) async {
+      final settings = AppSettings();
+      var saved = 0;
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async => saved++,
+        displays: const [],
+        initialTab: 'Storage',
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(
+          t
+              .widget<TextField>(
+                  find.byKey(const ValueKey('logRetentionField')))
+              .controller!
+              .text,
+          '14');
+
+      await t.enterText(find.byKey(const ValueKey('logRetentionField')), '3');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pump();
+      expect(settings.logRetentionDays, 3);
+      expect(saved, greaterThan(0));
+
+      await t.enterText(find.byKey(const ValueKey('logRetentionField')), '');
+      await t.testTextInput.receiveAction(TextInputAction.done);
+      await t.pump();
+      expect(settings.logRetentionDays, isNull);
+    });
+
+    testWidgets('the logs usage readout reports what is on disk', (t) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        initialTab: 'Storage',
+        logsUsage: () => (files: 7, bytes: 3 * 1024 * 1024),
+      )));
+      await t.pump(const Duration(milliseconds: 200));
+
+      expect(find.byKey(const ValueKey('logsUsageLabel')), findsOneWidget);
+      expect(find.textContaining('7 file(s)'), findsOneWidget);
+      expect(find.textContaining('3.0 MB'), findsOneWidget);
     });
 
     testWidgets('Storage reset also re-seeds the visible fields', (t) async {
