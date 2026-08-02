@@ -329,6 +329,28 @@ int rewind_request_screen_permission(void);
  * rewind_obs_init. */
 int rewind_perf_stats_json(char *json_out, int json_cap);
 
+/* Drains libobs' OWN log (everything it passes to blog()) into `json_out` as
+ * a JSON array of {"level":<int>,"message":<string>} objects, oldest first,
+ * and clears what it returned.
+ *
+ * libobs writes its log through a handler that defaults to stderr — which a
+ * bundled .app discards, so the one component that knows WHY capture failed
+ * was the one component nothing recorded. `rewind_obs_init` installs a
+ * handler that keeps the last RW_LOG_RING_LINES lines instead; this hands
+ * them to Dart, which forwards them to the app log and the Logs screen.
+ *
+ * Levels are libobs' own (LOG_ERROR 100, LOG_WARNING 200, LOG_INFO 300,
+ * LOG_DEBUG 400). LOG_DEBUG is dropped at the handler — libobs emits it per
+ * frame in places, and the ring must survive long enough to still hold the
+ * lines around a failure by the time anything drains it.
+ *
+ * Safe to call at any time, from any thread, before or after
+ * rewind_obs_init (empty array when nothing is buffered, including in stub
+ * mode). Returns 0 on success, non-zero if `json_out`/`json_cap` are invalid
+ * (see rewind_last_error). Dropped lines — a ring that wrapped before a
+ * drain — are reported as a synthetic LOG_WARNING entry, never silently. */
+int rewind_drain_obs_log(char *json_out, int json_cap);
+
 #ifdef __cplusplus
 }
 #endif

@@ -52,6 +52,12 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
+- **libobs' own log now lands in the Logs screen and the log file.** When
+  capture fails, libobs is the component that knows why — a module that would
+  not load, an encoder that would not start, a stream the OS tore down — but
+  it writes to stderr, which a packaged app discards. Rewind could report
+  "buffer not running" while the reason was thrown away. A whole evening's
+  clips were lost to exactly that, and the logs could not say why.
 - **Deaths can be auto-clipped.** They were always detected — they feed each
   match's K/D — but there was no way to keep them, and nothing on screen said
   so. Reviewing how a fight went wrong is a real reason to save a clip, and

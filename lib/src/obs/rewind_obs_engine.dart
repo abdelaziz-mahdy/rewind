@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../log/log.dart';
 import 'app_info.dart';
 import 'audio_input_info.dart';
@@ -130,4 +132,27 @@ class RewindObsEngine implements CaptureEngine {
 
   @override
   String? perfStatsJson() => _obs.perfStatsJson();
+
+  @override
+  List<ObsLogLine> drainObsLog() {
+    final json = _obs.drainObsLogJson();
+    if (json == null) return const [];
+    try {
+      final list = jsonDecode(json);
+      if (list is! List) return const [];
+      return [
+        for (final e in list)
+          if (e is Map<String, dynamic>)
+            ObsLogLine(
+              level: (e['level'] as num?)?.toInt() ?? 300,
+              message: (e['message'] as String?) ?? '',
+            ),
+      ];
+    } on FormatException catch (err) {
+      // Never fatal, and never silent: the drain exists to explain failures,
+      // so a drain that cannot be read is itself worth one line.
+      talker.warning('Could not parse the libobs log drain: $err');
+      return const [];
+    }
+  }
 }

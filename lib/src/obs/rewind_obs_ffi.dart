@@ -19,6 +19,12 @@ import 'rewind_obs_bindings.g.dart' as b;
 /// rather than silently corrupting output if it's ever exceeded.
 const int _kDisplayListBufferSize = 4096;
 
+/// Big enough for the shim's whole log ring (256 lines x 512 chars) plus JSON
+/// escaping and per-entry overhead. Undersizing this would silently strand
+/// libobs log lines, which is the exact failure this whole path exists to
+/// stop.
+const int _kObsLogBufferSize = 320 * 1024;
+
 /// Size of the buffer allocated for `rewind_list_capturable_apps`'s JSON
 /// out-param. Larger than [_kDisplayListBufferSize]: a busy desktop can
 /// easily have a few dozen apps with on-screen windows, and each entry now
@@ -196,4 +202,10 @@ class RewindObs {
   /// periodic sampler that calls this.
   String? perfStatsJson() =>
       _jsonOut(_kPerfStatsBufferSize, b.rewind_perf_stats_json);
+
+  /// Raw JSON array from `rewind_drain_obs_log` — libobs' OWN log lines since
+  /// the last drain — or null on failure. Sized for the whole 256-line ring
+  /// the shim keeps, so a drain never has to leave lines behind.
+  String? drainObsLogJson() =>
+      _jsonOut(_kObsLogBufferSize, b.rewind_drain_obs_log);
 }

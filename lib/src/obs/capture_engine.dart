@@ -198,4 +198,24 @@ abstract class CaptureEngine {
   /// `PerfMonitor` (lib/src/log/perf_monitor.dart) — cheap enough to poll
   /// often, but not meant to be called on a hot path.
   String? perfStatsJson();
+
+  /// libobs' own log lines since the last call, oldest first — see
+  /// `rewind_drain_obs_log` in native/shim/rewind_obs.h.
+  ///
+  /// libobs logs the reason capture fails (a module that would not load, an
+  /// encoder that would not start, a stream that died); its default handler
+  /// writes to stderr, which a bundled .app throws away. Draining it into the
+  /// app's own log is what makes "buffer not running" answerable after the
+  /// fact instead of only reproducible live.
+  List<ObsLogLine> drainObsLog();
+}
+
+/// One line of libobs' own log (see [CaptureEngine.drainObsLog]).
+class ObsLogLine {
+  /// libobs' level: 100 error, 200 warning, 300 info (400 debug is dropped
+  /// in the shim — it is per-frame in places and would flood the ring).
+  final int level;
+  final String message;
+
+  const ObsLogLine({required this.level, required this.message});
 }
