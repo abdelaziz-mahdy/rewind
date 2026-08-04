@@ -120,6 +120,10 @@ class SettingsScreen extends StatefulWidget {
   /// just doesn't render the line.
   final ({int files, int bytes}) Function()? logsUsage;
 
+  /// Removes a game: forgets its config and stops detecting it, optionally
+  /// deleting its clips too (see `_RemoveGame`). Null hides the control.
+  final void Function(String gameId, {required bool deleteClips})? onRemoveGame;
+
   /// The round ✕ button's action: returns to whatever destination was
   /// showing before Settings was opened. Optional so existing callers/tests
   /// that don't care about closing don't need to wire it — the button still
@@ -179,6 +183,7 @@ class SettingsScreen extends StatefulWidget {
     this.library,
     this.onCleanUpStorage,
     this.logsUsage,
+    this.onRemoveGame,
     this.onClose,
     this.gameEntries = const [],
     this.initialGameId,
@@ -934,6 +939,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         settings: widget.settings,
         onChanged: widget.onChanged,
         onRenamed: _handleGameRenamed,
+        onRemove: widget.onRemoveGame == null
+            ? null
+            : (id, {required deleteClips}) {
+                widget.onRemoveGame!(id, deleteClips: deleteClips);
+                // The page for a game that no longer exists cannot stay open.
+                setState(() {
+                  _selectedGameId = null;
+                  _selectedGeneralPage = _SettingsPage.capture;
+                });
+              },
       );
     }
     return switch (_selectedGeneralPage!) {
@@ -2274,11 +2289,16 @@ class _GameSettingsPage extends StatefulWidget {
   /// don't care about the sidebar staying in sync.
   final void Function(String gameId, String displayName)? onRenamed;
 
+  /// Removes this game (see [_RemoveGame]). Null hides the control — a
+  /// caller with no way to actually forget a game must not offer to.
+  final void Function(String gameId, {required bool deleteClips})? onRemove;
+
   const _GameSettingsPage({
     required this.entry,
     required this.settings,
     required this.onChanged,
     this.onRenamed,
+    this.onRemove,
     super.key,
   });
 
@@ -2623,6 +2643,14 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
               'again. Its clips are not touched.',
           onReset: _resetGame,
         ),
+        if (widget.onRemove case final remove?)
+          _RemoveGame(
+            displayName: widget.entry.displayName,
+            clipCount: widget.entry.clipCount,
+            clipBytes: widget.entry.totalSizeBytes,
+            onRemove: ({required deleteClips}) =>
+                remove(widget.entry.gameId, deleteClips: deleteClips),
+          ),
       ],
     );
   }
@@ -3023,6 +3051,129 @@ class _ResetToDefaults extends StatelessWidget {
             label: const Text('Reset to defaults'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The destructive end of a game's settings page: forget this game.
+///
+/// Removal is TWO decisions, deliberately separated, because they are not
+/// equally reversible. Forgetting the game — its overrides, custom name,
+/// resolved icon, and the fact that anything watches it — costs nothing to
+/// undo (Add game puts it back). Deleting its clips cannot be undone at all,
+/// so it is an explicit opt-in checkbox rather than a consequence of the
+/// button someone pressed for the other reason (a wrong icon, or a game they
+/// no longer play).
+class _RemoveGame extends StatefulWidget {
+  final String displayName;
+
+  /// Clips filed under this game, so the dialog can name what deleting would
+  /// cost. Zero hides the checkbox entirely — an option that would do nothing
+  /// is worse than no option.
+  final int clipCount;
+  final int clipBytes;
+
+  /// Removes the game; `deleteClips` true also deletes [clipCount] clips.
+  final void Function({required bool deleteClips}) onRemove;
+
+  const _RemoveGame({
+    required this.displayName,
+    required this.clipCount,
+    required this.clipBytes,
+    required this.onRemove,
+  });
+
+  @override
+  State<_RemoveGame> createState() => _RemoveGameState();
+}
+
+class _RemoveGameState extends State<_RemoveGame> {
+  Future<void> _confirm(BuildContext context) async {
+    // Owned by the dialog's own StatefulBuilder, not this State: the
+    // checkbox must start clear on EVERY open, or a cancelled "yes, delete"
+    // would still be armed the next time the dialog is opened.
+    var deleteClips = false;
+    final hasClips = widget.clipCount > 0;
+    final tokens = context.rewindTokens;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Remove ${widget.displayName}?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Rewind forgets its settings, name and icon, and stops '
+                'detecting it. You can add it again at any time.',
+                style: Theme.of(context).textTheme.body,
+              ),
+              if (hasClips) ...[
+                const SizedBox(height: 16),
+                CheckboxListTile(
+                  key: const ValueKey('removeGameDeleteClips'),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: deleteClips,
+                  onChanged: (v) =>
+                      setDialogState(() => deleteClips = v ?? false),
+                  title: Text(
+                    'Also delete ${widget.clipCount} '
+                    '${widget.clipCount == 1 ? "clip" : "clips"} '
+                    '(${formatSize(widget.clipBytes)})',
+                    style: Theme.of(context).textTheme.body,
+                  ),
+                  subtitle: Text(
+                    'This cannot be undone. Left unchecked, the clips stay '
+                    'and the game keeps its place in the list.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMuted
+                        .copyWith(color: tokens.textMuted),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('removeGameConfirmButton'),
+              style: FilledButton.styleFrom(
+                backgroundColor: tokens.danger,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) widget.onRemove(deleteClips: deleteClips);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          key: const ValueKey('removeGameButton'),
+          onPressed: () => _confirm(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: context.rewindTokens.danger,
+          ),
+          icon: const Icon(Icons.delete_outline, size: 16),
+          label: const Text('Remove this game'),
+        ),
       ),
     );
   }
