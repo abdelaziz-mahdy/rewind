@@ -5,6 +5,7 @@ import 'package:rewind/src/settings/app_settings.dart';
 import 'package:rewind/src/settings/game_config.dart';
 import 'package:rewind/src/ui/game_directory.dart';
 import 'package:rewind/src/ui/settings_screen.dart';
+import 'package:rewind/src/ui/widgets/game_tile_avatar.dart';
 import 'package:rewind/src/ui/theme.dart';
 
 Widget _app(Widget child) => MaterialApp(theme: rewindTheme(), home: child);
@@ -767,6 +768,85 @@ void main() {
       await t.pumpAndSettle();
 
       expect(deleted, isFalse);
+    });
+  });
+
+  // A Wine/CrossOver game has no bundle icon to resolve and no Steam entry to
+  // look up, so it sits on a letter monogram forever; a resolved icon can
+  // also simply be the wrong one. Either way, the fix is to point at a file.
+  group('the icon picker', () {
+    const wineGame = GameEntry(
+      gameId: 'app:penguinhotel_win64_shipping',
+      displayName: 'PenguinHotel-Win64-Shipping',
+      detection: {DetectionMethod.processWatch},
+      processMatch: 'PenguinHotel-Win64-Shipping',
+      active: true,
+      clipCount: 0,
+      totalSizeBytes: 0,
+    );
+
+    Future<void> openGame(WidgetTester t, AppSettings settings) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: settings,
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: const [wineGame],
+      )));
+      await t.tap(find.byKey(
+          const ValueKey('settingsGame:app:penguinhotel_win64_shipping')));
+      await t.pump();
+    }
+
+    testWidgets('offers a choice, and nothing to clear until one is made',
+        (t) async {
+      await openGame(t, AppSettings());
+
+      expect(
+          find.byKey(const ValueKey('chooseGameIconButton')), findsOneWidget);
+      expect(find.byKey(const ValueKey('clearGameIconButton')), findsNothing);
+      expect(find.textContaining('From the game, when Rewind can find one'),
+          findsOneWidget);
+    });
+
+    testWidgets('a chosen icon can be cleared, and says it is yours',
+        (t) async {
+      final settings = AppSettings()
+        ..setConfig(GameConfig(
+          gameId: 'app:penguinhotel_win64_shipping',
+          iconPath: '/tmp/penguin.png',
+          iconIsUserChosen: true,
+        ));
+      await openGame(t, settings);
+
+      expect(find.text('Your picture'), findsOneWidget);
+      expect(
+          t
+              .widget<GameTileAvatar>(
+                  find.byKey(const ValueKey('gameIconPreview')))
+              .iconPath,
+          '/tmp/penguin.png');
+
+      await t.tap(find.byKey(const ValueKey('clearGameIconButton')));
+      await t.pump();
+
+      final cfg = settings.allConfigs
+          .firstWhere((c) => c.gameId == 'app:penguinhotel_win64_shipping');
+      expect(cfg.iconPath, isNull);
+      expect(cfg.iconIsUserChosen, isFalse);
+      expect(find.byKey(const ValueKey('clearGameIconButton')), findsNothing);
+    });
+
+    // Clear only undoes a USER pick: clearing a resolved icon would be
+    // meaningless, since the next resolution puts it straight back.
+    testWidgets('a resolved icon shows no Clear button', (t) async {
+      final settings = AppSettings()
+        ..setConfig(GameConfig(
+          gameId: 'app:penguinhotel_win64_shipping',
+          iconPath: '/tmp/resolved.icns',
+        ));
+      await openGame(t, settings);
+
+      expect(find.byKey(const ValueKey('clearGameIconButton')), findsNothing);
     });
   });
 }

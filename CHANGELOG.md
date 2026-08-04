@@ -52,7 +52,20 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
-- **You can remove a game** (Settings → the game → Remove). It forgets that
+- **Windows/Wine games show their real icon.** Rewind reads the icon out of
+  the game's own `.exe`, but only understood the modern PNG form — every icon
+  stored the classic way (most of them: three of four executables on the test
+  machine) came back empty and left a letter monogram, indistinguishable from
+  a game that has no icon at all. Both forms are read now.
+- **Games get their real icon and name on their own.** A game added from the
+  "is running" banner or by picking it as a capture source kept a letter
+  monogram forever — icon resolution only ran on one of the three ways to add
+  a game, and both icon sources (the Steam library, and the icon embedded in
+  the game's own .exe) need the game to be running. Rewind now resolves one
+  the next time the game is live. You can also point at your own picture, on
+  the game's settings page, for when there is nothing to find or the resolved
+  icon is wrong.
+ **You can remove a game** (Settings → the game → Remove). It forgets that
   game's settings, custom name and icon — the fix for a wrong icon — and stops
   detecting it for good. Previously nothing could undo adding a game: "Reset
   to defaults" only cleared the overrides and left the game in the list, still
