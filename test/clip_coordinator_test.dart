@@ -378,11 +378,23 @@ void main() {
       await registry.tickNow();
       await Future<void>.delayed(Duration.zero);
 
+      int saves() => engine.calls.where((c) => c == 'save').length;
+
       league.emit(GameEventKind.kill);
+      final before = saves();
       await coordinator.onHotkey();
-      expect(engine.calls.where((c) => c == 'save'), hasLength(1));
+
+      // A save landed DURING the hotkey call — that is what "immediately"
+      // means here. Deliberately not "exactly one save exists by now": the
+      // burst's own 60 ms timer is real wall-clock, and onHotkey does real
+      // file IO, so on a slow machine the burst can legitimately flush while
+      // the manual save is still writing. That raced with the assertion on
+      // Windows CI and failed the suite twice; it says nothing about whether
+      // the manual save waited for the burst, which is the actual claim.
+      expect(saves(), greaterThan(before));
+
       await settleBurst(); // pending burst still flushes on its own
-      expect(engine.calls.where((c) => c == 'save'), hasLength(2));
+      expect(saves(), 2, reason: 'the manual save and the burst, once each');
     });
 
     test(
