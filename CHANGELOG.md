@@ -52,6 +52,13 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
+- **You decide how long Rewind keeps its own logs** (Settings → Storage →
+  Diagnostic logs), with the current size shown next to it. Retention used to
+  be two unrelated hardcoded rules — the last 10 session logs, and 14 days of
+  performance samples — so "how long does Rewind keep logs?" had two answers
+  and neither was yours to set. They now age out together on one policy,
+  applied the moment you change it rather than at the next launch. Blank keeps
+  them forever.
 - **libobs' own log now lands in the Logs screen and the log file.** When
   capture fails, libobs is the component that knows why — a module that would
   not load, an encoder that would not start, a stream the OS tore down — but

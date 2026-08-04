@@ -115,6 +115,11 @@ class SettingsScreen extends StatefulWidget {
   /// callers without a StorageManager).
   final Future<List<Clip>> Function()? onCleanUpStorage;
 
+  /// Current size of the diagnostic logs (see `logsUsage`), for the Storage
+  /// page's readout. Optional — a caller without a logs directory (tests)
+  /// just doesn't render the line.
+  final ({int files, int bytes}) Function()? logsUsage;
+
   /// The round ✕ button's action: returns to whatever destination was
   /// showing before Settings was opened. Optional so existing callers/tests
   /// that don't care about closing don't need to wire it — the button still
@@ -173,6 +178,7 @@ class SettingsScreen extends StatefulWidget {
     this.onHotkeyRecording,
     this.library,
     this.onCleanUpStorage,
+    this.logsUsage,
     this.onClose,
     this.gameEntries = const [],
     this.initialGameId,
@@ -211,8 +217,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _customBufferController;
   late final TextEditingController _maxStorageController;
   late final TextEditingController _maxAgeController;
+  late final TextEditingController _logRetentionController;
   late final FocusNode _maxStorageFocus;
   late final FocusNode _maxAgeFocus;
+  late final FocusNode _logRetentionFocus;
   late final TextEditingController _steamIdController;
   late final TextEditingController _steamApiKeyController;
   late final FocusNode _steamIdFocus;
@@ -319,6 +327,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..addListener(() {
         if (!_maxStorageFocus.hasFocus) _commitMaxStorage();
       });
+    _logRetentionController = TextEditingController(
+        text: widget.settings.logRetentionDays?.toString() ?? '');
+    _logRetentionFocus = FocusNode()
+      ..addListener(() {
+        if (!_logRetentionFocus.hasFocus) _commitLogRetention();
+      });
     _maxAgeFocus = FocusNode()
       ..addListener(() {
         if (!_maxAgeFocus.hasFocus) _commitMaxAge();
@@ -399,15 +413,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // screen counts as "moving out of the field", not as discarding it.
     _commitMaxStorage();
     _commitMaxAge();
+    _commitLogRetention();
     _commitSteamId();
     _commitSteamApiKey();
     _maxStorageFocus.dispose();
     _maxAgeFocus.dispose();
+    _logRetentionFocus.dispose();
     _steamIdFocus.dispose();
     _steamApiKeyFocus.dispose();
     _customBufferController.dispose();
     _maxStorageController.dispose();
     _maxAgeController.dispose();
+    _logRetentionController.dispose();
     _steamIdController.dispose();
     _steamApiKeyController.dispose();
     super.dispose();
@@ -485,6 +502,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _maxAgeController,
       widget.settings.maxClipAgeDays,
       (days) => widget.settings.maxClipAgeDays = days);
+
+  void _commitLogRetention() => _commitLimit(
+      _logRetentionController,
+      widget.settings.logRetentionDays,
+      (days) => widget.settings.logRetentionDays = days);
 
   /// Commits the SteamID field on blur, normalizing a pasted profile URL
   /// down to its trailing id/vanity segment first (a bare id64 or vanity
@@ -1557,6 +1579,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       const SizedBox(height: 28),
       _SettingsSection(
+        title: 'Diagnostic logs',
+        description: 'What Rewind writes about itself — the Logs screen, and '
+            'the performance samples beside it. Kept so a problem can be '
+            'explained after the fact; never uploaded anywhere.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LimitFieldRow(
+              label: 'Delete logs after',
+              fieldKey: const ValueKey('logRetentionField'),
+              controller: _logRetentionController,
+              focusNode: _logRetentionFocus,
+              suffix: 'days',
+              emptyLabel: 'Keep forever',
+            ),
+            if (widget.logsUsage case final usage?)
+              _TrailingRow(
+                label: 'On disk now',
+                hint: '${usage().files} file(s) · '
+                    '${formatSize(usage().bytes)}',
+                hintKey: const ValueKey('logsUsageLabel'),
+                trailing: const SizedBox.shrink(),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 28),
+      _SettingsSection(
         title: 'Location',
         child: _TrailingRow(
           label: 'Recordings folder',
@@ -1589,12 +1639,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _ResetToDefaults(
         describe: 'The storage limit goes back to 20 GB, clips stop expiring '
-            'by age, and the recordings folder goes back to the default '
-            'location. No clips are deleted.',
+            'by age, logs go back to 14 days, and the recordings folder goes '
+            'back to the default location. No clips are deleted.',
         onReset: () {
           _resetFields((live, fresh) {
             live.maxStorageGb = fresh.maxStorageGb;
             live.maxClipAgeDays = fresh.maxClipAgeDays;
+            live.logRetentionDays = fresh.logRetentionDays;
             live.clipsDirPath = fresh.clipsDirPath;
           });
           // The text fields hold their own copies — re-seed them or the page
@@ -1603,6 +1654,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               widget.settings.maxStorageGb?.toString() ?? '';
           _maxAgeController.text =
               widget.settings.maxClipAgeDays?.toString() ?? '';
+          _logRetentionController.text =
+              widget.settings.logRetentionDays?.toString() ?? '';
         },
       ),
     ]);

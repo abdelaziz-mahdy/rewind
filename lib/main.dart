@@ -42,6 +42,7 @@ import 'src/ui/onboarding_screen.dart';
 import 'src/ui/shell.dart';
 import 'src/ui/shell_destination.dart';
 import 'src/ui/theme.dart';
+import 'src/ui/widgets/clip_tile.dart' show formatSize;
 
 /// Reveals the clips folder in the OS file manager — shared by the Home
 /// AppBar/empty-state buttons and the tray's "Open clips folder" item.
@@ -105,6 +106,17 @@ Future<void> main() async {
   startFileLogging(supportDir);
   final store = SettingsStore(supportDir);
   final settings = await store.load();
+  // Retention is the user's (Settings -> Storage), so it can only be applied
+  // once settings are loaded — startFileLogging's own cap is just a
+  // runaway-growth backstop. Covers perf samples too, which are the bulk of
+  // the bytes.
+  final logsDir = Directory(p.join(supportDir.path, 'logs'));
+  final prunedLogs = pruneLogs(logsDir, keepDays: settings.logRetentionDays);
+  if (prunedLogs.files > 0) {
+    talker.info('Pruned ${prunedLogs.files} diagnostic log file(s), freeing '
+        '${formatSize(prunedLogs.bytes)} (keeping '
+        '${settings.logRetentionDays} days).');
+  }
   // Custom recordings folder (Settings → Storage), falling back to the
   // per-OS default when unset — or when the override can't be created
   // (deleted volume, permissions): losing recordings silently is worse
@@ -295,7 +307,7 @@ Future<void> main() async {
   PerfMonitor(
     engine: engine,
     activeGameGetter: () => coordinator.activeGame.value,
-    logsDir: Directory(p.join(supportDir.path, 'logs')),
+    logsDir: logsDir,
   ).start();
 
   final hotkeys = HotkeyService();
@@ -533,6 +545,14 @@ Future<void> main() async {
     exeResolver: exeResolver,
     onSettingsChanged: (s) async {
       await store.save(s);
+      // Apply the log-retention policy the moment it changes, rather than at
+      // the next launch: a user who has just shortened it is asking for the
+      // disk back now.
+      final pruned = pruneLogs(logsDir, keepDays: s.logRetentionDays);
+      if (pruned.files > 0) {
+        talker.info('Pruned ${pruned.files} diagnostic log file(s), freeing '
+            '${formatSize(pruned.bytes)}.');
+      }
       // Apply the (possibly per-game) buffer length to the live engine —
       // without this, a default-length edit only takes effect on the next
       // game-activity transition or app restart.
@@ -578,6 +598,7 @@ Future<void> main() async {
     onSetMicMonitoring: (enabled) => engine?.setMicMonitoring(enabled),
     audioLevels: () => engine?.audioLevelsJson(),
     onMicHold: (hold) => engine?.setMicHold(hold),
+    logsUsageStat: () => logsUsage(logsDir),
     onCleanUpStorage: () async {
       // Same enforcement as the automatic sweep, but user-triggered from
       // Settings → Storage; returns the removals so the tab can report
@@ -644,6 +665,9 @@ class RewindApp extends StatefulWidget {
   /// releases the microphone while suspended (see `CaptureEngine.setMicHold`).
   final void Function(bool hold)? onMicHold;
   final Future<List<Clip>> Function()? onCleanUpStorage;
+
+  /// Current diagnostic-log size for Settings -> Storage (see `logsUsage`).
+  final ({int files, int bytes}) Function()? logsUsageStat;
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
 
@@ -692,6 +716,7 @@ class RewindApp extends StatefulWidget {
     this.audioLevels,
     this.onMicHold,
     this.onCleanUpStorage,
+    this.logsUsageStat,
     this.thumbnails,
     this.ddragon,
     this.engine,
@@ -771,6 +796,7 @@ class _RewindAppState extends State<RewindApp> {
               settingsRevision: widget.settingsRevision,
               onHotkeyRecording: widget.onHotkeyRecording,
               onCleanUpStorage: widget.onCleanUpStorage,
+              logsUsageStat: widget.logsUsageStat,
               onSetCaptureApp: widget.onSetCaptureApp,
               onSetMicMonitoring: widget.onSetMicMonitoring,
               audioLevels: widget.audioLevels,

@@ -8,12 +8,6 @@ import '../obs/capture_engine.dart';
 import 'obs_log.dart';
 import 'log.dart';
 
-/// How many days' worth of perf-*.jsonl files to keep; older ones are
-/// pruned at [start]. Same spirit as file_log.dart's log retention, but
-/// age-based rather than count-based — a perf file is tiny (one line every
-/// 10s) so "last 14 days" is a more useful cutoff than "last N sessions".
-const _keepDays = 14;
-
 /// Always-on, lightweight sampler for diagnosing "Rewind is straining the
 /// machine" reports: Rewind's own CPU%/RSS, and — the actually load-bearing
 /// signal — libobs's frame-health counters (lagged/skipped frames mean
@@ -63,13 +57,16 @@ class PerfMonitor {
         _interval = interval,
         _now = now;
 
-  /// Opens this session's JSONL file, prunes perf files older than
-  /// [_keepDays], and begins periodic sampling. Idempotent — a second call
-  /// is a no-op.
+  /// Opens this session's JSONL file and begins periodic sampling.
+  /// Idempotent — a second call is a no-op.
+  ///
+  /// Retention is NOT this class's job any more: `pruneLogs` ages out perf
+  /// samples and session logs together, under the user's own
+  /// `AppSettings.logRetentionDays`. Two hardcoded rules living in two files
+  /// meant "how long does Rewind keep logs?" had two different answers.
   void start() {
     if (_timer != null) return;
     _logsDir.createSync(recursive: true);
-    _pruneOldFiles();
 
     final stamp =
         _now().toIso8601String().replaceAll(':', '-').split('.').first;
@@ -84,26 +81,6 @@ class PerfMonitor {
   void dispose() {
     _timer?.cancel();
     _timer = null;
-  }
-
-  void _pruneOldFiles() {
-    final cutoff = _now().subtract(const Duration(days: _keepDays));
-    List<FileSystemEntity> existing;
-    try {
-      existing = _logsDir.listSync();
-    } catch (_) {
-      return;
-    }
-    for (final entry in existing) {
-      if (entry is! File) continue;
-      final name = p.basename(entry.path);
-      if (!name.startsWith('perf-') || !name.endsWith('.jsonl')) continue;
-      try {
-        if (entry.lastModifiedSync().isBefore(cutoff)) entry.deleteSync();
-      } catch (_) {
-        // Never let a stale/locked file stop the sweep or the sampler.
-      }
-    }
   }
 
   /// Takes one sample right now: reads [CaptureEngine.perfStatsJson],

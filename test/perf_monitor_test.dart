@@ -133,20 +133,16 @@ void main() {
     expect(line['game'], 'valorant');
   });
 
-  test('start() prunes perf-*.jsonl files older than 14 days, leaves others',
-      () {
+  // Retention moved OUT of this class: `pruneLogs` (file_log.dart) ages perf
+  // samples and session logs out together under the user's own
+  // AppSettings.logRetentionDays. Two hardcoded rules in two files meant "how
+  // long does Rewind keep logs?" had two different answers, and neither was
+  // the user's to set. See test/file_log_prune_test.dart for the policy.
+  test('start() does NOT delete anything — retention is pruneLogs\' job', () {
     final now = DateTime(2026, 7, 18);
-    final old = File(p.join(tmp.path, 'perf-old.jsonl'))
+    final ancient = File(p.join(tmp.path, 'perf-old.jsonl'))
       ..writeAsStringSync('{}');
-    old.setLastModifiedSync(now.subtract(const Duration(days: 20)));
-    final recent = File(p.join(tmp.path, 'perf-recent.jsonl'))
-      ..writeAsStringSync('{}');
-    recent.setLastModifiedSync(now.subtract(const Duration(days: 2)));
-    // Not a perf file — a stale one of these must never be touched by this
-    // sweep (that's file_log.dart's job, over a different retention rule).
-    final unrelated = File(p.join(tmp.path, 'rewind-session.log'))
-      ..writeAsStringSync('x');
-    unrelated.setLastModifiedSync(now.subtract(const Duration(days: 30)));
+    ancient.setLastModifiedSync(now.subtract(const Duration(days: 400)));
 
     final monitor = PerfMonitor(
       engine: null,
@@ -157,9 +153,7 @@ void main() {
     monitor.start();
     monitor.dispose();
 
-    expect(old.existsSync(), isFalse);
-    expect(recent.existsSync(), isTrue);
-    expect(unrelated.existsSync(), isTrue);
+    expect(ancient.existsSync(), isTrue);
   });
 
   test('parses render/gpu/thermal fields into the JSONL line when present', () {
