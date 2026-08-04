@@ -131,6 +131,19 @@ class AppSettings {
   /// Null means NEVER (age cleanup off — the default).
   int? maxClipAgeDays;
 
+  /// Games the user has explicitly removed: never detected, never watched,
+  /// and kept out of the game list.
+  ///
+  /// Distinct from "has no config row", which is only the ABSENCE of
+  /// overrides: every [popularGamesCatalog] title is watched whether or not
+  /// it has one (see `buildSources`), so a removed catalog game would
+  /// otherwise reappear the moment it was launched — the removal would look
+  /// like it silently failed. Removal has to be recorded as its own
+  /// decision.
+  ///
+  /// Re-adding a game from Add game clears its entry.
+  Set<String> ignoredGameIds;
+
   /// How many days of diagnostic logs to keep — session logs AND the perf
   /// samples beside them (see `pruneLogs`). Null means keep them forever.
   ///
@@ -224,6 +237,7 @@ class AppSettings {
     this.maxStorageGb = 20,
     this.maxClipAgeDays,
     this.logRetentionDays = 14,
+    Set<String>? ignoredGameIds,
     this.onboardingComplete = false,
     this.clipsDirPath,
     this.captureOnlyInGame = true,
@@ -232,7 +246,8 @@ class AppSettings {
     this.clipSteamAchievements = true,
     this.playFeedbackSounds = true,
     Map<String, GameConfig>? perGame,
-  }) : _perGame = perGame ?? {};
+  })  : ignoredGameIds = ignoredGameIds ?? <String>{},
+        _perGame = perGame ?? {};
 
   /// Resolve config for a game, falling back to defaults.
   GameConfig configFor(String gameId) => _perGame.putIfAbsent(
@@ -259,6 +274,12 @@ class AppSettings {
 
   void setConfig(GameConfig config) => _perGame[config.gameId] = config;
 
+  /// Forgets everything Rewind learned about a game: its overrides, custom
+  /// name and resolved icon. Detection is a separate axis — see
+  /// [ignoredGameIds], which is what actually stops a catalog game coming
+  /// back the moment it runs again.
+  void removeConfig(String gameId) => _perGame.remove(gameId);
+
   Iterable<GameConfig> get allConfigs => _perGame.values;
 
   Map<String, dynamic> toJson() => {
@@ -281,6 +302,7 @@ class AppSettings {
         'maxStorageGb': maxStorageGb,
         'maxClipAgeDays': maxClipAgeDays,
         'logRetentionDays': logRetentionDays,
+        'ignoredGameIds': ignoredGameIds.toList()..sort(),
         'onboardingComplete': onboardingComplete,
         'clipsDirPath': clipsDirPath,
         'captureOnlyInGame': captureOnlyInGame,
@@ -327,6 +349,10 @@ class AppSettings {
         // Absent in settings written before this existed: take the default
         // rather than reading null as "keep forever", which would silently
         // turn cleanup OFF for every existing install.
+        ignoredGameIds: {
+          for (final id in (j['ignoredGameIds'] as List?) ?? const [])
+            if (id is String) id,
+        },
         logRetentionDays: j.containsKey('logRetentionDays')
             ? j['logRetentionDays'] as int?
             : 14,

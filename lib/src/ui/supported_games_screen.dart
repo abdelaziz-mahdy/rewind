@@ -146,10 +146,20 @@ class SupportedGamesScreen extends StatefulWidget {
 class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
   void _addGame(String gameId) {
     final settings = widget.coordinator.settings;
+    _unremove(settings, gameId);
     final cfg = settings.configFor(gameId);
     settings.setConfig(cfg);
     setState(() {});
     widget.onSettingsChanged(settings);
+  }
+
+  /// Adding a game the user previously removed has to clear that removal, or
+  /// the row would come back while nothing watched it — the Add would look
+  /// like it silently failed. Covers every id of a merged row (League owns
+  /// two), since Remove ignores all of them.
+  void _unremove(AppSettings settings, String gameId) {
+    settings.ignoredGameIds
+        .removeAll({gameId, ...descriptorFor(gameId).mergedGameIds});
   }
 
   /// The real Steam art for a running app that has no OS bundle icon — the
@@ -177,6 +187,7 @@ class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
       exeIcon = await widget.exeResolver?.iconForApp(a);
     }
     if (!mounted) return;
+    _unremove(settings, gameIdForApp(a));
     learnAppAsGame(settings, a, art: art, iconPath: exeIcon);
     setState(() {});
     widget.onSettingsChanged(settings);

@@ -107,6 +107,28 @@ class GameRegistry {
   /// double-emit every event for every OTHER source.
   void _mergeEventsOf(GameEventSource s) => s.events().listen(_merged.add);
 
+  /// Drops every source whose gameId is in [gameIds] — the live half of
+  /// removing a game (Settings -> a game -> Remove). Without this, removal
+  /// only took effect at the next launch: `buildSources` would stop building
+  /// the watcher, but the one already registered kept polling and kept
+  /// reporting the game as running.
+  ///
+  /// A source that is currently active is stopped and reported inactive
+  /// first, so anything downstream of [activity] (the buffer policy, the
+  /// rail's live dots, capture auto-switch) sees the game go away instead of
+  /// being left believing it is still running forever.
+  Future<void> removeSources(Set<String> gameIds) async {
+    if (gameIds.isEmpty) return;
+    final doomed = _sources.where((s) => gameIds.contains(s.gameId)).toList();
+    for (final s in doomed) {
+      if (_active.remove(s.gameId)) {
+        await s.stop();
+        _activity.add(GameActivity(s.gameId, s.displayName, false));
+      }
+      _sources.remove(s);
+    }
+  }
+
   Future<void> _tick() async {
     for (final s in _sources) {
       final running = await s.isGameRunning();
