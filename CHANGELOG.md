@@ -52,6 +52,13 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
+- **You can remove a game** (Settings → the game → Remove). It forgets that
+  game's settings, custom name and icon — the fix for a wrong icon — and stops
+  detecting it for good. Previously nothing could undo adding a game: "Reset
+  to defaults" only cleared the overrides and left the game in the list, still
+  watched. Clips are a separate, explicit choice: the confirm dialog offers to
+  delete them, and left unchecked they stay exactly where they are. Adding the
+  game again brings it back.
 - **You decide how long Rewind keeps its own logs** (Settings → Storage →
   Diagnostic logs), with the current size shown next to it. Retention used to
   be two unrelated hardcoded rules — the last 10 session logs, and 14 days of
