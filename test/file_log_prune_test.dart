@@ -18,14 +18,16 @@ void main() {
   });
 
   File write(String name, {required int daysOld, int bytes = 100}) {
-    final f = File(p.join(dir.path, name))..writeAsBytesSync(List.filled(bytes, 0));
+    final f = File(p.join(dir.path, name))
+      ..writeAsBytesSync(List.filled(bytes, 0));
     f.setLastModifiedSync(now.subtract(Duration(days: daysOld)));
     return f;
   }
 
   test('deletes both session logs and perf samples past the cutoff', () {
     final oldLog = write('rewind-2026-07-01T10-00-00.log', daysOld: 30);
-    final oldPerf = write('perf-2026-07-01T10-00-00.jsonl', daysOld: 30, bytes: 500);
+    final oldPerf =
+        write('perf-2026-07-01T10-00-00.jsonl', daysOld: 30, bytes: 500);
     final freshLog = write('rewind-2026-08-01T10-00-00.log', daysOld: 1);
     final freshPerf = write('perf-2026-08-01T10-00-00.jsonl', daysOld: 1);
 
