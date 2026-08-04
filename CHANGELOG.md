@@ -52,6 +52,11 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
+- **Windows/Wine games show their real icon.** Rewind reads the icon out of
+  the game's own `.exe`, but only understood the modern PNG form — every icon
+  stored the classic way (most of them: three of four executables on the test
+  machine) came back empty and left a letter monogram, indistinguishable from
+  a game that has no icon at all. Both forms are read now.
 - **Games get their real icon and name on their own.** A game added from the
   "is running" banner or by picking it as a capture source kept a letter
   monogram forever — icon resolution only ran on one of the three ways to add

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'dib_to_png.dart';
+
 /// Extracts a PNG-encoded application icon embedded in a Windows PE
 /// executable (`.exe`), or null when there isn't one this reader can use.
 ///
@@ -7,9 +9,8 @@ import 'dart:typed_data';
 /// no Steam library art, so the rail would show a letter monogram. Their real
 /// icon lives inside the `.exe` itself as a Windows resource — this walks the
 /// PE resource tree to the best `RT_GROUP_ICON` and returns its largest
-/// `RT_ICON` image WHEN that image is PNG-encoded (modern icons ship a
-/// 256×256 PNG). Legacy BMP/DIB icon images are skipped (they'd need a
-/// bespoke decode and a monogram is a fine fallback) — this reader never
+/// `RT_ICON` image: a PNG blob as-is (modern 256×256 icons ship that way), or
+/// a classic DIB converted to PNG (see `dibIconToPng`). This reader never
 /// throws and never returns a broken image; anything unexpected → null.
 ///
 /// Pure Dart, no native code — reads bytes only, like a file manager showing
@@ -100,10 +101,17 @@ class _Pe {
     if (iconLeaf == null) return null;
     final img = _dataBytes(iconLeaf);
     if (img == null || img.length < 4) return null;
+    var isPng = true;
     for (var i = 0; i < 4; i++) {
-      if (img[i] != _pngMagic[i]) return null; // Not PNG (BMP DIB) — skip.
+      if (img[i] != _pngMagic[i]) {
+        isPng = false;
+        break;
+      }
     }
-    return img;
+    // The other, more common encoding: a raw DIB. Skipping it made a game
+    // whose icon is stored the old way indistinguishable from one with no
+    // icon at all.
+    return isPng ? img : dibIconToPng(img);
   }
 
   /// The subdirectory offset for [id] directly under the directory at
