@@ -2539,6 +2539,40 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
           ),
           _sectionDivider(context),
         ],
+        _TrailingRow(
+          label: 'Icon',
+          hint: _userIconPath != null
+              ? 'Your picture'
+              : 'From the game, when Rewind can find one',
+          hintKey: const ValueKey('gameIconHint'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GameTileAvatar(
+                key: const ValueKey('gameIconPreview'),
+                gameId: widget.entry.gameId,
+                displayName: _displayName,
+                iconPath: _iconPath,
+                size: 28,
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                key: const ValueKey('chooseGameIconButton'),
+                onPressed: _pickIcon,
+                child: const Text('Choose…'),
+              ),
+              if (_userIconPath != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  key: const ValueKey('clearGameIconButton'),
+                  onPressed: _clearIcon,
+                  child: const Text('Clear'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        _sectionDivider(context),
         // One "Capture mode" section for every game — how it's captured. A
         // game with an event feed gets the Manual/Highlights choice + event
         // matrix; a process-detected/desktop game (no feed) gets a plain
@@ -2655,10 +2689,55 @@ class _GameSettingsPageState extends State<_GameSettingsPage> {
     );
   }
 
+  /// This game's icon as it should render right now — the user's pick when
+  /// there is one, else whatever Rewind resolved for the row.
+  String? get _iconPath => _userIconPath ?? widget.entry.iconPath;
+
+  /// Only a USER-CHOSEN icon, which is the one the Clear button can undo:
+  /// clearing a resolved icon would be meaningless, since the next
+  /// resolution would put it straight back.
+  String? get _userIconPath {
+    final cfg = widget.settings.allConfigs
+        .where((c) => c.gameId == widget.entry.gameId)
+        .firstOrNull;
+    return (cfg?.iconIsUserChosen ?? false) ? cfg?.iconPath : null;
+  }
+
+  /// A Wine/CrossOver game has no bundle icon to resolve and no Steam entry
+  /// to look up, so it sits on a letter monogram forever — and a resolved
+  /// icon can simply be the wrong one. Either way the fix is the same: let
+  /// the user point at a picture.
+  Future<void> _pickIcon() async {
+    const group = XTypeGroup(
+      label: 'Images',
+      extensions: ['png', 'jpg', 'jpeg', 'icns', 'ico'],
+    );
+    final file = await openFile(acceptedTypeGroups: const [group]);
+    if (file == null || !mounted) return; // cancelled
+    final cfg = widget.settings.configFor(widget.entry.gameId)
+      ..iconPath = file.path
+      ..iconIsUserChosen = true;
+    widget.settings.setConfig(cfg);
+    setState(() {});
+    await widget.onChanged(widget.settings);
+  }
+
+  void _clearIcon() {
+    final cfg = widget.settings.configFor(widget.entry.gameId)
+      ..iconPath = null
+      ..iconIsUserChosen = false;
+    widget.settings.setConfig(cfg);
+    setState(() {});
+    widget.onChanged(widget.settings);
+  }
+
   /// Drops this game's overrides entirely rather than writing default values
   /// into them: a game with no config row is exactly "follows the defaults",
   /// which is what reset means here.
   void _resetGame() {
+    // A fresh config carries no iconPath either, so reset drops a chosen
+    // icon along with the rest of the overrides — "follows the defaults"
+    // includes the icon Rewind would resolve on its own.
     final fresh = GameConfig(
       gameId: widget.entry.gameId,
       bufferSeconds: widget.settings.defaultBufferSeconds,

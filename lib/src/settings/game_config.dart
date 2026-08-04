@@ -66,6 +66,17 @@ class GameConfig {
   /// `GameTileAvatar` falls back to the monogram either way.
   String? iconPath;
 
+  /// Whether [iconPath] was CHOSEN by the user rather than resolved from the
+  /// running app / Steam library / exe.
+  ///
+  /// Two things turn on this. A user's pick must not be silently replaced by
+  /// a later auto-resolution; and the official-logo guard
+  /// (`usesOfficialLogo`, see `game_directory.dart`) exists to stop Rewind
+  /// HARVESTING a vendor's app icon — it has nothing to say about an image
+  /// the user pointed at themselves, so a user pick is honoured for every
+  /// game.
+  bool iconIsUserChosen;
+
   GameConfig({
     required this.gameId,
     this.bufferSeconds = 30,
@@ -76,6 +87,7 @@ class GameConfig {
     this.processMatch,
     this.displayName,
     this.iconPath,
+    this.iconIsUserChosen = false,
   }) : enabledEvents = enabledEvents ??
             {
               GameEventKind.manual,
@@ -105,6 +117,7 @@ class GameConfig {
         'processMatch': processMatch,
         'displayName': displayName,
         'iconPath': iconPath,
+        'iconIsUserChosen': iconIsUserChosen,
       };
 
   factory GameConfig.fromJson(Map<String, dynamic> j) => GameConfig(
@@ -123,5 +136,6 @@ class GameConfig {
         processMatch: j['processMatch'] as String?,
         displayName: j['displayName'] as String?,
         iconPath: j['iconPath'] as String?,
+        iconIsUserChosen: j['iconIsUserChosen'] as bool? ?? false,
       );
 }
