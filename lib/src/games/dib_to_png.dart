@@ -154,10 +154,10 @@ Uint8List _encodePng(Uint8List rgba, int width, int height) {
   final ihdr = BytesBuilder()
     ..add(_u32(width))
     ..add(_u32(height))
-    ..add(const [8, 6, 0, 0, 0]); // 8-bit, RGBA, deflate, no filter, no interlace
+    ..add(
+        const [8, 6, 0, 0, 0]); // 8-bit, RGBA, deflate, no filter, no interlace
   out.add(_chunk('IHDR', ihdr.takeBytes()));
-  out.add(_chunk(
-      'IDAT', Uint8List.fromList(ZLibCodec(level: 6).encode(raw))));
+  out.add(_chunk('IDAT', Uint8List.fromList(ZLibCodec(level: 6).encode(raw))));
   out.add(_chunk('IEND', Uint8List(0)));
   return out.takeBytes();
 }
