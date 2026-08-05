@@ -656,4 +656,117 @@ void main() {
       expect(find.text('Process: VALORANT-Win64-Shipping.exe'), findsOneWidget);
     });
   });
+
+  // Removing a game is two decisions: forget it (cheap to undo — Add game
+  // puts it back) and delete its clips (impossible to undo). The second is an
+  // explicit opt-in, never a side effect of pressing the first.
+  group('remove this game', () {
+    const withClips = GameEntry(
+      gameId: 'app:cs2',
+      displayName: 'Counter-Strike 2',
+      detection: {DetectionMethod.processWatch},
+      active: false,
+      clipCount: 6,
+      totalSizeBytes: 250 * 1024 * 1024,
+    );
+
+    Future<void> openGame(WidgetTester t, GameEntry entry,
+        {void Function(String, {required bool deleteClips})? onRemove}) async {
+      await t.pumpWidget(_app(SettingsScreen(
+        settings: AppSettings(),
+        onChanged: (_) async {},
+        displays: const [],
+        gameEntries: [entry],
+        onRemoveGame: onRemove,
+      )));
+      await t.tap(find.byKey(ValueKey('settingsGame:${entry.gameId}')));
+      await t.pump();
+    }
+
+    testWidgets('is not offered when the caller cannot remove anything',
+        (t) async {
+      await openGame(t, _league);
+      expect(find.byKey(const ValueKey('removeGameButton')), findsNothing);
+    });
+
+    testWidgets('keeps the clips unless the box is ticked', (t) async {
+      String? removed;
+      bool? deleted;
+      await openGame(t, withClips, onRemove: (id, {required deleteClips}) {
+        removed = id;
+        deleted = deleteClips;
+      });
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+      expect(find.textContaining('Also delete 6 clips'), findsOneWidget);
+      expect(find.textContaining('250 MB'), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('removeGameConfirmButton')));
+      await t.pumpAndSettle();
+
+      expect(removed, 'app:cs2');
+      expect(deleted, isFalse);
+    });
+
+    testWidgets('deletes the clips when it is', (t) async {
+      bool? deleted;
+      await openGame(t, withClips,
+          onRemove: (id, {required deleteClips}) => deleted = deleteClips);
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('removeGameDeleteClips')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('removeGameConfirmButton')));
+      await t.pumpAndSettle();
+
+      expect(deleted, isTrue);
+    });
+
+    testWidgets('a game with no clips is not asked about deleting them',
+        (t) async {
+      await openGame(t, _league, onRemove: (id, {required deleteClips}) {});
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('removeGameDeleteClips')), findsNothing);
+    });
+
+    testWidgets('cancelling removes nothing', (t) async {
+      var called = false;
+      await openGame(t, withClips,
+          onRemove: (id, {required deleteClips}) => called = true);
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Cancel'));
+      await t.pumpAndSettle();
+
+      expect(called, isFalse);
+    });
+
+    // A ticked box that survived a cancel would arm the irreversible half of
+    // the next removal without the user touching it.
+    testWidgets('the delete box starts clear on every open', (t) async {
+      bool? deleted;
+      await openGame(t, withClips,
+          onRemove: (id, {required deleteClips}) => deleted = deleteClips);
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('removeGameDeleteClips')));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Cancel'));
+      await t.pumpAndSettle();
+
+      await t.tap(find.byKey(const ValueKey('removeGameButton')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('removeGameConfirmButton')));
+      await t.pumpAndSettle();
+
+      expect(deleted, isFalse);
+    });
+  });
 }

@@ -103,6 +103,10 @@ class Shell extends StatefulWidget {
   /// Current diagnostic-log size for Settings -> Storage (see `logsUsage`).
   final ({int files, int bytes}) Function()? logsUsageStat;
 
+  /// Removes a game: forgets its settings/name/icon and stops detecting it,
+  /// optionally deleting its clips too.
+  final void Function(String gameId, {required bool deleteClips})? onRemoveGame;
+
   /// Points the live capture engine at a specific app, identified by
   /// [AppInfo.bundleId] — used by the detected-game banner's Record button
   /// to start capturing a game the moment it's confirmed, mirroring
@@ -165,6 +169,7 @@ class Shell extends StatefulWidget {
     this.onHotkeyRecording,
     this.onCleanUpStorage,
     this.logsUsageStat,
+    this.onRemoveGame,
     this.onSetCaptureApp,
     this.onSetMicMonitoring,
     this.audioLevels,
@@ -406,6 +411,7 @@ class _ShellState extends State<Shell> {
           library: widget.library,
           onCleanUpStorage: widget.onCleanUpStorage,
           logsUsage: widget.logsUsageStat,
+          onRemoveGame: widget.onRemoveGame,
           onClose: _closeSettings,
           initialGameId: gameId,
           initialTab: tab,

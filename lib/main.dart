@@ -21,6 +21,7 @@ import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
 import 'src/games/exe_icon_resolver.dart';
+import 'src/games/game_descriptor.dart';
 import 'src/games/league/ddragon.dart';
 import 'src/games/steam_icon_backfill.dart';
 import 'src/games/steam_icon_resolver.dart';
@@ -599,6 +600,34 @@ Future<void> main() async {
     audioLevels: () => engine?.audioLevelsJson(),
     onMicHold: (hold) => engine?.setMicHold(hold),
     logsUsageStat: () => logsUsage(logsDir),
+    onRemoveGame: (gameId, {required deleteClips}) async {
+      // Every id this game answers to — a merged row (League) owns two, and
+      // its clips are filed under either.
+      final ids = descriptorFor(gameId).mergedGameIds.toSet()..add(gameId);
+      final name = displayNameFor(gameId);
+
+      for (final id in ids) {
+        settings.removeConfig(id);
+        settings.ignoredGameIds.add(id);
+      }
+      await store.save(settings);
+      // Stop the watchers NOW, not at the next launch: buildSources would
+      // stop CREATING them, but the ones already registered keep polling.
+      await coordinator.registry.removeSources(ids);
+      settingsRevision.value++;
+
+      if (deleteClips) {
+        final doomed =
+            library.all.where((c) => ids.contains(c.gameId)).toList();
+        for (final clip in doomed) {
+          await library.deleteClip(clip);
+        }
+        talker.warning('Removed $name and deleted ${doomed.length} of its '
+            'clip(s).');
+      } else {
+        talker.info('Removed $name. Its clips were kept.');
+      }
+    },
     onCleanUpStorage: () async {
       // Same enforcement as the automatic sweep, but user-triggered from
       // Settings → Storage; returns the removals so the tab can report
@@ -668,6 +697,10 @@ class RewindApp extends StatefulWidget {
 
   /// Current diagnostic-log size for Settings -> Storage (see `logsUsage`).
   final ({int files, int bytes}) Function()? logsUsageStat;
+
+  /// Removes a game: forgets its settings/name/icon and stops detecting it,
+  /// optionally deleting its clips too.
+  final void Function(String gameId, {required bool deleteClips})? onRemoveGame;
   final ThumbnailCache? thumbnails;
   final DDragon? ddragon;
 
@@ -717,6 +750,7 @@ class RewindApp extends StatefulWidget {
     this.onMicHold,
     this.onCleanUpStorage,
     this.logsUsageStat,
+    this.onRemoveGame,
     this.thumbnails,
     this.ddragon,
     this.engine,
@@ -797,6 +831,7 @@ class _RewindAppState extends State<RewindApp> {
               onHotkeyRecording: widget.onHotkeyRecording,
               onCleanUpStorage: widget.onCleanUpStorage,
               logsUsageStat: widget.logsUsageStat,
+              onRemoveGame: widget.onRemoveGame,
               onSetCaptureApp: widget.onSetCaptureApp,
               onSetMicMonitoring: widget.onSetMicMonitoring,
               audioLevels: widget.audioLevels,

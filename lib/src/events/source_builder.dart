@@ -39,11 +39,20 @@ import 'steam_stats_watcher.dart';
 /// "credentials entered for the first time" special case for `main.dart` to
 /// handle on a later `buildSources` re-run, unlike the watcher it replaces.
 List<GameEventSource> buildSources(AppSettings settings) {
+  // A removed game is not watched at all — not by its vendor integration,
+  // not by process detection. Seeding `seenGameIds` with the ignored ids is
+  // what enforces that: every branch below already refuses to add a source
+  // for an id it has seen, so removal needs no second check per branch.
+  final ignored = settings.ignoredGameIds;
+  // Constructing a watcher does not start it (the registry polls; see
+  // GameRegistry), so building one to read its id and then dropping it costs
+  // nothing and keeps the id in one place.
+  final league = LeagueEventWatcher();
   final sources = <GameEventSource>[
-    LeagueEventWatcher(),
+    if (!ignored.contains(league.gameId)) league,
     SteamStatsWatcher(settings: settings),
   ];
-  final seenGameIds = {for (final s in sources) s.gameId};
+  final seenGameIds = {for (final s in sources) s.gameId, ...ignored};
 
   // ONE shared, tick-cached lister for every process watcher: without it,
   // each of the dozen+ sources spawns its own `ps`/`tasklist` every

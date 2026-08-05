@@ -102,6 +102,16 @@ List<GameEntry> buildGameDirectory({
   final configById = {for (final c in settings.allConfigs) c.gameId: c};
   final mergedDescriptors = _mergedDescriptors.toList();
 
+  // A removed game (Settings -> its page -> Remove) is watched by nothing
+  // (see `buildSources`), so it can only still be here because it has CLIPS.
+  // Those keep their row: hiding it would leave the clips reachable only
+  // from All Clips, with no hub and no way back. Detection reads as manual
+  // for it — which is true, since nothing is watching it any more.
+  final ignored = settings.ignoredGameIds;
+  bool isRemoved(String gameId) => ignored.contains(gameId);
+  bool hasClips(Iterable<String> ids) =>
+      clips.any((c) => ids.contains(c.gameId));
+
   final candidateIds = <String>{
     ...configById.keys,
     for (final c in clips) c.gameId,
@@ -110,16 +120,21 @@ List<GameEntry> buildGameDirectory({
   for (final d in mergedDescriptors) {
     candidateIds.removeAll(d.mergedGameIds);
   }
+  candidateIds.removeWhere((id) => isRemoved(id) && !hasClips({id}));
 
   final entries = <GameEntry>[
     for (final d in mergedDescriptors)
-      if (_descriptorIsPresent(d, clips, activeIds, configById))
-        _buildMergedEntry(d, catalogById, configById, clips, activeIds),
+      if (_descriptorIsPresent(d, clips, activeIds, configById) &&
+          !(d.mergedGameIds.every(isRemoved) && !hasClips(d.mergedGameIds)))
+        _buildMergedEntry(d, catalogById, configById, clips, activeIds,
+            removed: d.mergedGameIds.every(isRemoved)),
     for (final gameId in candidateIds)
       _buildEntry(
         gameId: gameId,
         matchIds: {gameId},
-        detection: _detectionFor(gameId, catalogById, configById),
+        detection: isRemoved(gameId)
+            ? const {DetectionMethod.manual}
+            : _detectionFor(gameId, catalogById, configById),
         processMatch: catalogById[gameId]?.processMatch ??
             configById[gameId]?.processMatch,
         clips: clips,
@@ -205,13 +220,20 @@ GameEntry _buildMergedEntry(
   Map<String, CatalogGame> catalogById,
   Map<String, GameConfig> configById,
   List<Clip> clips,
-  Set<String> activeIds,
-) {
-  final detection = <DetectionMethod>{
-    if (d.hasLiveFeed) DetectionMethod.liveClientApi,
-    for (final id in d.mergedGameIds)
-      ..._detectionFor(id, catalogById, configById),
-  };
+  Set<String> activeIds, {
+  /// Every id of this row has been removed, so the row only exists because
+  /// it still has clips — nothing is watching it (see `buildSources`), and
+  /// claiming a live-API integration it no longer has would be a lie the
+  /// hub's status pill repeats.
+  bool removed = false,
+}) {
+  final detection = removed
+      ? const {DetectionMethod.manual}
+      : <DetectionMethod>{
+          if (d.hasLiveFeed) DetectionMethod.liveClientApi,
+          for (final id in d.mergedGameIds)
+            ..._detectionFor(id, catalogById, configById),
+        };
   String? processMatch;
   for (final id in d.mergedGameIds) {
     final match = catalogById[id]?.processMatch ?? configById[id]?.processMatch;
