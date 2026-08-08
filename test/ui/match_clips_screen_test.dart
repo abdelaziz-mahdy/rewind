@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/clip/clip.dart';
 import 'package:rewind/src/clip/clip_library.dart';
+import 'package:rewind/src/clip/match_export.dart';
 import 'package:rewind/src/clip/match_stats.dart';
 import 'package:rewind/src/events/game_event.dart';
 import 'package:rewind/src/games/match_presentation.dart';
@@ -32,6 +33,21 @@ class _FakeMatchPresentation extends MatchPresentation {
 
   @override
   String? footnote(MatchStats? stats) => footnoteText;
+}
+
+/// Records what it was asked to export and pretends it worked.
+class _FakeExporter implements MatchExporter {
+  String? outPath;
+  bool succeed = true;
+
+  @override
+  bool get isSupported => true;
+
+  @override
+  Future<bool> export(List<Clip> clips, String path) async {
+    outPath = path;
+    return succeed;
+  }
 }
 
 void main() {
@@ -210,6 +226,52 @@ void main() {
       await t.pump();
 
       expect(t.widget<ClipTile>(find.byType(ClipTile)).events, isEmpty);
+    });
+  });
+
+  // The only pointer to an exported file used to be a Reveal action on a
+  // six-second toast, and the export is deliberately not indexed as a clip —
+  // so once the toast went, the video was unreachable from inside Rewind.
+  group('exporting a match', () {
+    testWidgets('offers a lasting way to find the file afterwards', (t) async {
+      final exporter = _FakeExporter();
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: null,
+        library: library,
+        exporter: exporter,
+      )));
+      await t.pump();
+
+      expect(find.byKey(const ValueKey('revealExportButton')), findsNothing,
+          reason: 'nothing to reveal before an export exists');
+
+      await t.tap(find.byKey(const ValueKey('exportMatchButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 50));
+
+      expect(exporter.outPath, isNotNull);
+      expect(find.byKey(const ValueKey('revealExportButton')), findsOneWidget);
+      expect(find.text('Export again'), findsOneWidget);
+    });
+
+    testWidgets('a failed export offers nothing to reveal', (t) async {
+      final exporter = _FakeExporter()..succeed = false;
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: session,
+        matchLabel: 'Ahri match',
+        stats: null,
+        library: library,
+        exporter: exporter,
+      )));
+      await t.pump();
+
+      await t.tap(find.byKey(const ValueKey('exportMatchButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 50));
+
+      expect(find.byKey(const ValueKey('revealExportButton')), findsNothing);
     });
   });
 }

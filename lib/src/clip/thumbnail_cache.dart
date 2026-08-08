@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -13,7 +14,42 @@ import 'thumbnail_generator.dart';
 class ThumbnailCache {
   final ThumbnailGenerator generator;
 
-  ThumbnailCache(this.generator);
+  ThumbnailCache(this.generator, {this.maxConcurrent = 2});
+
+  /// How many thumbnails may be generated at once.
+  ///
+  /// Opening a match fires `ensure()` for every visible clip in the same
+  /// frame — 18 of them on a real match — and each one is a full FFmpeg
+  /// session decoding a 40 MB video. Unbounded, that did two bad things at
+  /// once: it pinned the machine WHILE a game was being captured, and it
+  /// overran ffmpeg_kit's own session registry, whose older entries get
+  /// evicted — the evicted sessions then threw `SESSION_NOT_FOUND` from
+  /// `getReturnCode()`, which this cache recorded as "this video is broken"
+  /// and never retried. Eleven of twenty-five clips were stuck with no
+  /// thumbnail that way.
+  ///
+  /// Two at a time keeps the grid filling visibly while leaving the machine
+  /// to the game.
+  final int maxConcurrent;
+
+  int _running = 0;
+  final _queue = <Completer<void>>[];
+
+  /// Waits for a generation slot, runs [body], then hands the slot on.
+  Future<T> _withSlot<T>(Future<T> Function() body) async {
+    if (_running >= maxConcurrent) {
+      final waiter = Completer<void>();
+      _queue.add(waiter);
+      await waiter.future;
+    }
+    _running++;
+    try {
+      return await body();
+    } finally {
+      _running--;
+      if (_queue.isNotEmpty) _queue.removeAt(0).complete();
+    }
+  }
 
   /// One in-flight generation [Future] per thumbnail path, so concurrent
   /// `ensure()` calls for the same clip (e.g. a rebuild while generation is
@@ -60,7 +96,7 @@ class ThumbnailCache {
       // its contract, but a broken custom implementation (or a future bug)
       // must still never crash the caller — a bad thumbnail is never worth
       // more than a `null`.
-      final ok = await generator.generate(clipPath, thumbPath);
+      final ok = await _withSlot(() => generator.generate(clipPath, thumbPath));
       if (!ok) {
         _failed.add(thumbPath);
         return null;

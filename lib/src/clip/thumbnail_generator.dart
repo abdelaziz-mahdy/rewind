@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import '../log/log.dart';
 
@@ -51,7 +52,25 @@ class FfmpegThumbnailGenerator implements ThumbnailGenerator {
       await File(thumbPath).parent.create(recursive: true);
       final session = await FFmpegKit.executeWithArguments(
           thumbnailArguments(videoPath, thumbPath));
-      final ok = ReturnCode.isSuccess(await session.getReturnCode());
+      // `getReturnCode()` looks the session back up by id, and ffmpeg_kit
+      // evicts old sessions from its own registry once enough have run —
+      // the lookup then throws SESSION_NOT_FOUND. That says nothing about
+      // this video, so it is worth one retry rather than being recorded as
+      // "unusable file" by the caller's negative cache. The real cure is
+      // running fewer at once (see ThumbnailCache.maxConcurrent); this is
+      // the belt to that braces.
+      int? code;
+      for (var attempt = 1; attempt <= 2 && code == null; attempt++) {
+        try {
+          code = (await session.getReturnCode())?.getValue();
+        } on PlatformException catch (err) {
+          talker.warning('Thumbnail: ffmpeg session lookup failed '
+              '(${err.code}) for $videoPath — attempt $attempt of 2.');
+          if (attempt == 2) return false;
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
+      }
+      final ok = code != null && ReturnCode(code).isValueSuccess();
       if (!ok) {
         talker.warning('Thumbnail: ffmpeg failed for $videoPath');
         return false;

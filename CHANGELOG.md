@@ -99,7 +99,25 @@ All notable changes to Rewind are documented here. Format based on
   stops it overriding anything; its clips are untouched.
 
 ### Fixed
-- **Rewind no longer holds your microphone (or a screen-capture stream) while
+- **Audio glitches while recording, when a launcher was open beside the game
+  you were playing.** Two capture loops traded the aim nine times in three
+  seconds — rebuilding the screen-capture stream each time, half of them at a
+  window the system had already closed. Nothing takes the capture aim from a
+  game you are playing any more; when a second game launches, it takes over
+  once and then holds it.
+- **Thumbnails stopped appearing after opening a match.** Every visible clip
+  asked FFmpeg for a thumbnail in the same instant — eighteen at once on a
+  real match. That overran FFmpeg's own session registry, and the sessions it
+  evicted came back as an error Rewind recorded as "this video is broken",
+  so those clips never got a thumbnail again. They are now generated a couple
+  at a time, which also stops eighteen video decodes competing with the game
+  being captured.
+- **An exported match is findable after the toast goes.** "Export as one
+  video" only ever pointed at the file through a six-second Reveal action,
+  and the export is deliberately not added to the library (it is the same
+  footage again). The button now offers "Show the video" for as long as the
+  match is open.
+ **Rewind no longer holds your microphone (or a screen-capture stream) while
   paused.** With "only record while playing" on and no game running, macOS
   showed its microphone indicator anyway — the app was listening while its own
   UI said it was idle. Pausing released the video source and nothing else; the
