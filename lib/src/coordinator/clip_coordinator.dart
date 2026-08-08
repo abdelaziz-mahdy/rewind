@@ -434,7 +434,12 @@ class ClipCoordinator {
   /// pure black for the rest of the match (verified live 2026-07-24).
   void _autoSwitchCaptureFor(GameActivity a) {
     _cancelAutoSwitchRetry(a.gameId);
-    _tryAutoSwitch(a, attempt: 1);
+    // `fresh: true` — an ACTIVATION may take the aim from another game that
+    // is already playing (the game you just launched is the one you are
+    // about to play). Its retry loop may not: that distinction is what turns
+    // "the newest game wins" into a single switch instead of two loops
+    // trading the aim every tick.
+    _tryAutoSwitch(a, attempt: 1, fresh: true);
   }
 
   /// Whether [a]'s loop is allowed to bind the capture target right now.
@@ -456,19 +461,39 @@ class ClipCoordinator {
   /// (2026-07-24 19:37). The client's loop stays alive but idle while its
   /// sibling holds the aim, and takes over again once the match ends and
   /// [_revertAutoSwitchFor] releases it.
-  bool _mayAim(GameActivity a) {
-    if (a.countsAsPlaying) return true;
+  ///
+  /// The same trade happens ACROSS games, which the merged-id rule alone did
+  /// not cover: with Big Walk being played and League's client merely open,
+  /// the two loops re-aimed over each other nine times in three seconds
+  /// (2026-08-08 10:50:24-27), rebuilding the ScreenCaptureKit stream every
+  /// time — libobs rejected half of them outright ("Invalid target window
+  /// ID: 16780", the client's dead window). A capture source torn down and
+  /// rebuilt mid-recording is heard as a glitch and seen as a hitch.
+  bool _mayAim(GameActivity a, {required bool fresh}) {
     final holder = _autoSwitchedGameId;
-    return holder == null ||
-        holder == a.gameId ||
-        !descriptorFor(a.gameId).mergedGameIds.contains(holder);
+    if (holder == null || holder == a.gameId) return true;
+
+    // Nothing quietly takes the aim from a game that is currently being
+    // PLAYED. Two exceptions, in order:
+    //   - a launcher (countsAsPlaying false) never may, even on activation;
+    //   - a real game may, but only on its own ACTIVATION (`fresh`), so the
+    //     game you just launched wins once and then holds it.
+    if (playingGameIds.value.contains(holder)) {
+      return a.countsAsPlaying && fresh;
+    }
+    if (a.countsAsPlaying) return true;
+
+    // The holder is not being played (a launcher holds it): the merged-id
+    // rule decides. A client may not stomp its OWN game's live match.
+    return !descriptorFor(a.gameId).mergedGameIds.contains(holder);
   }
 
   /// One attempt of [_autoSwitchCaptureFor]'s loop. [attempt] is 1-based and
   /// only drives the hunt cadence ([_huntInterval]); the loop itself runs
   /// until the game deactivates, whether or not a target was found, so a
   /// window the game replaces mid-match is re-aimed rather than left stale.
-  void _tryAutoSwitch(GameActivity a, {required int attempt}) {
+  void _tryAutoSwitch(GameActivity a,
+      {required int attempt, bool fresh = false}) {
     final capture = engine;
     final processMatch = a.processMatch;
     if (capture == null ||
@@ -514,7 +539,7 @@ class ClipCoordinator {
       return;
     }
     _scheduleAutoSwitch(a, attempt: attempt);
-    if (!_mayAim(a)) return;
+    if (!_mayAim(a, fresh: fresh)) return;
 
     // A FULLSCREEN match is captured as its DISPLAY. Its window covers the
     // whole screen, so the display's content is exactly the game — and it is

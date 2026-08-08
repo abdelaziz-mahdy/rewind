@@ -155,4 +155,21 @@ void main() {
     expect(File(p.join(tmp.path, 'clips.json.tmp')).existsSync(), isFalse,
         reason: 'no orphaned tmp file after the writes settle');
   });
+
+  // ClipLibrary adopts stray .mp4s so clips recorded before an index existed
+  // (or recovered by hand) still show up. Its scan does NOT recurse, which is
+  // what keeps match exports out: written beside the clips, a 764 MB export
+  // was adopted as a manual DESKTOP clip — filed under the wrong game, and
+  // counted against the storage limit as original footage, which evicted 18
+  // real clips to make room for a duplicate.
+  test('an export under exports/ is not adopted as a stray clip', () async {
+    final exports = Directory('${tmp.path}/exports')..createSync();
+    File('${exports.path}/rewind-1-full-match.mp4')
+        .writeAsBytesSync(List.filled(64, 0));
+    File('${tmp.path}/rewind-1.mp4').writeAsBytesSync(List.filled(8, 0));
+
+    final lib = await ClipLibrary.load(tmp);
+
+    expect(lib.all.map((c) => p.basename(c.path)), ['rewind-1.mp4']);
+  });
 }

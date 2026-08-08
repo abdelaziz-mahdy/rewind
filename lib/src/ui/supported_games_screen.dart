@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../clip/clip.dart';
@@ -144,6 +146,37 @@ class SupportedGamesScreen extends StatefulWidget {
 }
 
 class _SupportedGamesScreenState extends State<SupportedGamesScreen> {
+  /// Re-reads the running-app list while this screen is open.
+  ///
+  /// "Running now" is a snapshot of what is running RIGHT NOW, and it was
+  /// taken once per build — so launching a game with the screen already open
+  /// left it absent until something else happened to rebuild, and an icon
+  /// that resolved a moment later (they resolve asynchronously, off the
+  /// running process) never appeared at all.
+  ///
+  /// Bounded on both sides, per the deck's no-idle-timer rule: it only exists
+  /// while this screen is mounted, and only when there is an app list to
+  /// re-read — every test that wires none starts no timer, so none of them
+  /// hang on a perpetual poll. 4s matches the detected-game banners' own poll
+  /// in `shell.dart`; this list has the same job.
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.listApps != null) {
+      _poll = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
   void _addGame(String gameId) {
     final settings = widget.coordinator.settings;
     _unremove(settings, gameId);

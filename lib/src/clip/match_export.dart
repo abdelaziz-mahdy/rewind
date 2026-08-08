@@ -46,17 +46,34 @@ List<String> concatArguments(String listPath, String outPath) => [
       outPath,
     ];
 
-/// The export file name for a match: derived from the first clip's file
-/// name with a `-full-match` suffix, collision-bumped against [taken].
+/// Where a match export is written: an `exports/` subdirectory of the clips
+/// folder, named after the first clip with a `-full-match` suffix and
+/// collision-bumped against [taken].
+///
+/// A SUBDIRECTORY, not beside the clips, because `ClipLibrary.load` adopts
+/// any unindexed `.mp4` it finds in the clips folder as a manual DESKTOP
+/// clip — and its scan does not recurse. Written beside them, an export was
+/// therefore adopted on the next launch: it appeared under Desktop rather
+/// than under the game it came from, and it counted against the storage
+/// limit as if it were original footage. On a real library that was a 764 MB
+/// export — 75% of the user's cap — whose adoption evicted 18 real clips to
+/// make room for a file that is a second copy of footage already there.
+///
+/// An export is a derived artifact: the match screen's own "Show the video"
+/// button is how it is found (see `match_clips_screen.dart`), which keeps it
+/// reachable from the game it belongs to without pretending to be a clip.
 String matchExportPath(Clip first, Iterable<String> taken) {
   final src = first.path;
-  final dot = src.lastIndexOf('.');
-  final base = dot > src.lastIndexOf('/') ? src.substring(0, dot) : src;
-  final ext = dot > src.lastIndexOf('/') ? src.substring(dot) : '.mp4';
+  final slash = src.lastIndexOf('/');
+  final dir = slash >= 0 ? src.substring(0, slash) : '.';
+  final name = slash >= 0 ? src.substring(slash + 1) : src;
+  final dot = name.lastIndexOf('.');
+  final base = dot > 0 ? name.substring(0, dot) : name;
+  final ext = dot > 0 ? name.substring(dot) : '.mp4';
   final existing = taken.toSet();
-  var candidate = '$base-full-match$ext';
+  var candidate = '$dir/exports/$base-full-match$ext';
   for (var n = 2; existing.contains(candidate); n++) {
-    candidate = '$base-full-match-$n$ext';
+    candidate = '$dir/exports/$base-full-match-$n$ext';
   }
   return candidate;
 }
@@ -72,6 +89,8 @@ class FfmpegMatchExporter implements MatchExporter {
     if (!isSupported || clips.isEmpty) return false;
     File? listFile;
     try {
+      // exports/ won't exist on the first export (see matchExportPath).
+      await File(outPath).parent.create(recursive: true);
       listFile = File(
           '${Directory.systemTemp.path}/rewind-concat-${DateTime.now().millisecondsSinceEpoch}.txt');
       await listFile.writeAsString(concatListBody(clips.map((c) => c.path)));

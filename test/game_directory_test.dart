@@ -347,4 +347,57 @@ void main() {
       expect(gameIconPathsFrom(entries).containsKey('app:cs2'), isFalse);
     });
   });
+  group('a user-chosen icon', () {
+    // The official-logo guard exists to stop Rewind HARVESTING a vendor's
+    // app icon (League's is Riot's logo, which their policy forbids us
+    // using). It has nothing to say about an image the user pointed at
+    // themselves — and a game whose auto-resolution is blocked is exactly
+    // the one a user most wants to fix by hand.
+    test('is honoured even where a resolved one would be withheld', () {
+      final settings = AppSettings();
+      settings.setConfig(GameConfig(
+        gameId: 'league_of_legends',
+        iconPath: '/tmp/my-league.png',
+        iconIsUserChosen: true,
+      ));
+
+      final entries = buildGameDirectory(
+        settings: settings,
+        clips: [],
+        activeIds: {'league_of_legends'},
+      );
+
+      expect(byId(entries, 'league_of_legends').iconPath, '/tmp/my-league.png');
+    });
+
+    test('a RESOLVED icon for the same game is still withheld', () {
+      final settings = AppSettings();
+      settings.setConfig(GameConfig(
+        gameId: 'league_of_legends',
+        iconPath: '/Applications/League of Legends.app/icon.icns',
+      ));
+
+      final entries = buildGameDirectory(
+        settings: settings,
+        clips: [],
+        activeIds: {'league_of_legends'},
+      );
+
+      expect(byId(entries, 'league_of_legends').iconPath, isNull);
+    });
+
+    test('survives a settings round trip', () {
+      final settings = AppSettings();
+      settings.setConfig(GameConfig(
+        gameId: 'app:repo',
+        iconPath: '/tmp/mine.png',
+        iconIsUserChosen: true,
+      ));
+
+      final back = AppSettings.fromJson(settings.toJson());
+      final cfg = back.allConfigs.firstWhere((c) => c.gameId == 'app:repo');
+      expect(cfg.iconPath, '/tmp/mine.png');
+      expect(cfg.iconIsUserChosen, isTrue);
+    });
+  });
 }

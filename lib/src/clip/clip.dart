@@ -1,6 +1,55 @@
 import '../events/game_event.dart';
 
 /// A saved clip on disk plus its metadata.
+/// Where a clip's video came from — see [Clip.origin].
+enum ClipOrigin {
+  /// Recorded live by the capture engine.
+  captured,
+
+  /// A time range of another clip (the player's Trim).
+  trimmed,
+
+  /// A whole session concatenated into one video (a match's "Export as one
+  /// video").
+  exported,
+}
+
+/// Reads [Clip.origin] from stored JSON, inferring it for clips written
+/// before the field existed: their eventLabel is the only trace, and the two
+/// derived kinds each wrote a fixed one.
+ClipOrigin _originFrom(Map<String, dynamic> j) {
+  // The file name first, and it OVERRULES a stored `captured`. Nothing the
+  // capture engine writes is named this way, and a stray export adopted
+  // before this field existed was migrated as `captured` and then persisted
+  // — so trusting the stored value would keep a 764 MB export permanently
+  // miscategorised as source footage. A stored DERIVED value still wins
+  // (it is the more specific record).
+  final name = (j['path'] as String? ?? '').split('/').last;
+  final byName = name.contains('-full-match')
+      ? ClipOrigin.exported
+      : name.contains('-trim-')
+          ? ClipOrigin.trimmed
+          : null;
+
+  final stored = j['origin'] as String?;
+  if (stored != null) {
+    for (final o in ClipOrigin.values) {
+      if (o.name == stored) {
+        return o == ClipOrigin.captured ? (byName ?? o) : o;
+      }
+    }
+  }
+  if (byName != null) return byName;
+  final byLabel = switch (j['eventLabel'] as String?) {
+    'Full match' => ClipOrigin.exported,
+    'Trimmed' => ClipOrigin.trimmed,
+    _ => null,
+  };
+  if (byLabel != null) return byLabel;
+
+  return ClipOrigin.captured;
+}
+
 class Clip {
   final String path;
   final String gameId;
@@ -35,6 +84,27 @@ class Clip {
   /// kind and for clips saved before this field existed.
   final String? eventLabel;
 
+  /// Where this video came from: captured live, or DERIVED from clips that
+  /// already exist.
+  ///
+  /// Not inferable from [eventLabel] — that already carries an achievement's
+  /// real name ("Big Pack"), so "has a label" cannot mean "is derived".
+  ///
+  /// The distinction is load-bearing, not cosmetic: "Export as one video"
+  /// concatenates a session's clips, and once an export was itself indexed
+  /// into that session, the NEXT export swallowed it — 43 MB of clips became
+  /// a 258 MB export, then a 516 MB one. Derived videos are excluded from
+  /// anything that treats a session as source footage.
+  final ClipOrigin origin;
+
+  /// How long the video runs, once known. Null for a clip recorded before
+  /// this field existed, or one whose file could not be read.
+  ///
+  /// Shown BEFORE the file size on every tile: "how long is this" is the
+  /// question someone actually has when picking a clip to watch, and the
+  /// size only matters when they are clearing space.
+  int? durationMs;
+
   Clip({
     required this.path,
     required this.gameId,
@@ -45,6 +115,8 @@ class Clip {
     this.sessionAt,
     this.killCount = 0,
     this.eventLabel,
+    this.origin = ClipOrigin.captured,
+    this.durationMs,
   });
 
   Map<String, dynamic> toJson() => {
@@ -57,6 +129,8 @@ class Clip {
         'sessionAt': sessionAt?.toIso8601String(),
         'killCount': killCount,
         'eventLabel': eventLabel,
+        'origin': origin.name,
+        'durationMs': durationMs,
       };
 
   factory Clip.fromJson(Map<String, dynamic> j) => Clip(
@@ -72,5 +146,7 @@ class Clip {
             : null,
         killCount: j['killCount'] as int? ?? 0,
         eventLabel: j['eventLabel'] as String?,
+        origin: _originFrom(j),
+        durationMs: (j['durationMs'] as num?)?.toInt(),
       );
 }

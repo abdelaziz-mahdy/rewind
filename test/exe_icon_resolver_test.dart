@@ -71,10 +71,12 @@ Uint8List _fakePe(List<int> icon) {
 
 void main() {
   late Directory tmp;
+  late Directory bottle;
   late Directory driveC;
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('exeicon');
-    driveC = Directory(p.join(tmp.path, 'bottle', 'drive_c'))
+    bottle = Directory(p.join(tmp.path, 'bottle'))..createSync(recursive: true);
+    driveC = Directory(p.join(bottle.path, 'drive_c'))
       ..createSync(recursive: true);
   });
   tearDown(() => tmp.deleteSync(recursive: true));
@@ -82,7 +84,7 @@ void main() {
   ExeIconResolver resolver({required Future<String?> Function(int) pid}) =>
       ExeIconResolver(
         cacheDir: Directory(p.join(tmp.path, 'icons')),
-        bottleDriveCs: () => [driveC],
+        bottleDirs: () => [bottle],
         exePathForPid: pid,
       );
 
@@ -111,7 +113,7 @@ void main() {
     var called = false;
     final r = ExeIconResolver(
       cacheDir: Directory(p.join(tmp.path, 'icons')),
-      bottleDriveCs: () => [driveC],
+      bottleDirs: () => [bottle],
       exePathForPid: (_) async {
         called = true;
         return null;
@@ -148,4 +150,38 @@ void main() {
     expect(a, b);
     expect(lookups, 1);
   });
+
+  // Wine maps each drive letter through `dosdevices/<letter>:`. Only `c:`
+  // points at drive_c — `z:` is the macOS filesystem root, which is how any
+  // game OUTSIDE the bottle is reported, e.g. one installed on an external
+  // volume ("Z:\\Volumes\\gaming\\..."). Resolving everything against
+  // drive_c meant every such game silently produced no icon.
+  test('resolves a game on another drive through the bottle drive map',
+      () async {
+    final volume = Directory(p.join(tmp.path, 'external', 'Games', 'CIU'))
+      ..createSync(recursive: true);
+    File(p.join(volume.path, 'CIU.exe')).writeAsBytesSync(_fakePe(_png));
+    // z: -> the fake filesystem root holding that volume.
+    final root = Directory(p.join(tmp.path, 'external'));
+    Directory(p.join(bottle.path, 'dosdevices')).createSync(recursive: true);
+    Link(p.join(bottle.path, 'dosdevices', 'z:')).createSync(root.path);
+
+    final r = resolver(pid: (_) async => r'Z:\Games\CIU\CIU.exe');
+    final path = await r.iconForApp(wineApp('CIU', 9));
+
+    expect(path, isNotNull);
+    expect(File(path!).readAsBytesSync(), equals(_png));
+    // CrossOver bottles (and the dosdevices symlinks this reads) exist only
+    // on macOS; creating a symlink on Windows also needs privileges the CI
+    // runner doesn't have.
+  }, skip: Platform.isWindows ? 'CrossOver bottles are macOS-only' : null);
+
+  test('a dangling drive mapping (unplugged volume) is not fatal', () async {
+    Directory(p.join(bottle.path, 'dosdevices')).createSync(recursive: true);
+    Link(p.join(bottle.path, 'dosdevices', 'd:'))
+        .createSync('/nope/not/mounted');
+
+    final r = resolver(pid: (_) async => r'D:\Games\Gone\Gone.exe');
+    expect(await r.iconForApp(wineApp('Gone', 10)), isNull);
+  }, skip: Platform.isWindows ? 'CrossOver bottles are macOS-only' : null);
 }
