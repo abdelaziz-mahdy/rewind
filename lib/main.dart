@@ -23,6 +23,7 @@ import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
 import 'src/games/exe_icon_resolver.dart';
 import 'src/games/game_icon_backfill.dart';
+import 'src/games/icon_store.dart';
 import 'src/games/game_descriptor.dart';
 import 'src/games/league/ddragon.dart';
 import 'src/games/steam_icon_backfill.dart';
@@ -159,6 +160,14 @@ Future<void> main() async {
   // shows the real icon instead of a monogram. Persist only if it changed
   // anything.
   if (backfillSteamIcons(settings, steamResolver) > 0) {
+    await store.save(settings);
+  }
+  // Copy any icon Rewind merely points at into its own cache, so an icon on
+  // an external drive (or in a game that later moves) does not disappear
+  // with it. Runs every launch: a source that was unreachable last time —
+  // the drive unplugged — is copied the next time it is there.
+  final iconCacheDir = Directory('${clipsDir.path}/.icons');
+  if (await localizeGameIcons(settings, iconCacheDir) > 0) {
     await store.save(settings);
   }
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
@@ -520,6 +529,7 @@ Future<void> main() async {
       exeResolver: exeResolver,
     );
     if (found == 0) return;
+    await localizeGameIcons(settings, iconCacheDir);
     await store.save(settings);
     settingsRevision.value++;
     talker.info('Resolved an icon for $found game(s) now running.');

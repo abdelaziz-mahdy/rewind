@@ -52,6 +52,12 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
+- **A game's icon no longer disappears with the drive it came from.** Icons
+  taken from a macOS app bundle (or picked by you) were stored as a path into
+  wherever they lived — for a game installed on an external drive, a path that
+  stops existing the moment the drive is unplugged, dropping the game back to
+  a letter monogram. Rewind now keeps its own copy, which also survives the
+  game being moved or uninstalled.
 - **Windows/Wine games show their real icon.** Rewind reads the icon out of
   the game's own `.exe`, but only understood the modern PNG form — every icon
   stored the classic way (most of them: three of four executables on the test
