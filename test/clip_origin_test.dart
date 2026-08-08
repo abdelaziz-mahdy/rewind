@@ -20,6 +20,17 @@ void main() {
         if (eventLabel != null) 'eventLabel': eventLabel,
       };
 
+  // A stored `captured` on an export-named file is the migration's own
+  // mistake, persisted: nothing the capture engine writes is named that way.
+  test('the file name overrules a stored captured', () {
+    expect(
+      Clip.fromJson(stored(
+              origin: 'captured', path: '/clips/rewind-1-full-match.mp4'))
+          .origin,
+      ClipOrigin.exported,
+    );
+  });
+
   test('a stored origin is used as-is', () {
     expect(
         Clip.fromJson(stored(origin: 'exported')).origin, ClipOrigin.exported);

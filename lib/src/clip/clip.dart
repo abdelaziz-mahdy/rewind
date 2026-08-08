@@ -18,12 +18,28 @@ enum ClipOrigin {
 /// before the field existed: their eventLabel is the only trace, and the two
 /// derived kinds each wrote a fixed one.
 ClipOrigin _originFrom(Map<String, dynamic> j) {
+  // The file name first, and it OVERRULES a stored `captured`. Nothing the
+  // capture engine writes is named this way, and a stray export adopted
+  // before this field existed was migrated as `captured` and then persisted
+  // — so trusting the stored value would keep a 764 MB export permanently
+  // miscategorised as source footage. A stored DERIVED value still wins
+  // (it is the more specific record).
+  final name = (j['path'] as String? ?? '').split('/').last;
+  final byName = name.contains('-full-match')
+      ? ClipOrigin.exported
+      : name.contains('-trim-')
+          ? ClipOrigin.trimmed
+          : null;
+
   final stored = j['origin'] as String?;
   if (stored != null) {
     for (final o in ClipOrigin.values) {
-      if (o.name == stored) return o;
+      if (o.name == stored) {
+        return o == ClipOrigin.captured ? (byName ?? o) : o;
+      }
     }
   }
+  if (byName != null) return byName;
   final byLabel = switch (j['eventLabel'] as String?) {
     'Full match' => ClipOrigin.exported,
     'Trimmed' => ClipOrigin.trimmed,
@@ -31,14 +47,6 @@ ClipOrigin _originFrom(Map<String, dynamic> j) {
   };
   if (byLabel != null) return byLabel;
 
-  // Last resort, the file name. An export written before ANY marker existed
-  // was adopted by the library's stray-file scan as a plain manual clip,
-  // with no label to read — and one such 764 MB file was still sitting in a
-  // session, ready to be swallowed by the next export of it. Both derived
-  // paths have always named their output this way.
-  final name = (j['path'] as String? ?? '').split('/').last;
-  if (name.contains('-full-match')) return ClipOrigin.exported;
-  if (name.contains('-trim-')) return ClipOrigin.trimmed;
   return ClipOrigin.captured;
 }
 
