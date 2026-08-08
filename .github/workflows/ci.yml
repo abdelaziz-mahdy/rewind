@@ -73,10 +73,15 @@ jobs:
           key: libobs-${{ runner.arch }}-32.1.2-deps-2025-08-23-recipe-3
       - run: bash tools/fetch_libobs.sh
       - run: flutter pub get
-      - run: flutter build macos --debug
+      # RELEASE, not debug: release is the mode that breaks. It builds the
+      # native shim once per architecture, and the fetched libobs is
+      # host-arch only — an arm64 runner linking the x86_64 pass against it
+      # failed the whole build, invisibly, because nothing here ever built
+      # release.
+      - run: flutter build macos --release
         env:
           FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
-      - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Debug/rewind.app
+      - run: bash tools/bundle_obs_macos.sh build/macos/Build/Products/Release/rewind.app
 
   build-windows-libobs:
     name: Build Windows (real libobs)
