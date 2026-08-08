@@ -171,7 +171,10 @@ void main() {
 
     expect(path, isNotNull);
     expect(File(path!).readAsBytesSync(), equals(_png));
-  });
+    // CrossOver bottles (and the dosdevices symlinks this reads) exist only
+    // on macOS; creating a symlink on Windows also needs privileges the CI
+    // runner doesn't have.
+  }, skip: Platform.isWindows ? 'CrossOver bottles are macOS-only' : null);
 
   test('a dangling drive mapping (unplugged volume) is not fatal', () async {
     Directory(p.join(bottle.path, 'dosdevices')).createSync(recursive: true);
@@ -180,5 +183,5 @@ void main() {
 
     final r = resolver(pid: (_) async => r'D:\Games\Gone\Gone.exe');
     expect(await r.iconForApp(wineApp('Gone', 10)), isNull);
-  });
+  }, skip: Platform.isWindows ? 'CrossOver bottles are macOS-only' : null);
 }
