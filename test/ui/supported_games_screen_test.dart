@@ -289,6 +289,25 @@ void main() {
       expect(File(cfg.iconPath!).existsSync(), isTrue);
     });
   });
+
+  // "Running now" is a snapshot of what is running RIGHT NOW. Taken once per
+  // build, launching a game with the screen already open left it absent, and
+  // an icon that resolved a moment later never appeared at all.
+  testWidgets('the running-app list refreshes itself while open', (t) async {
+    AppInfo running(String name, String bundleId) =>
+        AppInfo(bundleId: bundleId, name: name, pid: 42, windowId: 1);
+    var apps = <AppInfo>[running('One', 'com.example.one')];
+
+    await _pump(t, _app(screen(listApps: () => apps)));
+    expect(find.text('One'), findsOneWidget);
+    expect(find.text('Two'), findsNothing);
+
+    // A game launches while the screen sits open.
+    apps = [...apps, running('Two', 'com.example.two')];
+    await t.pump(const Duration(seconds: 5));
+
+    expect(find.text('Two'), findsOneWidget);
+  });
 }
 
 /// Minimal on-disk Steam layout for one game under [parent]; returns the

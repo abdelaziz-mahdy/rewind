@@ -2324,6 +2324,126 @@ void main() {
       expect(h.engine.captureWindowCalls, [1111, 4242]);
     });
 
+    // The merged-id rule above only stops League's client stomping League's
+    // own match. With a DIFFERENT game being played and League's client
+    // merely open, the two loops re-aimed over each other nine times in
+    // three seconds on a real machine (2026-08-08 10:50:24-27), rebuilding
+    // the ScreenCaptureKit stream every time — heard as an audio glitch.
+    test('a launcher never steals the aim from a DIFFERENT game being played',
+        () async {
+      final harnessTmp = Directory.systemTemp.createTempSync('rewind_steal');
+      addTearDown(() {
+        try {
+          harnessTmp.deleteSync(recursive: true);
+        } on FileSystemException {
+          // best-effort
+        }
+      });
+      final harnessEngine = FakeCaptureEngine();
+      // League's client: open, but not something you are playing.
+      final client = FakeGameSource('app:league_of_legends',
+          'League of Legends (Client)', false, 'LeagueClientUx');
+      // An unrelated game, actually being played.
+      final other = FakeGameSource('app:big_walk', 'Big Walk', true, 'BigWalk');
+      final harnessRegistry = GameRegistry(sources: [other, client]);
+      final harnessLibrary = ClipLibrary(clipsDir: harnessTmp);
+      final harnessCoordinator = ClipCoordinator(
+        registry: harnessRegistry,
+        library: harnessLibrary,
+        storage: StorageManager(harnessLibrary),
+        settings: AppSettings(),
+        outDir: harnessTmp.path,
+        engine: harnessEngine,
+        autoSwitchRetryInterval: const Duration(milliseconds: 20),
+      )..start(supervise: false);
+      addTearDown(harnessCoordinator.dispose);
+
+      harnessEngine.apps = const [
+        clientWindowApp,
+        AppInfo(
+          bundleId: 'com.example.bigwalk',
+          name: 'BigWalk',
+          pid: 8002,
+          onScreen: true,
+          windowId: 5555,
+        ),
+      ];
+      other.running = true;
+      client.running = true;
+      await harnessRegistry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // The played game holds the aim, and the client's loop — which keeps
+      // running for as long as the client is open — never takes it.
+      expect(harnessEngine.captureWindowCalls.last, 5555);
+      expect(harnessEngine.captureWindowCalls.where((w) => w == 1111).length,
+          lessThanOrEqualTo(1),
+          reason: 'at most the one bind made before the game claimed the aim');
+    });
+
+    // Two REAL games at once: the one you just launched wins, once. Both
+    // count as playing, so without the fresh-activation rule their loops
+    // would trade the aim every tick exactly like the launcher case above.
+    test('a second game takes the aim on activation, then nobody trades it',
+        () async {
+      final harnessTmp = Directory.systemTemp.createTempSync('rewind_twogames');
+      addTearDown(() {
+        try {
+          harnessTmp.deleteSync(recursive: true);
+        } on FileSystemException {
+          // best-effort
+        }
+      });
+      final harnessEngine = FakeCaptureEngine();
+      final first = FakeGameSource('app:first', 'First', true, 'FirstGame');
+      final second = FakeGameSource('app:second', 'Second', true, 'SecondGame');
+      final harnessRegistry = GameRegistry(sources: [first, second]);
+      final harnessLibrary = ClipLibrary(clipsDir: harnessTmp);
+      final harnessCoordinator = ClipCoordinator(
+        registry: harnessRegistry,
+        library: harnessLibrary,
+        storage: StorageManager(harnessLibrary),
+        settings: AppSettings(),
+        outDir: harnessTmp.path,
+        engine: harnessEngine,
+        autoSwitchRetryInterval: const Duration(milliseconds: 20),
+      )..start(supervise: false);
+      addTearDown(harnessCoordinator.dispose);
+
+      harnessEngine.apps = const [
+        AppInfo(
+            bundleId: 'com.example.first',
+            name: 'FirstGame',
+            pid: 9001,
+            onScreen: true,
+            windowId: 6001),
+        AppInfo(
+            bundleId: 'com.example.second',
+            name: 'SecondGame',
+            pid: 9002,
+            onScreen: true,
+            windowId: 6002),
+      ];
+
+      first.running = true;
+      await harnessRegistry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(harnessEngine.captureWindowCalls.last, 6001);
+
+      // The second game launches: it takes the aim, once.
+      second.running = true;
+      await harnessRegistry.tickNow();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(harnessEngine.captureWindowCalls.last, 6002);
+      // And then the aim stops moving, however long both stay up — the
+      // failure this guards is a rebind every tick, not the count itself.
+      final settled = harnessEngine.captureWindowCalls.length;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(harnessEngine.captureWindowCalls.length, settled,
+          reason: 'no further rebinds while both games run');
+    });
+
     test("the client's loop takes the aim back once the match ends", () async {
       final h = buildSiblingHarness();
       h.engine.apps = const [clientWindowApp, windowedGameApp];

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../events/game_event.dart';
 import 'clip.dart';
+import 'duration_prober.dart';
 
 /// Index of saved clips, persisted as clips.json inside the clips directory
 /// and reconciled with what is actually on disk at load time.
@@ -57,6 +58,39 @@ class ClipLibrary extends ChangeNotifier {
   /// and the second's rename threw PathNotFoundException (seen live
   /// 2026-07-18 16:49 under rapid hotkey presses).
   Future<void> _pendingSave = Future.value();
+
+  /// Fills in [Clip.durationMs] for every clip that lacks one, then saves.
+  ///
+  /// Durations are read from the files themselves, so they can only be
+  /// backfilled — a clip recorded before the field existed has no record of
+  /// its length anywhere else. Bounded concurrency for the same reason
+  /// thumbnails are (see ThumbnailCache.maxConcurrent): this runs at
+  /// startup, potentially against hundreds of files, and must not compete
+  /// with a game being captured.
+  Future<void> backfillDurations(
+    DurationProber prober, {
+    int maxConcurrent = 2,
+  }) async {
+    final missing = _clips.where((c) => c.durationMs == null).toList();
+    if (missing.isEmpty) return;
+
+    var changed = false;
+    for (var i = 0; i < missing.length; i += maxConcurrent) {
+      final batch = missing.skip(i).take(maxConcurrent);
+      final probed = await Future.wait(batch.map((c) async {
+        final d = await prober.probe(c.path);
+        return (clip: c, duration: d);
+      }));
+      for (final r in probed) {
+        if (r.duration == null) continue;
+        r.clip.durationMs = r.duration!.inMilliseconds;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    notifyListeners();
+    await save();
+  }
 
   Future<void> save() {
     final next = _pendingSave.then((_) => _writeIndex());

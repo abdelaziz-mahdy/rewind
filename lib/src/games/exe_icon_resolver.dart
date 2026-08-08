@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../log/log.dart';
 import '../obs/app_info.dart';
 import 'exe_icon_extractor.dart';
 
@@ -19,9 +20,16 @@ class ExeIconResolver {
   /// Where resolved icons are cached (one PNG per exe).
   final Directory cacheDir;
 
-  /// Returns the CrossOver `drive_c` directories a Windows `C:\…` path can be
-  /// resolved into. Injectable for tests; defaults to every bottle's drive_c.
-  final List<Directory> Function() bottleDriveCs;
+  /// Returns every CrossOver BOTTLE directory a Windows path can be resolved
+  /// inside. Injectable for tests; defaults to every installed bottle.
+  ///
+  /// Bottle roots rather than their `drive_c`: a bottle maps each drive
+  /// letter through a `dosdevices/<letter>:` symlink, and only `c:` points at
+  /// drive_c. `z:` is the macOS filesystem root and is how Wine reports any
+  /// game outside the bottle — e.g. one installed on an external volume,
+  /// which arrives as `Z:\Volumes\gaming\...`. Resolving everything against
+  /// drive_c meant every such game silently failed to produce an icon.
+  final List<Directory> Function() bottleDirs;
 
   /// Resolves a pid to its executable path (a Windows `C:\…\Game.exe` for a
   /// Wine process, or a real path). Injectable; defaults to `ps`.
@@ -33,9 +41,9 @@ class ExeIconResolver {
 
   ExeIconResolver({
     required this.cacheDir,
-    List<Directory> Function()? bottleDriveCs,
+    List<Directory> Function()? bottleDirs,
     Future<String?> Function(int pid)? exePathForPid,
-  })  : bottleDriveCs = bottleDriveCs ?? _defaultBottleDriveCs,
+  })  : bottleDirs = bottleDirs ?? _defaultBottleDirs,
         exePathForPid = exePathForPid ?? _psExePathForPid;
 
   final Map<String, Future<String?>> _byKey = {};
@@ -53,22 +61,44 @@ class ExeIconResolver {
   Future<String?> _resolve(AppInfo app) async {
     try {
       final exePath = await exePathForPid(app.pid);
-      if (exePath == null || exePath.isEmpty) return null;
+      if (exePath == null || exePath.isEmpty) {
+        talker.debug('No icon for ${app.name}: its executable path could not '
+            'be read from the process list.');
+        return null;
+      }
       final real = _realPathFor(exePath);
-      if (real == null) return null;
+      if (real == null) {
+        talker.debug('No icon for ${app.name}: "$exePath" does not map into '
+            'any CrossOver bottle (drive letter not mapped, or the volume is '
+            'not mounted).');
+        return null;
+      }
 
       final file = File(real);
       if (!await file.exists()) return null;
-      if (await file.length() > _maxExeBytes) return null;
+      if (await file.length() > _maxExeBytes) {
+        talker.debug('No icon for ${app.name}: its executable is larger than '
+            'the read limit.');
+        return null;
+      }
 
       final png = pngIconFromPeBytes(await file.readAsBytes());
-      if (png == null) return null;
+      if (png == null) {
+        talker.debug('No icon for ${app.name}: no readable icon resource in '
+            '$real.');
+        return null;
+      }
 
       if (!await cacheDir.exists()) await cacheDir.create(recursive: true);
       final dest = p.join(cacheDir.path, 'exe-${_slug(real)}.png');
       await File(dest).writeAsBytes(png);
       return dest;
-    } catch (_) {
+    } on Object catch (err) {
+      // A game on an external volume is the case that actually hits this:
+      // macOS refuses the READ ("Operation not permitted") unless the app has
+      // been granted access to removable volumes, even though the path
+      // resolves and the file is plainly there.
+      talker.debug('No icon for ${app.name}: $err');
       return null;
     }
   }
@@ -80,13 +110,33 @@ class ExeIconResolver {
     // Already a real, existing path (native game, or a bottle-absolute path).
     if (exePath.startsWith('/') && File(exePath).existsSync()) return exePath;
 
-    // Windows path: drop the drive, split on either slash, find the bottle.
-    final drive = RegExp(r'^[A-Za-z]:[\\/]').firstMatch(exePath);
+    // Windows path: split off the drive letter, then the rest on either slash.
+    final drive = RegExp(r'^([A-Za-z]):[\\/]').firstMatch(exePath);
     final rel = drive == null ? exePath : exePath.substring(drive.end);
-    final segments = rel.split(RegExp(r'[\\/]+')).where((s) => s.isNotEmpty);
+    final letter = drive?.group(1)?.toLowerCase();
+    final segments =
+        rel.split(RegExp(r'[\\/]+')).where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) return null;
-    for (final driveC in bottleDriveCs()) {
-      final candidate = p.joinAll([driveC.path, ...segments]);
+
+    for (final bottle in bottleDirs()) {
+      // The bottle's own drive map is the authority: dosdevices/<letter>: is
+      // a symlink to wherever that drive really lives. Guessing drive_c only
+      // ever worked for C:.
+      if (letter != null) {
+        final link = Link(p.join(bottle.path, 'dosdevices', '$letter:'));
+        if (link.existsSync()) {
+          try {
+            final target = link.resolveSymbolicLinksSync();
+            final candidate = p.joinAll([target, ...segments]);
+            if (File(candidate).existsSync()) return candidate;
+          } on FileSystemException {
+            // A dangling drive mapping (an unplugged volume) is not fatal —
+            // another bottle may still hold this game.
+          }
+        }
+      }
+      // Fallback for a bottle with no dosdevices entry: the old drive_c join.
+      final candidate = p.joinAll([bottle.path, 'drive_c', ...segments]);
       if (File(candidate).existsSync()) return candidate;
     }
     return null;
@@ -96,10 +146,10 @@ class ExeIconResolver {
       path.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 }
 
-/// Every CrossOver bottle's `drive_c` directory (macOS). Empty elsewhere —
-/// on native Windows/Linux the process path is already a real path, so no
-/// bottle mapping is needed.
-List<Directory> _defaultBottleDriveCs() {
+/// Every installed CrossOver bottle (macOS). Empty elsewhere — on native
+/// Windows/Linux the process path is already a real path, so no bottle
+/// mapping is needed.
+List<Directory> _defaultBottleDirs() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
   if (home == null || !Platform.isMacOS) return const [];
@@ -110,8 +160,9 @@ List<Directory> _defaultBottleDriveCs() {
   try {
     for (final b in bottles.listSync()) {
       if (b is! Directory) continue;
-      final driveC = Directory(p.join(b.path, 'drive_c'));
-      if (driveC.existsSync()) out.add(driveC);
+      // A bottle is anything with a drive_c; its drive MAP lives next door in
+      // dosdevices (see _realPathFor).
+      if (Directory(p.join(b.path, 'drive_c')).existsSync()) out.add(b);
     }
   } catch (_) {
     // Best-effort.

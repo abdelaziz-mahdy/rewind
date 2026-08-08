@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'src/clip/clip.dart';
 import 'src/clip/clip_library.dart';
 import 'src/clip/clips_dir.dart';
+import 'src/clip/duration_prober.dart';
 import 'src/clip/match_stats.dart';
 import 'src/clip/storage_manager.dart';
 import 'src/clip/thumbnail_cache.dart';
@@ -21,6 +22,7 @@ import 'src/events/game_registry.dart';
 import 'src/events/source_builder.dart';
 import 'src/events/steam_stats_watcher.dart';
 import 'src/games/exe_icon_resolver.dart';
+import 'src/games/game_icon_backfill.dart';
 import 'src/games/game_descriptor.dart';
 import 'src/games/league/ddragon.dart';
 import 'src/games/steam_icon_backfill.dart';
@@ -162,6 +164,9 @@ Future<void> main() async {
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
   // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
   unawaited(removeOrphanThumbnails(library.all, clipsDir));
+  // Durations can only come from the files, so clips recorded before the
+  // field existed need a one-off read. Bounded and off the startup path.
+  unawaited(library.backfillDurations(FfprobeDurationProber()));
 
   // Bring up capture. In stub mode init/start succeed but saves write no
   // file (the coordinator ignores those); with libobs linked this starts the
@@ -498,6 +503,26 @@ Future<void> main() async {
   coordinator.playingGameIds.addListener(() {
     manualOverride = clearedOverrideAfterTransition(manualOverride);
     applyBufferPolicy();
+  });
+  // A game going live is the ONLY moment its icon can be resolved: both
+  // sources need it running — its pid, to read the icon out of the exe, and
+  // its install dir, to match the Steam library. Learning a game used to
+  // resolve an icon on exactly one of the three paths that can learn one
+  // (Supported Games' Add), so a game learned from the detected-game banner
+  // or the capture-source picker kept a letter monogram forever.
+  coordinator.activeGameIds.addListener(() async {
+    final apps = engine?.listCapturableApps() ?? const <AppInfo>[];
+    if (apps.isEmpty) return;
+    final found = await backfillRunningGameIcons(
+      settings,
+      apps,
+      steamResolver: steamResolver,
+      exeResolver: exeResolver,
+    );
+    if (found == 0) return;
+    await store.save(settings);
+    settingsRevision.value++;
+    talker.info('Resolved an icon for $found game(s) now running.');
   });
   // Onboarding finishing (or being skipped) is itself a policy input change
   // — re-run immediately so the deck flips straight to "Waiting for a game"

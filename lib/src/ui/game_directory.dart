@@ -283,9 +283,14 @@ GameEntry _buildEntry({
   // using (see `usesOfficialLogo`'s doc) — champion/item art (DDragon) is
   // unaffected, this is ONLY about the OS-extracted app icon.
   String? iconPath;
-  if (!usesOfficialLogo(gameId: gameId)) {
-    for (final id in matchIds) {
-      if (configById[id]?.iconPath case final path?) {
+  for (final id in matchIds) {
+    final cfg = configById[id];
+    if (cfg?.iconPath case final path?) {
+      // The official-logo guard only governs icons Rewind RESOLVED for
+      // itself. A user who pointed at an image file made that choice; this
+      // never harvests a vendor's artwork, so it is honoured for every game
+      // (Settings -> the game -> Icon).
+      if (cfg!.iconIsUserChosen || !usesOfficialLogo(gameId: gameId)) {
         iconPath = path;
         break;
       }

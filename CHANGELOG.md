@@ -52,7 +52,20 @@ All notable changes to Rewind are documented here. Format based on
   of being 3px ticks you had to hover one at a time.
 
 ### Added
-- **You can remove a game** (Settings → the game → Remove). It forgets that
+- **Windows/Wine games show their real icon.** Rewind reads the icon out of
+  the game's own `.exe`, but only understood the modern PNG form — every icon
+  stored the classic way (most of them: three of four executables on the test
+  machine) came back empty and left a letter monogram, indistinguishable from
+  a game that has no icon at all. Both forms are read now.
+- **Games get their real icon and name on their own.** A game added from the
+  "is running" banner or by picking it as a capture source kept a letter
+  monogram forever — icon resolution only ran on one of the three ways to add
+  a game, and both icon sources (the Steam library, and the icon embedded in
+  the game's own .exe) need the game to be running. Rewind now resolves one
+  the next time the game is live. You can also point at your own picture, on
+  the game's settings page, for when there is nothing to find or the resolved
+  icon is wrong.
+ **You can remove a game** (Settings → the game → Remove). It forgets that
   game's settings, custom name and icon — the fix for a wrong icon — and stops
   detecting it for good. Previously nothing could undo adding a game: "Reset
   to defaults" only cleared the overrides and left the game in the list, still
@@ -86,7 +99,43 @@ All notable changes to Rewind are documented here. Format based on
   stops it overriding anything; its clips are untouched.
 
 ### Fixed
-- **Rewind no longer holds your microphone (or a screen-capture stream) while
+- **Audio glitches while recording, when a launcher was open beside the game
+  you were playing.** Two capture loops traded the aim nine times in three
+  seconds — rebuilding the screen-capture stream each time, half of them at a
+  window the system had already closed. Nothing takes the capture aim from a
+  game you are playing any more; when a second game launches, it takes over
+  once and then holds it.
+- **Thumbnails stopped appearing after opening a match.** Every visible clip
+  asked FFmpeg for a thumbnail in the same instant — eighteen at once on a
+  real match. That overran FFmpeg's own session registry, and the sessions it
+  evicted came back as an error Rewind recorded as "this video is broken",
+  so those clips never got a thumbnail again. They are now generated a couple
+  at a time, which also stops eighteen video decodes competing with the game
+  being captured.
+- **An exported match no longer poses as a clip.** Exports were written
+  beside the clips, so the next launch adopted the file as a stray manual
+  clip: it showed up under **Desktop** instead of the game it came from, and
+  it counted against the storage limit as if it were original footage — a
+  764 MB export, 75% of one user's limit, whose adoption evicted 18 real
+  clips to make room for a second copy of footage they already had. Exports
+  now live in their own folder, and the match screen is where you find them.
+- **Exporting a match twice no longer swallows the first export.** Once an
+  export was filed into its own match, the next export treated it as source
+  footage — 43 MB of clips became a 258 MB video, then a 516 MB one. Only
+  captured footage feeds an export now.
+- **Clips say how long they are**, before their size — the question when
+  picking something to watch. Existing clips are read once in the background.
+- **A derived video says what it is.** An export inherited its first clip's
+  badge and read "MANUAL", indistinguishable from the ordinary clips around
+  it; exports and trims now badge **FULL MATCH** and **TRIMMED**, and an
+  export leads its match's grid.
+- **An exported match now lives in the match it came from.** "Export as one
+  video" only ever pointed at the file through a six-second Reveal action, so
+  once that toast went the video was unreachable from inside Rewind. The
+  export now joins its own match, badged **Full match** — the same rule
+  trimming already follows — so it can be played, revealed and deleted like
+  any other clip, from the game it belongs to.
+ **Rewind no longer holds your microphone (or a screen-capture stream) while
   paused.** With "only record while playing" on and no game running, macOS
   showed its microphone indicator anyway — the app was listening while its own
   UI said it was idle. Pausing released the video source and nothing else; the
