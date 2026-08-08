@@ -78,7 +78,24 @@ APP_BINARY="$CONTENTS/MacOS/$(basename "$APP_PATH" .app)"
 if [[ -x "$APP_BINARY" ]]; then
   if ! otool -l "$APP_BINARY" | grep -q "@executable_path/../Frameworks"; then
     echo "==> Adding @executable_path/../Frameworks rpath to $APP_BINARY"
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
+    # The check above is not enough on its own for a RELEASE build: that
+    # binary is universal, this phase runs while Xcode is still assembling
+    # it, and the rpath Xcode adds itself may not be visible yet — so the
+    # add can still come back "would duplicate path". That specific
+    # complaint means the job is already done; anything else is a real
+    # failure and still stops the build.
+    rpath_err="$(mktemp)"
+    if ! install_name_tool -add_rpath "@executable_path/../Frameworks" \
+        "$APP_BINARY" 2>"$rpath_err"; then
+      if grep -q "would duplicate path" "$rpath_err"; then
+        echo "    (already present — nothing to do)"
+      else
+        cat "$rpath_err" >&2
+        rm -f "$rpath_err"
+        exit 1
+      fi
+    fi
+    rm -f "$rpath_err"
   fi
 else
   echo "warning: app binary not found/executable at $APP_BINARY" >&2

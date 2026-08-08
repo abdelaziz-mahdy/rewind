@@ -68,6 +68,7 @@
 // native/shim/README.md's Linux section).
 import 'dart:io';
 
+import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
 
@@ -78,8 +79,22 @@ void main(List<String> args) async {
     // Same layout check the shim itself uses at runtime (has_sdk_layout in
     // rewind_obs.c) — presence of obs-plugins/ signals a complete fetch, not
     // just an empty/partial directory.
-    final useLibobs =
+    final hasSdkLayout =
         Directory.fromUri(obsRoot.uri.resolve('obs-plugins/')).existsSync();
+
+    // ...AND the fetched SDK must actually contain the architecture being
+    // built for. The fetch scripts build libobs for the HOST arch only, but
+    // a macOS RELEASE build compiles this hook once per architecture — so on
+    // an Apple Silicon machine the x86_64 pass linked an arm64-only libobs
+    // and the whole release build died at the link step ("Undefined symbols
+    // for architecture x86_64: _obs_output_get_last_error ..."). Debug never
+    // showed it: it builds the host arch alone.
+    //
+    // The odd arch out falls back to STUB mode rather than failing the
+    // build: the app still links and runs there, minus capture, which is the
+    // same contract as building with no SDK fetched at all.
+    final useLibobs =
+        hasSdkLayout && _sdkHasArchitecture(obsRoot, input.config.code.targetArchitecture);
 
     final builder = CBuilder.library(
       name: 'rewind_obs',
@@ -184,4 +199,25 @@ void main(List<String> args) async {
       logger: null,
     );
   });
+}
+
+/// Whether the fetched libobs SDK contains machine code for [arch].
+///
+/// macOS only asks a real question here — its SDK is a single .framework
+/// binary that `lipo` can report on. Windows/Linux fetches produce
+/// host-arch-only trees too, but their builds are single-arch, so the
+/// question never arises and the answer is simply yes.
+bool _sdkHasArchitecture(Directory obsRoot, Architecture arch) {
+  if (!Platform.isMacOS) return true;
+  final framework = File.fromUri(
+      obsRoot.uri.resolve('lib/libobs.framework/Versions/A/libobs'));
+  if (!framework.existsSync()) return true; // let the linker report it
+  try {
+    final res = Process.runSync('lipo', ['-archs', framework.path]);
+    if (res.exitCode != 0) return true;
+    final archs = res.stdout.toString().trim().split(RegExp(r'\s+'));
+    return archs.contains(arch == Architecture.arm64 ? 'arm64' : 'x86_64');
+  } on ProcessException {
+    return true; // no lipo: assume yes and let the link speak
+  }
 }
