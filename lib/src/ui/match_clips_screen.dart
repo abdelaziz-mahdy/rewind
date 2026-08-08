@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../clip/clip.dart';
 import '../clip/clip_library.dart';
 import '../clip/duration_prober.dart';
 import '../clip/match_export.dart';
@@ -186,16 +189,6 @@ class _ExportMatchButton extends StatefulWidget {
 class _ExportMatchButtonState extends State<_ExportMatchButton> {
   bool _exporting = false;
 
-  /// Where the last export of this match landed, once one has been made.
-  ///
-  /// The only pointer to an exported file used to be a Reveal action on a
-  /// six-second toast. Miss it and the video was unreachable from inside
-  /// Rewind: the export is written beside the clips but deliberately NOT
-  /// indexed as one (it is the same footage again — indexing it would double
-  /// every match in the library and count its bytes twice against the
-  /// storage limit). So the button itself has to remember.
-  String? _exportedPath;
-
   Future<void> _export() async {
     // Chronological playback order — the grid shows newest first.
     final ordered = List.of(widget.session.clips)
@@ -215,11 +208,43 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
       ));
       return;
     }
-    setState(() => _exportedPath = outPath);
+    // The export joins the match it came from, exactly as a trim joins the
+    // clip it came from (see PlayerScreen's trim: same gameId, same
+    // sessionAt, an eventLabel naming what it is). A derived video is not a
+    // loose file to go hunting for — it belongs to the session that produced
+    // it, and lives in that session's grid where it can be played, revealed
+    // and deleted like anything else.
+    //
+    // This is also what makes it survive: a button's "I just exported"
+    // state dies with the screen, and the toast dies in six seconds.
+    // Sync stat deliberately: an `await`ed dart:io call inside a widget's
+    // callback never completes under a widget test's fake-async zone (see
+    // CLAUDE.md's testing gotchas), and this one runs from a button press.
+    // Indexed at size 0 rather than dropped if it can't be read — the
+    // exporter said the file exists, and a transient stat failure must not
+    // lose it.
+    var size = 0;
+    try {
+      final file = File(outPath);
+      if (file.existsSync()) size = file.lengthSync();
+    } on FileSystemException {
+      // Size stays 0.
+    }
+    widget.library.add(Clip(
+      path: outPath,
+      gameId: ordered.first.gameId,
+      event: ordered.first.event,
+      createdAt: ordered.first.createdAt,
+      sizeBytes: size,
+      sessionAt: ordered.first.sessionAt ?? widget.session.startedAt,
+      eventLabel: 'Full match',
+    ));
+    await widget.library.save();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 6),
-      content: const Text('Full match exported'),
+      content: const Text('Full match added to this match'),
       action: SnackBarAction(
         label: 'Reveal',
         onPressed: () async {
@@ -232,41 +257,17 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
 
   @override
   Widget build(BuildContext context) {
-    final exported = _exportedPath;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton.icon(
-          key: const ValueKey('exportMatchButton'),
-          icon: _exporting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.movie_outlined, size: 18),
-          label: Text(_exporting
-              ? 'Exporting…'
-              : exported == null
-                  ? 'Export as one video'
-                  : 'Export again'),
-          onPressed: _exporting ? null : _export,
-        ),
-        // Outlives the toast: the export is findable for as long as this
-        // screen is open, not for six seconds.
-        if (exported != null) ...[
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            key: const ValueKey('revealExportButton'),
-            icon: const Icon(Icons.folder_open_outlined, size: 18),
-            label: const Text('Show the video'),
-            onPressed: () async {
-              final revealed = await revealClipFile(exported);
-              if (!revealed && context.mounted) showOpenFailedToast(context);
-            },
-          ),
-        ],
-      ],
+    return OutlinedButton.icon(
+      key: const ValueKey('exportMatchButton'),
+      icon: _exporting
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.movie_outlined, size: 18),
+      label: Text(_exporting ? 'Exporting…' : 'Export as one video'),
+      onPressed: _exporting ? null : _export,
     );
   }
 }

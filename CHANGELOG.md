@@ -119,11 +119,12 @@ All notable changes to Rewind are documented here. Format based on
   764 MB export, 75% of one user's limit, whose adoption evicted 18 real
   clips to make room for a second copy of footage they already had. Exports
   now live in their own folder, and the match screen is where you find them.
-- **An exported match is findable after the toast goes.** "Export as one
-  video" only ever pointed at the file through a six-second Reveal action,
-  and the export is deliberately not added to the library (it is the same
-  footage again). The button now offers "Show the video" for as long as the
-  match is open.
+- **An exported match now lives in the match it came from.** "Export as one
+  video" only ever pointed at the file through a six-second Reveal action, so
+  once that toast went the video was unreachable from inside Rewind. The
+  export now joins its own match, badged **Full match** — the same rule
+  trimming already follows — so it can be played, revealed and deleted like
+  any other clip, from the game it belongs to.
  **Rewind no longer holds your microphone (or a screen-capture stream) while
   paused.** With "only record while playing" on and no game running, macOS
   showed its microphone indicator anyway — the app was listening while its own

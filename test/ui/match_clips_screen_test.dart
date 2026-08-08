@@ -229,11 +229,14 @@ void main() {
     });
   });
 
-  // The only pointer to an exported file used to be a Reveal action on a
-  // six-second toast, and the export is deliberately not indexed as a clip —
-  // so once the toast went, the video was unreachable from inside Rewind.
+  // A derived video belongs to the session that produced it — the same rule
+  // trimming already follows (PlayerScreen indexes a trim with its source's
+  // gameId/sessionAt and an eventLabel). Before this, an export was reachable
+  // only through a six-second toast, or a button whose state died with the
+  // screen.
   group('exporting a match', () {
-    testWidgets('offers a lasting way to find the file afterwards', (t) async {
+    testWidgets('the export joins the match, labelled for what it is',
+        (t) async {
       final exporter = _FakeExporter();
       await t.pumpWidget(app(MatchClipsScreen(
         session: session,
@@ -243,20 +246,23 @@ void main() {
         exporter: exporter,
       )));
       await t.pump();
-
-      expect(find.byKey(const ValueKey('revealExportButton')), findsNothing,
-          reason: 'nothing to reveal before an export exists');
+      final before = library.all.length;
 
       await t.tap(find.byKey(const ValueKey('exportMatchButton')));
       await t.pump();
       await t.pump(const Duration(milliseconds: 50));
 
-      expect(exporter.outPath, isNotNull);
-      expect(find.byKey(const ValueKey('revealExportButton')), findsOneWidget);
-      expect(find.text('Export again'), findsOneWidget);
+      expect(library.all.length, before + 1);
+      final added = library.all.firstWhere((c) => c.eventLabel == 'Full match');
+      expect(added.path, exporter.outPath);
+      expect(added.gameId, session.clips.first.gameId,
+          reason: 'filed under the game it came from, never Desktop');
+      expect(added.sessionAt ?? session.startedAt,
+          session.clips.first.sessionAt ?? session.startedAt,
+          reason: 'and inside the session that produced it');
     });
 
-    testWidgets('a failed export offers nothing to reveal', (t) async {
+    testWidgets('a failed export indexes nothing', (t) async {
       final exporter = _FakeExporter()..succeed = false;
       await t.pumpWidget(app(MatchClipsScreen(
         session: session,
@@ -266,12 +272,13 @@ void main() {
         exporter: exporter,
       )));
       await t.pump();
+      final before = library.all.length;
 
       await t.tap(find.byKey(const ValueKey('exportMatchButton')));
       await t.pump();
       await t.pump(const Duration(milliseconds: 50));
 
-      expect(find.byKey(const ValueKey('revealExportButton')), findsNothing);
+      expect(library.all.length, before);
     });
   });
 }
