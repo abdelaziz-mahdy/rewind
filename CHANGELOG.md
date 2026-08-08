@@ -112,6 +112,13 @@ All notable changes to Rewind are documented here. Format based on
   so those clips never got a thumbnail again. They are now generated a couple
   at a time, which also stops eighteen video decodes competing with the game
   being captured.
+- **An exported match no longer poses as a clip.** Exports were written
+  beside the clips, so the next launch adopted the file as a stray manual
+  clip: it showed up under **Desktop** instead of the game it came from, and
+  it counted against the storage limit as if it were original footage — a
+  764 MB export, 75% of one user's limit, whose adoption evicted 18 real
+  clips to make room for a second copy of footage they already had. Exports
+  now live in their own folder, and the match screen is where you find them.
 - **An exported match is findable after the toast goes.** "Export as one
   video" only ever pointed at the file through a six-second Reveal action,
   and the export is deliberately not added to the library (it is the same

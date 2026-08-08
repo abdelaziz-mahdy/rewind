@@ -126,13 +126,19 @@ void main() {
       );
     });
 
-    test('matchExportPath suffixes and bumps collisions', () {
+    // An export lands in a SUBDIRECTORY of the clips folder. ClipLibrary's
+    // scan does not recurse, so this is what stops an export being adopted
+    // as a stray manual DESKTOP clip on the next launch — which both filed
+    // it under the wrong game and let a 764 MB duplicate evict 18 real clips
+    // to fit under the storage limit.
+    test('matchExportPath writes to exports/, and bumps collisions', () {
       final first = _clip('/clips/rewind-1.mp4', t0);
+      expect(matchExportPath(first, const []),
+          '/clips/exports/rewind-1-full-match.mp4');
       expect(
-          matchExportPath(first, const []), '/clips/rewind-1-full-match.mp4');
-      expect(
-        matchExportPath(first, const ['/clips/rewind-1-full-match.mp4']),
-        '/clips/rewind-1-full-match-2.mp4',
+        matchExportPath(
+            first, const ['/clips/exports/rewind-1-full-match.mp4']),
+        '/clips/exports/rewind-1-full-match-2.mp4',
       );
     });
   });
