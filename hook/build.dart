@@ -93,8 +93,8 @@ void main(List<String> args) async {
     // The odd arch out falls back to STUB mode rather than failing the
     // build: the app still links and runs there, minus capture, which is the
     // same contract as building with no SDK fetched at all.
-    final useLibobs =
-        hasSdkLayout && _sdkHasArchitecture(obsRoot, input.config.code.targetArchitecture);
+    final useLibobs = hasSdkLayout &&
+        _sdkHasArchitecture(obsRoot, input.config.code.targetArchitecture);
 
     final builder = CBuilder.library(
       name: 'rewind_obs',
