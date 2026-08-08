@@ -150,11 +150,42 @@ Color _combatAmber(Color seed, int tier) {
 class EventBadge extends StatelessWidget {
   final GameEventKind kind;
 
-  const EventBadge({required this.kind, super.key});
+  /// A DERIVED clip badges what it is ("FULL MATCH", "TRIMMED") instead of
+  /// the event of the clip it came from: a match export inherits its first
+  /// clip's event, so it read "MANUAL" — indistinguishable from the ordinary
+  /// clips beside it, while being the one thing on the screen that is not
+  /// one. Null (the default) badges the event, as everywhere else.
+  final ClipOrigin? origin;
 
+  const EventBadge({required this.kind, this.origin, super.key});
+
+  /// Derived clips take `interactive`, the app's achromatic selection tone:
+  /// hue is reserved for STATE here (see CLAUDE.md's UI rules), and "this
+  /// video was made from other videos" is a property, not a state.
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final derivedLabel = switch (origin) {
+      ClipOrigin.exported => 'FULL MATCH',
+      ClipOrigin.trimmed => 'TRIMMED',
+      _ => null,
+    };
+    if (derivedLabel != null) {
+      final accent = context.rewindTokens.interactive;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(context.rewindTokens.radiusChip),
+          border: Border.all(color: accent.withValues(alpha: 0.6)),
+        ),
+        child: Text(
+          derivedLabel,
+          style:
+              theme.textTheme.micro.copyWith(color: context.rewindTokens.text),
+        ),
+      );
+    }
     final accent = eventColor(context, kind);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -318,7 +349,8 @@ class _ClipTileState extends State<ClipTile> {
                         Positioned(
                           left: 8,
                           top: 8,
-                          child: EventBadge(kind: clip.event),
+                          child:
+                              EventBadge(kind: clip.event, origin: clip.origin),
                         ),
                         Positioned(
                           right: 4,
@@ -382,6 +414,13 @@ class _ClipTileState extends State<ClipTile> {
                                   // treatment as everything else here.
                                   '${clip.eventLabel != null ? '${clip.eventLabel} · ' : ''}'
                                   '${relativeAge(clip.createdAt)} · '
+                                  // Duration leads the size: "how long is
+                                  // this" is what someone picking a clip to
+                                  // watch actually wants; the size only
+                                  // matters when clearing space. Omitted
+                                  // entirely when unknown rather than shown
+                                  // as a placeholder.
+                                  '${clip.durationMs != null ? '${formatDuration(Duration(milliseconds: clip.durationMs!))} · ' : ''}'
                                   '${formatSize(clip.sizeBytes)}'
                                   '${clip.killCount > 0 ? ' · ${clip.killCount} '
                                       '${clip.killCount == 1 ? 'kill' : 'kills'}' : ''}',

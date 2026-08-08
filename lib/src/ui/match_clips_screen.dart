@@ -140,24 +140,35 @@ class MatchClipsScreen extends StatelessWidget {
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-            child: GridView.builder(
-              key: const ValueKey('matchClipsList'),
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
-                mainAxisSpacing: clipGridSpacing,
-                crossAxisSpacing: clipGridSpacing,
-                childAspectRatio: clipGridChildAspectRatio,
-              ),
-              itemCount: session.clips.length,
-              itemBuilder: (context, i) => ClipTile(
-                clip: session.clips[i],
-                library: library,
-                thumbnails: thumbnails,
-                showGameName: false,
-                events: s?.events ?? const [],
-              ),
+            // Rebuilt from the LIBRARY, not the session snapshot this screen
+            // was handed: exporting adds a clip to this very session, and
+            // against a snapshot the new video simply never appeared —
+            // the toast said "added to this match" over a grid that hadn't
+            // changed. Trimming has the same shape.
+            child: ListenableBuilder(
+              listenable: library,
+              builder: (context, _) {
+                final clips = matchGridOrder(library.all, session);
+                return GridView.builder(
+                  key: const ValueKey('matchClipsList'),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: clipGridMaxCrossAxisExtent,
+                    mainAxisSpacing: clipGridSpacing,
+                    crossAxisSpacing: clipGridSpacing,
+                    childAspectRatio: clipGridChildAspectRatio,
+                  ),
+                  itemCount: clips.length,
+                  itemBuilder: (context, i) => ClipTile(
+                    clip: clips[i],
+                    library: library,
+                    thumbnails: thumbnails,
+                    showGameName: false,
+                    events: s?.events ?? const [],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -171,6 +182,39 @@ class MatchClipsScreen extends StatelessWidget {
 /// stream-copy concat, no re-encode), saved next to the clips with a
 /// `-full-match` suffix. Owns its exporting flag so a long concat can't be
 /// double-fired, and the success toast hands over the result (Reveal).
+/// This match's clips in grid order: the whole-match video first, then the
+/// individual clips newest-first.
+///
+/// The export leads because it is the one video that IS the session — it is
+/// what someone opens the match to watch or share, and burying it in
+/// timestamp order among forty near-identical thumbnails hides it exactly
+/// when it is wanted. Trims stay in place: a trim is a moment, like the
+/// clips around it.
+///
+/// Sourced from [all] rather than the session snapshot so a just-made export
+/// or trim appears immediately.
+List<Clip> matchGridOrder(List<Clip> all, ClipSession session) {
+  // Start from the session as handed over — a caller that hasn't put these
+  // clips in the library (tests, a preview) still gets its grid — then let
+  // the library refresh what it knows and contribute anything NEW that
+  // belongs to this session (an export or trim carries its sessionAt).
+  final byPath = {for (final c in session.clips) c.path: c};
+  for (final c in all) {
+    if (byPath.containsKey(c.path) ||
+        (c.sessionAt != null && c.sessionAt == session.startedAt)) {
+      byPath[c.path] = c;
+    }
+  }
+  final mine = byPath.values.toList();
+  mine.sort((a, b) {
+    final aExport = a.origin == ClipOrigin.exported;
+    final bExport = b.origin == ClipOrigin.exported;
+    if (aExport != bExport) return aExport ? -1 : 1;
+    return b.createdAt.compareTo(a.createdAt);
+  });
+  return mine;
+}
+
 class _ExportMatchButton extends StatefulWidget {
   final ClipSession session;
   final ClipLibrary library;
@@ -191,7 +235,14 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
 
   Future<void> _export() async {
     // Chronological playback order — the grid shows newest first.
-    final ordered = List.of(widget.session.clips)
+    //
+    // CAPTURED clips only. An export is itself indexed into this session (so
+    // it has a home, see below), and a previous export or trim is not source
+    // footage: including them made each export swallow the last, turning
+    // 43 MB of clips into a 258 MB export and then a 516 MB one.
+    final ordered = widget.session.clips
+        .where((c) => c.origin == ClipOrigin.captured)
+        .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (ordered.isEmpty) return;
     setState(() => _exporting = true);
@@ -237,7 +288,7 @@ class _ExportMatchButtonState extends State<_ExportMatchButton> {
       createdAt: ordered.first.createdAt,
       sizeBytes: size,
       sessionAt: ordered.first.sessionAt ?? widget.session.startedAt,
-      eventLabel: 'Full match',
+      origin: ClipOrigin.exported,
     ));
     await widget.library.save();
     if (!mounted) return;

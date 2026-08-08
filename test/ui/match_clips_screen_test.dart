@@ -38,6 +38,7 @@ class _FakeMatchPresentation extends MatchPresentation {
 /// Records what it was asked to export and pretends it worked.
 class _FakeExporter implements MatchExporter {
   String? outPath;
+  List<Clip>? sources;
   bool succeed = true;
 
   @override
@@ -45,6 +46,7 @@ class _FakeExporter implements MatchExporter {
 
   @override
   Future<bool> export(List<Clip> clips, String path) async {
+    sources = clips;
     outPath = path;
     return succeed;
   }
@@ -253,13 +255,75 @@ void main() {
       await t.pump(const Duration(milliseconds: 50));
 
       expect(library.all.length, before + 1);
-      final added = library.all.firstWhere((c) => c.eventLabel == 'Full match');
+      final added =
+          library.all.firstWhere((c) => c.origin == ClipOrigin.exported);
       expect(added.path, exporter.outPath);
       expect(added.gameId, session.clips.first.gameId,
           reason: 'filed under the game it came from, never Desktop');
       expect(added.sessionAt ?? session.startedAt,
           session.clips.first.sessionAt ?? session.startedAt,
           reason: 'and inside the session that produced it');
+    });
+
+    // An export is indexed INTO this session, so the next export saw it as
+    // source footage: 43 MB of clips became a 258 MB export, then 516 MB.
+    testWidgets('a previous export is never re-exported', (t) async {
+      final exporter = _FakeExporter();
+      library.add(Clip(
+        path: '${tmp.path}/exports/old-full-match.mp4',
+        gameId: session.clips.first.gameId,
+        event: GameEventKind.manual,
+        createdAt: session.clips.first.createdAt,
+        sizeBytes: 999,
+        sessionAt: session.clips.first.sessionAt,
+        origin: ClipOrigin.exported,
+      ));
+      final withExport = ClipSession(
+        startedAt: session.startedAt,
+        clips: [...session.clips, library.all.last],
+      );
+
+      await t.pumpWidget(app(MatchClipsScreen(
+        session: withExport,
+        matchLabel: 'Ahri match',
+        stats: null,
+        library: library,
+        exporter: exporter,
+      )));
+      await t.pump();
+      await t.tap(find.byKey(const ValueKey('exportMatchButton')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 50));
+
+      expect(exporter.sources!.every((c) => c.origin == ClipOrigin.captured),
+          isTrue,
+          reason: 'only captured footage feeds an export');
+      expect(exporter.sources!.length, session.clips.length);
+    });
+
+    // The export IS the session — it is what someone opens a match to watch
+    // or share, and timestamp order buried it among near-identical clips.
+    test('the export leads the grid, the rest stay newest-first', () {
+      final t0 = DateTime(2026, 8, 8, 10);
+      Clip at(int min, ClipOrigin origin) => Clip(
+            path: '/clips/c$min.mp4',
+            gameId: 'app:game',
+            event: GameEventKind.manual,
+            createdAt: t0.add(Duration(minutes: min)),
+            sizeBytes: 1,
+            sessionAt: t0,
+            origin: origin,
+          );
+      final clips = [
+        at(1, ClipOrigin.captured),
+        at(5, ClipOrigin.exported),
+        at(3, ClipOrigin.captured),
+      ];
+      final ordered =
+          matchGridOrder(clips, ClipSession(startedAt: t0, clips: clips));
+
+      expect(ordered.first.origin, ClipOrigin.exported);
+      expect(ordered.skip(1).map((c) => c.createdAt.minute), [3, 1]);
     });
 
     testWidgets('a failed export indexes nothing', (t) async {

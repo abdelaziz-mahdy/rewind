@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'src/clip/clip.dart';
 import 'src/clip/clip_library.dart';
 import 'src/clip/clips_dir.dart';
+import 'src/clip/duration_prober.dart';
 import 'src/clip/match_stats.dart';
 import 'src/clip/storage_manager.dart';
 import 'src/clip/thumbnail_cache.dart';
@@ -163,6 +164,9 @@ Future<void> main() async {
   // Best-effort startup sweep for thumbnails orphaned by out-of-app
   // deletions (Finder etc.) — in-app deletes clean up via onClipDeleted.
   unawaited(removeOrphanThumbnails(library.all, clipsDir));
+  // Durations can only come from the files, so clips recorded before the
+  // field existed need a one-off read. Bounded and off the startup path.
+  unawaited(library.backfillDurations(FfprobeDurationProber()));
 
   // Bring up capture. In stub mode init/start succeed but saves write no
   // file (the coordinator ignores those); with libobs linked this starts the

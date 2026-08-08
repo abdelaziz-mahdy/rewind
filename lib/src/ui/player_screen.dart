@@ -248,7 +248,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       sizeBytes: size,
       sessionAt: widget.clip.sessionAt,
       killCount: widget.clip.killCount,
-      eventLabel: 'Trimmed',
+      origin: ClipOrigin.trimmed,
     );
     library.add(trimmed);
     await library.save();

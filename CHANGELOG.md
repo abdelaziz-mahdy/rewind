@@ -119,6 +119,16 @@ All notable changes to Rewind are documented here. Format based on
   764 MB export, 75% of one user's limit, whose adoption evicted 18 real
   clips to make room for a second copy of footage they already had. Exports
   now live in their own folder, and the match screen is where you find them.
+- **Exporting a match twice no longer swallows the first export.** Once an
+  export was filed into its own match, the next export treated it as source
+  footage — 43 MB of clips became a 258 MB video, then a 516 MB one. Only
+  captured footage feeds an export now.
+- **Clips say how long they are**, before their size — the question when
+  picking something to watch. Existing clips are read once in the background.
+- **A derived video says what it is.** An export inherited its first clip's
+  badge and read "MANUAL", indistinguishable from the ordinary clips around
+  it; exports and trims now badge **FULL MATCH** and **TRIMMED**, and an
+  export leads its match's grid.
 - **An exported match now lives in the match it came from.** "Export as one
   video" only ever pointed at the file through a six-second Reveal action, so
   once that toast went the video was unreachable from inside Rewind. The
