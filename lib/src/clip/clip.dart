@@ -24,11 +24,22 @@ ClipOrigin _originFrom(Map<String, dynamic> j) {
       if (o.name == stored) return o;
     }
   }
-  return switch (j['eventLabel'] as String?) {
+  final byLabel = switch (j['eventLabel'] as String?) {
     'Full match' => ClipOrigin.exported,
     'Trimmed' => ClipOrigin.trimmed,
-    _ => ClipOrigin.captured,
+    _ => null,
   };
+  if (byLabel != null) return byLabel;
+
+  // Last resort, the file name. An export written before ANY marker existed
+  // was adopted by the library's stray-file scan as a plain manual clip,
+  // with no label to read — and one such 764 MB file was still sitting in a
+  // session, ready to be swallowed by the next export of it. Both derived
+  // paths have always named their output this way.
+  final name = (j['path'] as String? ?? '').split('/').last;
+  if (name.contains('-full-match')) return ClipOrigin.exported;
+  if (name.contains('-trim-')) return ClipOrigin.trimmed;
+  return ClipOrigin.captured;
 }
 
 class Clip {
