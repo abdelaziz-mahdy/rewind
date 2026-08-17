@@ -353,6 +353,29 @@ flutter test
 
 Event watchers are pure Dart and must be unit-testable without a running game (mock the HTTP source).
 
+### Does it actually launch?
+
+`flutter test` runs in the Dart VM: no engine, no plugin DLLs, no native
+shim. It passes on a build that cannot start at all. Two checks cover that
+gap, and CI runs both:
+
+```bash
+# Boots lib/main.dart's real main() on the real device and asserts it
+# reaches a rendered frame and writes a session log.
+flutter test integration_test/launch_smoke_test.dart -d macos    # or -d windows
+
+# Windows only: every DLL the bundled binaries import must be in the bundle
+# or part of Windows itself.
+dart run tools/check_bundle_deps.dart build/windows/x64/runner/Release
+```
+
+The dependency check exists because a launch test cannot catch a missing
+**Visual C++ runtime**: build machines and CI runners have it preinstalled,
+so the app starts everywhere except on a user's clean machine — where the
+loader fails before any Dart runs, giving no window and no log file. The
+runtime is now shipped app-local by `windows/CMakeLists.txt`; run the check
+after any change to Windows packaging.
+
 ## License
 
 By contributing you agree your contributions are licensed under **GPLv3**, matching the project.

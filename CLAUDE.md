@@ -117,6 +117,29 @@ rewind/
   per app, then largest area. A black clip whose dimensions match neither the
   display nor the intended window is the signature of this bug.
 
+**Windows packaging gotchas:**
+- **A Windows build that runs everywhere in CI can still fail to start for
+  every user.** Every binary in the bundle (runner, plugin DLLs, libobs and
+  its plugins) imports the Visual C++ runtime — `MSVCP140.dll`,
+  `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`. It ships with Visual Studio, so
+  build machines and GitHub runners always have it and a clean Windows never
+  does. The loader resolves imports BEFORE any code runs, so the process
+  dies with `0xc0000135` and there is NO log file at all —
+  `startFileLogging` is Dart, and Dart never started. `windows/CMakeLists.txt`
+  now installs `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS` beside `rewind.exe`.
+- **"No log file" is itself the diagnostic.** Logs live in
+  `%APPDATA%\zcreations\rewind\logs\` (path_provider = `%APPDATA%\<CompanyName>\<ProductName>`
+  from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
+  problem; a crash with NO logs is a loader/native problem — look at imports
+  first, not at Dart.
+- **Launch tests cannot catch a missing redistributable; the static check
+  can.** `tools/check_bundle_deps.dart` parses the PE import + delay-import
+  tables of every binary in a bundle and fails on anything neither bundled
+  nor part of Windows, treating VC++ redist DLLs as must-be-bundled even
+  when the build machine has them in System32. CI runs it on every Windows
+  bundle, and `integration_test/launch_smoke_test.dart` (real `main()`, real
+  device, asserts a frame + a session log) runs on both desktop platforms.
+
 **League Live Client Data API gotchas (each verified against a live match,
 2026-07-14 — see `LeagueEventWatcher` and its hermetic tests):**
 - **Riot's cert is self-signed** (their own root, not in the system trust

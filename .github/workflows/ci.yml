@@ -56,6 +56,14 @@ jobs:
         # code signing for the build check — no-op on the Windows matrix leg.
         env:
           FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
+      # "It builds" is not "it launches": `flutter test` above runs in the
+      # Dart VM with no engine, no plugin DLLs and no native shim, so it
+      # passes on a bundle that dies at process start. This runs the real
+      # main() on the real device and asserts a frame plus a session log.
+      - name: Launch smoke test
+        run: flutter test integration_test/launch_smoke_test.dart -d ${{ matrix.target }}
+        env:
+          FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
 
   build-macos-libobs:
     name: Build macOS (real libobs)
@@ -117,6 +125,12 @@ jobs:
       - run: flutter build windows --debug
       - run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
         shell: pwsh
+      # Static load-time check over the fully bundled output. The launch
+      # smoke test cannot catch a missing Visual C++ runtime here — runners
+      # have it preinstalled — so this asserts the BUNDLE is self-contained,
+      # which is what a user's clean machine sees. See the script's header.
+      - name: Check bundle dependencies
+        run: dart run tools/check_bundle_deps.dart build/windows/x64/runner/Debug
 
   build-linux-libobs:
     name: Build Linux (real libobs)

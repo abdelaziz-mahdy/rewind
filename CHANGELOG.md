@@ -6,6 +6,26 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+- **Rewind now starts on a clean Windows machine.** Every binary in the
+  Windows build — the app, each Flutter plugin, libobs and its plugins —
+  imports the Visual C++ runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`,
+  `VCRUNTIME140_1.dll`), and neither the installer nor the portable zip
+  shipped it. It arrives with Visual Studio, so every build machine had it
+  and no user did: Windows resolves imports before any of the app's code
+  runs, so Rewind died at process start with no window and — the reason this
+  was so hard to diagnose — no log file, since logging is Dart code that
+  never got to run. The runtime is now shipped next to `rewind.exe`.
+
+### Added
+- **CI now checks that the app launches, not just that it builds.**
+  `integration_test/launch_smoke_test.dart` runs the real entrypoint on
+  macOS and Windows and asserts it reaches a rendered frame and writes a
+  session log. `tools/check_bundle_deps.dart` additionally verifies every
+  Windows bundle is self-contained — the load-time failure above cannot be
+  caught by launching the app in CI, because CI runners have the missing
+  runtime preinstalled.
+
 ### Changed
 - **New design system: "Broadcast Deck."** Rewind now reads like the video
   deck it is. The one rule is that **hue is reserved for state** — the mint
