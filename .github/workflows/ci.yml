@@ -144,6 +144,18 @@ jobs:
       # the closest CI gets to what a user runs.
       - name: Launch smoke test
         run: flutter test integration_test/launch_smoke_test.dart -d windows
+      # `flutter test` rebuilds and RE-INSTALLS every plugin's bundled
+      # libraries into the same directory, after the libobs runtime was
+      # copied there — so the bundle the test ran against is not the bundle
+      # probed above. Probe again on failure to see the state that actually
+      # failed, including any file the reinstall put back.
+      - name: Probe DLL loading (after the test rebuild)
+        if: failure()
+        shell: pwsh
+        run: |
+          ./tools/probe_load_windows.ps1 build/windows/x64/runner/Debug
+          Get-ChildItem build/windows/x64/runner/Debug -Filter zlib*.dll |
+            ForEach-Object { "{0}  {1} bytes  {2}" -f $_.Name, $_.Length, (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
 
   build-linux-libobs:
     name: Build Linux (real libobs)
