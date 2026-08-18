@@ -124,8 +124,14 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
         shell: pwsh
+      # Stamp the installer with the tag's version (v0.2.0 -> 0.2.0), rather
+      # than the fallback baked into the .iss — an installer that reports
+      # the wrong version is indistinguishable from a stale build.
       - name: Build installer
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" tools\windows_installer.iss'
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          if (-not $version) { $version = '0.0.0' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$version tools\windows_installer.iss
         shell: pwsh
 
       - uses: actions/upload-artifact@v4

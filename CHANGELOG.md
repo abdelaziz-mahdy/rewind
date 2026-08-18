@@ -4,7 +4,7 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-17
 
 ### Fixed
 - **The Windows shim now exports its functions.** `rewind_obs.dll` was built
