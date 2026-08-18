@@ -80,6 +80,31 @@ if ($proc.HasExited) {
 }
 
 Write-Host "==> Started. Session log: $($log.FullName) ($($log.Length) bytes)"
-Get-Content $log.FullName -Tail 40
+$text = Get-Content $log.FullName
+$text | Select-Object -Last 60
+
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-Write-Host "==> OK: the app started and wrote a session log."
+
+# "It started" is not "it works". v0.2.0 shipped with capture completely
+# dead — no libobs module loaded, and the display list failed to parse —
+# and this step passed anyway, because a process that is alive and logging
+# satisfied it. The log says what actually happened; read it.
+$fatal = @(
+  '\[exception\]',
+  'Capture engine failed to start',
+  'Replay buffer would not start',
+  "Source ID '.*' not found",
+  "Encoder ID '.*' not found",
+  "Output ID '.*' not found",
+  'Failed to create source',
+  'Failed to create output'
+)
+$hits = $text | Where-Object { $line = $_; $fatal | Where-Object { $line -match $_ } }
+if ($hits) {
+  Write-Host "==> Startup errors in the session log:"
+  $hits | Select-Object -First 25 | ForEach-Object { Write-Host "    $_" }
+  Write-Error "the app started but capture did not come up — see the lines above"
+  exit 1
+}
+
+Write-Host "==> OK: the app started, wrote a session log, and reported no capture errors."

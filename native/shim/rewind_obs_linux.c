@@ -122,7 +122,15 @@ int rw_plat_sdk_dir_candidate(const char *shim_dir, char *out, size_t out_size) 
 void rw_plat_setup_module_paths(const char *sdk_dir) {
     char plugins_bin[PATH_MAX];
     char plugins_data[PATH_MAX];
-    snprintf(plugins_bin, sizeof(plugins_bin), "%s/obs-plugins/%%module%%.so", sdk_dir);
+    /* Plain directory, no %module%: libobs truncates the bin path at that
+     * token and then searches for DIRECTORIES rather than appending the
+     * ".so" extension (libobs/obs-module.c, find_modules_in_path). Linux
+     * plugins are flat .so FILES, so the pattern form found none of them —
+     * same defect this had on Windows, where it left the app with no
+     * capture sources, encoders or replay-buffer output at all. macOS
+     * legitimately keeps %module% because its plugins ARE directories
+     * (.plugin bundles). */
+    snprintf(plugins_bin, sizeof(plugins_bin), "%s/obs-plugins", sdk_dir);
     snprintf(plugins_data, sizeof(plugins_data), "%s/data/obs-plugins/%%module%%", sdk_dir);
     obs_add_module_path(plugins_bin, plugins_data);
 }

@@ -139,6 +139,26 @@ rewind/
   from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
   problem; a crash with NO logs is a loader/native problem — look at imports
   first, not at Dart.
+- **`%module%` in an `obs_add_module_path` BIN path means "directories".**
+  libobs' `find_modules_in_path` truncates the path at `%module%`, then
+  globs `*` and keeps only entries where `is_directory == search_directories`
+  — it appends the platform extension ONLY when the token is absent. So
+  Windows must pass the bare `obs-plugins/64bit` and Linux the bare
+  `obs-plugins` (flat `.dll`/`.so` FILES), while macOS keeps
+  `%module%.plugin/Contents/MacOS` because its plugins really are
+  directories. Get it wrong and libobs starts perfectly, D3D11 initialises,
+  and then EVERY source/encoder/output is "not found" — the replay buffer
+  reports "failed to start" with no detail. The DATA path always keeps
+  `%module%`; that one is a real substitution.
+- **Windows monitor ids are device paths full of backslashes**
+  (`\\?\DISPLAY#MSI4CC2#5&...`). Anything hand-built into JSON on the C
+  side must go through `json_escape_append`, or `jsonDecode` throws
+  "Unrecognized string escape" and the app sees an empty display list.
+- **A launch check must read the log, not just find one.** `tools/launch_smoke_windows.ps1`
+  greps the session log for `[exception]`, "Capture engine failed to start"
+  and libobs' "ID '...' not found" lines. Without that it passed on a build
+  whose capture was entirely dead — the process was alive and logging, which
+  is all it used to check.
 - **`data\` on Windows belongs to BOTH Flutter and libobs.** Flutter keeps
   `data\icudtl.dat`, `data\flutter_assets\` and `data\app.so` there;
   libobs wants `data\libobs\` beside them (`rw_plat_pre_video_setup` calls

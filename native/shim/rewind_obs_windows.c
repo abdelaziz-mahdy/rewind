@@ -155,9 +155,18 @@ static BOOL CALLBACK enum_monitor_list_cb(HMONITOR handle, HDC hdc, LPRECT rect,
     long w = mi.rcMonitor.right - mi.rcMonitor.left;
     long h = mi.rcMonitor.bottom - mi.rcMonitor.top;
 
+    /* A Windows monitor id is a device path — "\\?\DISPLAY#MSI4CC2#5&..." —
+     * so it is mostly backslashes, every one of which is an escape
+     * character inside a JSON string. Emitted raw, the whole display list
+     * failed to parse on the Dart side ("FormatException: Unrecognized
+     * string escape") and the app started with no displays at all. */
+    char uuid[512];
+    uuid[0] = '\0';
+    json_escape_append(device_id, uuid, sizeof(uuid));
+
     int n = snprintf(ctx->json_out + ctx->pos, (size_t)ctx->json_cap - ctx->pos,
                       "%s{\"uuid\":\"%s\",\"width\":%ld,\"height\":%ld,\"main\":%s}",
-                      ctx->index == 0 ? "" : ",", device_id, w, h,
+                      ctx->index == 0 ? "" : ",", uuid, w, h,
                       (mi.dwFlags & MONITORINFOF_PRIMARY) ? "true" : "false");
     if (n < 0 || (size_t)n >= (size_t)ctx->json_cap - ctx->pos) { ctx->failed = 1; return FALSE; }
     ctx->pos += (size_t)n;
@@ -631,15 +640,26 @@ int rw_plat_sdk_dir_candidate(const char *shim_dir, char *out, size_t out_size) 
     return 0;
 }
 
-/* %module% is substituted by libobs per discovered module. Both trees are
- * flat — "obs-plugins/64bit/<name>.dll" and "data/obs-plugins/<name>/",
- * matching both the official OBS Windows release layout and what
- * tools/fetch_libobs_windows.ps1 assembles under native/third_party/obs/
- * (see that script and native/shim/README.md). */
+/* The BIN path must be a plain directory, with NO %module% in it — that
+ * token is not a wildcard here. libobs' find_modules_in_path() (verified
+ * against the vendored source, libobs/obs-module.c) truncates the search
+ * path at "%module%" and then sets search_directories, so it globs "*" and
+ * accepts only entries that ARE DIRECTORIES, never appending the ".dll"
+ * extension. Pointing it at "obs-plugins/64bit/%module%.dll" therefore
+ * found nothing at all: libobs came up, D3D11 initialised, and then every
+ * single source, encoder and output was missing ("Source ID
+ * 'monitor_capture' not found", "Output ID 'replay_buffer' not found"), so
+ * the replay buffer could never start. OBS Studio's own Windows launcher
+ * passes the bare directory here for the same reason.
+ *
+ * The DATA path keeps %module%: process_found_module() substitutes the
+ * module's name into it per discovered module ("data/obs-plugins/<name>/",
+ * matching the official OBS Windows layout and what
+ * tools/fetch_libobs_windows.ps1 assembles). */
 void rw_plat_setup_module_paths(const char *sdk_dir) {
     char plugins_bin[PATH_MAX];
     char plugins_data[PATH_MAX];
-    snprintf(plugins_bin, sizeof(plugins_bin), "%s/obs-plugins/64bit/%%module%%.dll", sdk_dir);
+    snprintf(plugins_bin, sizeof(plugins_bin), "%s/obs-plugins/64bit", sdk_dir);
     snprintf(plugins_data, sizeof(plugins_data), "%s/data/obs-plugins/%%module%%", sdk_dir);
     obs_add_module_path(plugins_bin, plugins_data);
 }

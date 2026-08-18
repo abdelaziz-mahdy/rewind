@@ -7,6 +7,20 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Fixed
+- **Capture works on Windows at all.** libobs was pointed at
+  `obs-plugins/64bit/%module%.dll` for its plugins, but `%module%` is not a
+  wildcard: libobs truncates the search path there and then looks for
+  DIRECTORIES, never appending `.dll`. Not one module loaded, so every
+  source, encoder and output was missing — no display capture, no audio, no
+  encoders, and no `replay_buffer` output, which is why the buffer "failed
+  to start" with no detail. Linux had the identical defect (`%module%.so`);
+  macOS is unaffected, its plugins really are directories (`.plugin`
+  bundles).
+- **Windows display enumeration no longer fails to parse.** A monitor id is
+  a device path (`\\?\DISPLAY#MSI4CC2#...`), which is almost entirely
+  backslashes — each one an escape character inside a JSON string. Emitted
+  raw, the whole list failed with "FormatException: Unrecognized string
+  escape" and the app came up believing no displays existed.
 - **Onboarding no longer asks Windows and Linux users for a permission that
   does not exist.** The Screen Recording step was shown on every platform,
   and since only macOS gates screen capture, everyone else got a green
