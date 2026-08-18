@@ -325,21 +325,22 @@ void main() {
       expect(find.text('Grant Screen Recording'), findsNothing);
       await t.tap(find.byKey(const ValueKey('onboardingNext')));
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.text("Screen Recording is granted — you're set."),
-          findsNothing);
+      expect(
+          find.text("Screen Recording is granted — you're set."), findsNothing);
     });
 
     testWidgets('still reach every remaining step, one fewer tap', (t) async {
       await t.pumpWidget(_app(screen(showScreenPermissionStep: false)));
-      await nextTo(t, 4); // welcome -> buffer -> preferences -> controls -> try it
+      await nextTo(
+          t, 4); // welcome -> buffer -> preferences -> controls -> try it
       expect(find.textContaining("Rewind records only while you're playing"),
           findsOneWidget);
     });
 
     testWidgets('Done still lands on the last step', (t) async {
       var done = 0;
-      await t.pumpWidget(_app(
-          screen(onDone: () => done++, showScreenPermissionStep: false)));
+      await t.pumpWidget(
+          _app(screen(onDone: () => done++, showScreenPermissionStep: false)));
       await nextTo(t, 4);
       await t.tap(find.byKey(const ValueKey('onboardingNext')));
       expect(done, 1);

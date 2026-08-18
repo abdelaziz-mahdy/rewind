@@ -4,7 +4,7 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.1] - 2026-08-18
 
 ### Fixed
 - **Capture works on Windows at all.** libobs was pointed at

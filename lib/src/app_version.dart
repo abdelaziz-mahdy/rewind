@@ -8,4 +8,4 @@
 /// Surfaced on Settings → About. An app with no visible version leaves "what
 /// version are you on?" unanswerable from inside the app — including for the
 /// person about to press the Report an issue button sitting next to it.
-const String kAppVersion = '0.2.0';
+const String kAppVersion = '0.2.1';
