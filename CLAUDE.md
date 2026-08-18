@@ -139,6 +139,24 @@ rewind/
   from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
   problem; a crash with NO logs is a loader/native problem — look at imports
   first, not at Dart.
+- **The libobs runtime must be the LAST thing written to a run directory.**
+  libobs ships `zlib.dll` and media_kit's libmpv bundle ships a DIFFERENT
+  `zlib.dll` under the same name. Whichever lands last wins for BOTH.
+  `bundle_obs_windows.ps1` runs after `flutter build`, so libobs wins — and
+  that direction works (verified in CI: with libobs' zlib in place every one
+  of 160 binaries resolves and loads, libmpv included). The other direction
+  does NOT: mpv's zlib lacks exports obs.dll needs, and the whole libobs
+  chain then fails to load with ERROR_PROC_NOT_FOUND (127) — obs.dll,
+  libobs-d3d11, libobs-winrt, av*, rewind_obs.dll, all at once. Anything
+  that re-runs Flutter's install step after bundling (notably `flutter test`
+  building an integration test) puts mpv's zlib back and breaks capture, so
+  Windows launch verification runs the BUILT binary
+  (`tools/launch_smoke_windows.ps1`), never `flutter test`.
+- **`tools/probe_load_windows.ps1` names the module the loader chokes on.**
+  Static analysis of imports cannot see a loader disagreement; the probe
+  LoadLibraryEx's every DLL in a bundle and prints the Win32 error per file.
+  `dartjni.dll` (wants a JRE) and `graphics-hook32.dll` (OBS' 32-bit hook)
+  always fail there and are expected.
 - **Launch tests cannot catch a missing redistributable; the static check
   can.** `tools/check_bundle_deps.dart` parses the PE import + delay-import
   tables of every binary in a bundle and fails on anything neither bundled

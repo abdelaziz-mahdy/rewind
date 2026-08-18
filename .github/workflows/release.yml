@@ -128,39 +128,18 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$version tools\windows_installer.iss
         shell: pwsh
 
-      # Prove the RELEASE build starts — the exact binary being packaged,
-      # not a debug binary built by the integration-test harness. Launch it,
-      # wait for the session log it writes at startup, and require the
-      # process to still be alive. This is what a user does, and it is the
-      # check that would have caught v0.1.0 (which died before any code ran,
-      # so it never wrote a log at all).
+      # Prove the RELEASE build starts — the exact binary being packaged.
+      # This is the check v0.1.0 needed: it died in the loader before any of
+      # its code ran, so it never wrote the session log this asserts on.
+      # NOT the integration test: `flutter test` rebuilds, and the rebuild
+      # re-installs plugin libraries over the bundled libobs runtime.
       - name: Launch the packaged app
         shell: pwsh
-        run: |
-          $exe = "build/windows/x64/runner/Release/rewind.exe"
-          $logs = Join-Path $env:APPDATA 'zcreations/rewind/logs'
-          if (Test-Path $logs) { Remove-Item "$logs/*.log" -Force -ErrorAction SilentlyContinue }
-          $proc = Start-Process $exe -PassThru
-          $deadline = (Get-Date).AddSeconds(60)
-          $log = $null
-          while ((Get-Date) -lt $deadline) {
-            if ($proc.HasExited) {
-              Write-Error "rewind.exe exited with code $($proc.ExitCode) before it finished starting"
-              exit 1
-            }
-            $log = Get-ChildItem $logs -Filter *.log -ErrorAction SilentlyContinue |
-              Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($log -and $log.Length -gt 0) { break }
-            Start-Sleep -Milliseconds 500
-          }
-          if (-not $log) {
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            Write-Error "rewind.exe wrote no session log within 60s — it did not start"
-            exit 1
-          }
-          Write-Host "==> Started. Session log: $($log.FullName) ($($log.Length) bytes)"
-          Get-Content $log.FullName -Tail 40
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        run: ./tools/launch_smoke_windows.ps1 build/windows/x64/runner/Release/rewind.exe
+      - name: Probe DLL loading (on failure)
+        if: failure()
+        shell: pwsh
+        run: ./tools/probe_load_windows.ps1 build/windows/x64/runner/Release
 
       - uses: actions/upload-artifact@v4
         with:

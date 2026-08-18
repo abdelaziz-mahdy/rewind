@@ -138,24 +138,19 @@ jobs:
       - name: Probe DLL loading
         shell: pwsh
         run: ./tools/probe_load_windows.ps1 build/windows/x64/runner/Debug
-      # The stub-mode leg above smoke-tests a shim with no external
-      # dependencies; this one loads a rewind_obs.dll that imports obs.dll,
-      # so it only works once the runtime is bundled (the step above). It is
-      # the closest CI gets to what a user runs.
-      - name: Launch smoke test
-        run: flutter test integration_test/launch_smoke_test.dart -d windows
-      # `flutter test` rebuilds and RE-INSTALLS every plugin's bundled
-      # libraries into the same directory, after the libobs runtime was
-      # copied there — so the bundle the test ran against is not the bundle
-      # probed above. Probe again on failure to see the state that actually
-      # failed, including any file the reinstall put back.
-      - name: Probe DLL loading (after the test rebuild)
+      # Launch the BUILT binary rather than integration_test's, which the
+      # stub-mode leg above already runs. `flutter test` rebuilds, and the
+      # rebuild re-installs every plugin's bundled libraries over the libobs
+      # runtime bundled a step earlier — putting back a zlib.dll that
+      # obs.dll cannot use, so the whole libobs chain then fails to load
+      # (ERROR_PROC_NOT_FOUND). Launching what was bundled needs no rebuild.
+      - name: Launch the built app
+        shell: pwsh
+        run: ./tools/launch_smoke_windows.ps1 build/windows/x64/runner/Debug/rewind.exe
+      - name: Probe DLL loading (on failure)
         if: failure()
         shell: pwsh
-        run: |
-          ./tools/probe_load_windows.ps1 build/windows/x64/runner/Debug
-          Get-ChildItem build/windows/x64/runner/Debug -Filter zlib*.dll |
-            ForEach-Object { "{0}  {1} bytes  {2}" -f $_.Name, $_.Length, (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+        run: ./tools/probe_load_windows.ps1 build/windows/x64/runner/Debug
 
   build-linux-libobs:
     name: Build Linux (real libobs)
