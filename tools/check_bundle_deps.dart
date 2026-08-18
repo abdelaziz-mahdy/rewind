@@ -61,7 +61,9 @@ const _systemDlls = {
   'mfreadwrite.dll',
   'mfuuid.dll',
   'msimg32.dll',
+  'msvcrt.dll',
   'mswsock.dll',
+  'wsock32.dll',
   'ncrypt.dll',
   'netapi32.dll',
   'normaliz.dll',
@@ -100,6 +102,17 @@ const _systemDlls = {
   'dwrite.dll',
   'd3dcompiler_47.dll',
 };
+
+/// The DEBUG C runtime (`vcruntime140d.dll`, `msvcp140d.dll`,
+/// `ucrtbased.dll`). Microsoft does not permit redistributing it and
+/// `InstallRequiredSystemLibraries` does not offer it, so a debug build is
+/// dev-machine-only by construction — flagging it would fail this check on
+/// every `flutter build windows --debug` bundle while saying nothing about
+/// what ships. Release builds link the redistributable runtime, which IS
+/// enforced.
+bool _isDebugRuntime(String name) =>
+    RegExp(r'^(msvcp|vcruntime|concrt)\d+_?\d*d\.dll$').hasMatch(name) ||
+    name == 'ucrtbased.dll';
 
 /// The Visual C++ / MFC redistributable. Present on any machine with Visual
 /// Studio (so: every CI runner and every dev box) and absent on a clean
@@ -234,6 +247,7 @@ void main(List<String> args) {
     final importer = f.uri.pathSegments.last;
     for (final need in peImports(f)) {
       if (_isApiSet(need) || _optionalDlls.contains(need)) continue;
+      if (_isDebugRuntime(need)) continue;
       if (_isRedistributable(need)) {
         if (present.contains(need)) continue;
       } else if (present.contains(need) || _systemDlls.contains(need)) {

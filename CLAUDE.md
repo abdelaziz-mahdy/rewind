@@ -118,6 +118,13 @@ rewind/
   display nor the intended window is the signature of this bug.
 
 **Windows packaging gotchas:**
+- **A Windows DLL exports NOTHING by default.** ELF and Mach-O export every
+  non-static symbol, so the shim worked on macOS/Linux while
+  `rewind_obs.dll` shipped an empty export table — every `@Native` call
+  failed with "Failed to lookup symbol '<name>' (error code 127)", thrown
+  out of `main()` on the first `listDisplays()`. `rewind_obs.h` declares
+  `REWIND_API` (`__declspec(dllexport)` on Windows, default visibility
+  elsewhere) on every function; new C surface must carry it too.
 - **A Windows build that runs everywhere in CI can still fail to start for
   every user.** Every binary in the bundle (runner, plugin DLLs, libobs and
   its plugins) imports the Visual C++ runtime — `MSVCP140.dll`,

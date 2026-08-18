@@ -7,6 +7,13 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Fixed
+- **The Windows shim now exports its functions.** `rewind_obs.dll` was built
+  with an empty export table — ELF and Mach-O export every non-static symbol
+  by default, a Windows DLL exports nothing unless asked — so the first FFI
+  call out of `main()` threw `Failed to lookup symbol
+  'rewind_list_displays' (error code 127)` and startup died before the first
+  frame. Every declaration in `native/shim/rewind_obs.h` now carries
+  `__declspec(dllexport)` on Windows.
 - **Rewind now starts on a clean Windows machine.** Every binary in the
   Windows build — the app, each Flutter plugin, libobs and its plugins —
   imports the Visual C++ runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`,
