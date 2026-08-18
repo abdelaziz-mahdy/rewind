@@ -131,6 +131,12 @@ jobs:
       # which is what a user's clean machine sees. See the script's header.
       - name: Check bundle dependencies
         run: dart run tools/check_bundle_deps.dart build/windows/x64/runner/Debug
+      # The stub-mode leg above smoke-tests a shim with no external
+      # dependencies; this one loads a rewind_obs.dll that imports obs.dll,
+      # so it only works once the runtime is bundled (the step above). It is
+      # the closest CI gets to what a user runs.
+      - name: Launch smoke test
+        run: flutter test integration_test/launch_smoke_test.dart -d windows
 
   build-linux-libobs:
     name: Build Linux (real libobs)

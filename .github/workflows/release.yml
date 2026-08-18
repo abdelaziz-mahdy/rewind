@@ -102,12 +102,6 @@ jobs:
       - name: Check bundle dependencies
         run: dart run tools/check_bundle_deps.dart build/windows/x64/runner/Release
 
-      # And that the release build actually starts. Debug-mode run (the
-      # integration-test harness builds its own binary), but it exercises
-      # the same plugin + native-shim set this job just packaged.
-      - name: Launch smoke test
-        run: flutter test integration_test/launch_smoke_test.dart -d windows
-
       # Portable zip: the fully-bundled app (rewind.exe + libobs runtime +
       # data) staged under a top-level Rewind/ folder so it extracts cleanly.
       # For people who'd rather unzip and run than install.
@@ -133,6 +127,21 @@ jobs:
           if (-not $version) { $version = '0.0.0' }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$version tools\windows_installer.iss
         shell: pwsh
+
+      # And that the app actually starts with the real (libobs-linked) shim.
+      # The integration-test harness builds its own DEBUG binary, and
+      # rewind_obs.dll then imports obs.dll — so the libobs runtime has to
+      # be bundled next to THAT build too, or the load fails with "The
+      # specified module could not be found" (error 126). Build first, bundle
+      # second, run third; run last in the job so the packaged Release
+      # directory above is never disturbed.
+      - name: Build + bundle debug for the launch smoke test
+        shell: pwsh
+        run: |
+          flutter build windows --debug
+          ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
+      - name: Launch smoke test
+        run: flutter test integration_test/launch_smoke_test.dart -d windows
 
       - uses: actions/upload-artifact@v4
         with:
