@@ -139,6 +139,14 @@ rewind/
   from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
   problem; a crash with NO logs is a loader/native problem — look at imports
   first, not at Dart.
+- **`data\` on Windows belongs to BOTH Flutter and libobs.** Flutter keeps
+  `data\icudtl.dat`, `data\flutter_assets\` and `data\app.so` there;
+  libobs wants `data\libobs\` beside them (`rw_plat_pre_video_setup` calls
+  `obs_add_data_path("<exe>/data/libobs/")`). The bundle script must MERGE,
+  never replace — it used to `Remove-Item -Recurse data\` first, which is
+  why v0.1.0 shipped with no `flutter_assets`: the app exited during engine
+  startup, before any Dart ran, on every machine. It now clears only
+  `data\libobs` and `data\obs-plugins` and asserts Flutter's data survived.
 - **The libobs runtime must be the LAST thing written to a run directory.**
   libobs ships `zlib.dll` and media_kit's libmpv bundle ships a DIFFERENT
   `zlib.dll` under the same name. Whichever lands last wins for BOTH.

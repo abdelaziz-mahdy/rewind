@@ -99,11 +99,31 @@ if (Test-Path $pluginsDest) { Remove-Item -Recurse -Force $pluginsDest }
 New-Item -ItemType Directory -Force -Path $pluginsDest | Out-Null
 Copy-Item (Join-Path $SdkDir 'obs-plugins/64bit/*') $pluginsDest -Recurse -Force
 
-Write-Host "==> Copying data/ into $BuildDir\data"
+# MERGE into data\, never replace it. Flutter's own runtime lives in the
+# SAME directory — data\icudtl.dat, data\flutter_assets\, data\app.so —
+# and libobs wants its files at <exe>\data\libobs\ (see
+# rw_plat_pre_video_setup's obs_add_data_path call). Deleting data\ before
+# copying therefore removed the Flutter engine's assets: v0.1.0 shipped with
+# no flutter_assets and no icudtl.dat, so rewind.exe exited immediately on
+# every machine. Clear only the subdirectories libobs owns, so a stale
+# plugin data file cannot survive a re-bundle either.
+Write-Host "==> Merging data/ into $BuildDir\data (Flutter's own data lives here too)"
 $dataDest = Join-Path $BuildDir 'data'
-if (Test-Path $dataDest) { Remove-Item -Recurse -Force $dataDest }
 New-Item -ItemType Directory -Force -Path $dataDest | Out-Null
+foreach ($owned in @('libobs', 'obs-plugins')) {
+    $dir = Join-Path $dataDest $owned
+    if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+}
 Copy-Item (Join-Path $SdkDir 'data/*') $dataDest -Recurse -Force
+
+# Flutter's engine data must have survived the merge: without icudtl.dat or
+# flutter_assets the app exits during engine startup, before any Dart runs.
+foreach ($required in @('icudtl.dat', 'flutter_assets')) {
+    if (-not (Test-Path (Join-Path $dataDest $required))) {
+        Write-Error "data\$required missing from $BuildDir after bundling — the Flutter engine's own data was clobbered"
+        exit 1
+    }
+}
 
 # obs-ffmpeg-mux.exe was already copied by the flat bin/64bit/* loop above
 # (it lives there, same as the macOS bundle script's equivalent helper

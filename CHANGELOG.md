@@ -7,6 +7,14 @@ All notable changes to Rewind are documented here. Format based on
 ## [0.2.0] - 2026-08-17
 
 ### Fixed
+- **The Windows build no longer ships without the Flutter engine's own
+  data.** Bundling the libobs runtime deleted `data\` before copying libobs'
+  files into it — the same directory Flutter keeps `icudtl.dat`,
+  `flutter_assets\` and `app.so` in. v0.1.0's installer and portable zip
+  contained neither, so `rewind.exe` exited during engine startup on every
+  machine, before any of the app's code ran. The bundle step now merges into
+  `data\`, clearing only the subdirectories libobs owns, and fails loudly if
+  Flutter's data is not there afterwards.
 - **The Windows shim now exports its functions.** `rewind_obs.dll` was built
   with an empty export table — ELF and Mach-O export every non-static symbol
   by default, a Windows DLL exports nothing unless asked — so the first FFI
