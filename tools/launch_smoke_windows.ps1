@@ -69,9 +69,10 @@ if (-not $log) {
   exit 1
 }
 
-# Give startup a moment past first log line to fall over if it is going to
-# (the capture engine comes up after logging does).
-Start-Sleep -Seconds 5
+# Give startup room to finish AND to report. libobs' own messages reach the
+# session log through a drain the Dart side polls, so killing the process a
+# few seconds in truncates exactly the lines that explain a capture failure.
+Start-Sleep -Seconds 20
 if ($proc.HasExited) {
   Write-Host "==> Session log tail:"
   Get-Content $log.FullName -Tail 40
@@ -81,7 +82,7 @@ if ($proc.HasExited) {
 
 Write-Host "==> Started. Session log: $($log.FullName) ($($log.Length) bytes)"
 $text = Get-Content $log.FullName
-$text | Select-Object -Last 60
+$text | ForEach-Object { Write-Host "    $_" }
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
