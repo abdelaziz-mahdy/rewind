@@ -4,6 +4,16 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Onboarding no longer asks Windows and Linux users for a permission that
+  does not exist.** The Screen Recording step was shown on every platform,
+  and since only macOS gates screen capture, everyone else got a green
+  "Screen Recording is granted — you're set" for something they were never
+  asked and never granted — then went looking for a setting their OS does
+  not have. The step now appears only where the OS actually gates capture.
+
 ## [0.2.0] - 2026-08-17
 
 ### Fixed

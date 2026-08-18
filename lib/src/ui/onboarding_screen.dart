@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -50,6 +51,16 @@ class OnboardingScreen extends StatefulWidget {
   /// overridable in tests.
   final Future<void> Function()? onOpenScreenRecording;
 
+  /// Whether to show the Screen Recording step at all. Null (the default)
+  /// means "only where the OS actually gates screen capture", which is
+  /// macOS alone: Windows and Linux have no runtime permission for it (the
+  /// shim's `rw_plat_preflight_screen_permission` returns granted
+  /// unconditionally there). Showing it anyway told Windows users a
+  /// permission they never needed had been granted, and sent them looking
+  /// for a setting that does not exist. Overridable so tests get the same
+  /// page order on every host.
+  final bool? showScreenPermissionStep;
+
   /// The live capture engine, for polling/requesting screen-recording
   /// permission. Null shows the permission step's compact "granted" state
   /// (nothing to gate onboarding on if there's no engine to ask).
@@ -97,6 +108,7 @@ class OnboardingScreen extends StatefulWidget {
     this.onRelaunch,
     this.listApps,
     this.onSetUpSteam,
+    this.showScreenPermissionStep,
     super.key,
   });
 
@@ -108,14 +120,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _controller = PageController();
   int _page = 0;
 
-  static const int _kPermissionIndex = 1;
-  static const int _kControlsGamesIndex = 4;
-  int get _tryItIndex => _kControlsGamesIndex + 1;
+  /// macOS gates screen capture; nothing else does (see
+  /// [OnboardingScreen.showScreenPermissionStep]). Every index below shifts
+  /// by one when the step is absent, so they are derived, not constant.
+  bool get _showPermission =>
+      widget.showScreenPermissionStep ?? Platform.isMacOS;
+
+  /// -1 when the step is not in the deck, which no page index can equal.
+  int get _permissionIndex => _showPermission ? 1 : -1;
+  int get _controlsGamesIndex => _showPermission ? 4 : 3;
+  int get _tryItIndex => _controlsGamesIndex + 1;
 
   /// The final "Try it now" step only appears when capture came up healthy
   /// — with no engine actually buffering, there's nothing to "try".
   bool get _showTryIt => widget.captureError == null;
-  int get _pageCount => _showTryIt ? _tryItIndex + 1 : _kControlsGamesIndex + 1;
+  int get _pageCount => _showTryIt ? _tryItIndex + 1 : _controlsGamesIndex + 1;
 
   late bool _screenGranted = widget.engine?.preflightScreenPermission() ?? true;
   Timer? _permissionPoll;
@@ -148,7 +167,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ---- permission step: live poll while visible ---------------------------
 
   void _syncPermissionPolling() {
-    final visible = _page == _kPermissionIndex;
+    final visible = _page == _permissionIndex;
     if (visible && _permissionPoll == null) {
       _pollPermission();
       _permissionPoll =
@@ -286,14 +305,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   List<Widget> get _pages => [
         const _StepView(step: _welcomeStep),
-        _PermissionStepView(
-          granted: _screenGranted,
-          hadCaptureErrorAtLaunch: widget.captureError != null,
-          onGrant: _grantScreenPermission,
-          onOpenSettings: () =>
-              (widget.onOpenScreenRecording ?? openScreenRecordingSettings)(),
-          onRelaunch: widget.onRelaunch,
-        ),
+        if (_showPermission)
+          _PermissionStepView(
+            granted: _screenGranted,
+            hadCaptureErrorAtLaunch: widget.captureError != null,
+            onGrant: _grantScreenPermission,
+            onOpenSettings: () =>
+                (widget.onOpenScreenRecording ?? openScreenRecordingSettings)(),
+            onRelaunch: widget.onRelaunch,
+          ),
         _StepView(step: _bufferStep),
         _StepView(step: _preferencesStep),
         _StepView(step: _controlsGamesStep),

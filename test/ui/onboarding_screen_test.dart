@@ -26,6 +26,9 @@ void main() {
     VoidCallback? onRelaunch,
     List<AppInfo> Function()? listApps,
     VoidCallback? onSetUpSteam,
+    // Pinned so the page order is the same on every host: the permission
+    // step is macOS-only in production, and these tests count `Next` taps.
+    bool showScreenPermissionStep = true,
   }) =>
       OnboardingScreen(
         settings: settings ?? AppSettings(),
@@ -38,6 +41,7 @@ void main() {
         onRelaunch: onRelaunch,
         listApps: listApps,
         onSetUpSteam: onSetUpSteam,
+        showScreenPermissionStep: showScreenPermissionStep,
       );
 
   Future<void> nextTo(WidgetTester t, int steps) async {
@@ -310,5 +314,35 @@ void main() {
     await t.pumpWidget(_app(screen(onDone: () => done++)));
     await t.tap(find.byKey(const ValueKey('onboardingSkip')));
     expect(done, 1);
+  });
+
+  group('platforms with no screen-capture permission (Windows, Linux)', () {
+    testWidgets('skip the Screen Recording step entirely', (t) async {
+      await t.pumpWidget(_app(screen(showScreenPermissionStep: false)));
+      // Not merely hidden behind its granted state — absent. Claiming a
+      // permission was granted on an OS that has no such permission sends
+      // the user hunting for a setting that does not exist.
+      expect(find.text('Grant Screen Recording'), findsNothing);
+      await t.tap(find.byKey(const ValueKey('onboardingNext')));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text("Screen Recording is granted — you're set."),
+          findsNothing);
+    });
+
+    testWidgets('still reach every remaining step, one fewer tap', (t) async {
+      await t.pumpWidget(_app(screen(showScreenPermissionStep: false)));
+      await nextTo(t, 4); // welcome -> buffer -> preferences -> controls -> try it
+      expect(find.textContaining("Rewind records only while you're playing"),
+          findsOneWidget);
+    });
+
+    testWidgets('Done still lands on the last step', (t) async {
+      var done = 0;
+      await t.pumpWidget(_app(
+          screen(onDone: () => done++, showScreenPermissionStep: false)));
+      await nextTo(t, 4);
+      await t.tap(find.byKey(const ValueKey('onboardingNext')));
+      expect(done, 1);
+    });
   });
 }
