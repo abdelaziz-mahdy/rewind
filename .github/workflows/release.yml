@@ -128,20 +128,39 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=$version tools\windows_installer.iss
         shell: pwsh
 
-      # And that the app actually starts with the real (libobs-linked) shim.
-      # The integration-test harness builds its own DEBUG binary, and
-      # rewind_obs.dll then imports obs.dll — so the libobs runtime has to
-      # be bundled next to THAT build too, or the load fails with "The
-      # specified module could not be found" (error 126). Build first, bundle
-      # second, run third; run last in the job so the packaged Release
-      # directory above is never disturbed.
-      - name: Build + bundle debug for the launch smoke test
+      # Prove the RELEASE build starts — the exact binary being packaged,
+      # not a debug binary built by the integration-test harness. Launch it,
+      # wait for the session log it writes at startup, and require the
+      # process to still be alive. This is what a user does, and it is the
+      # check that would have caught v0.1.0 (which died before any code ran,
+      # so it never wrote a log at all).
+      - name: Launch the packaged app
         shell: pwsh
         run: |
-          flutter build windows --debug
-          ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Debug
-      - name: Launch smoke test
-        run: flutter test integration_test/launch_smoke_test.dart -d windows
+          $exe = "build/windows/x64/runner/Release/rewind.exe"
+          $logs = Join-Path $env:APPDATA 'zcreations/rewind/logs'
+          if (Test-Path $logs) { Remove-Item "$logs/*.log" -Force -ErrorAction SilentlyContinue }
+          $proc = Start-Process $exe -PassThru
+          $deadline = (Get-Date).AddSeconds(60)
+          $log = $null
+          while ((Get-Date) -lt $deadline) {
+            if ($proc.HasExited) {
+              Write-Error "rewind.exe exited with code $($proc.ExitCode) before it finished starting"
+              exit 1
+            }
+            $log = Get-ChildItem $logs -Filter *.log -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($log -and $log.Length -gt 0) { break }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $log) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Write-Error "rewind.exe wrote no session log within 60s — it did not start"
+            exit 1
+          }
+          Write-Host "==> Started. Session log: $($log.FullName) ($($log.Length) bytes)"
+          Get-Content $log.FullName -Tail 40
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
       - uses: actions/upload-artifact@v4
         with:
