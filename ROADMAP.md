@@ -52,12 +52,12 @@ These shape every milestone:
 
 ## v0.2 — "It clips League automatically" (first integration)
 
-- [ ] `GameEventSource` abstraction + `GameRegistry`
-- [ ] `LeagueEventWatcher` (Live Client Data API @ `127.0.0.1:2999`)
-- [ ] `ClipCoordinator`: event → save clip, tagged by event type
-- [ ] Per-event enable/disable settings (kills, multikills, aces, dragon/baron, turrets)
-- [ ] **Game auto-detection**: supervisor detects the running game and applies its per-game config automatically
-- [ ] Second test target (mech action game) in manual-hotkey mode; validate cross-game switching
+- [x] `GameEventSource` abstraction + `GameRegistry`
+- [x] `LeagueEventWatcher` (Live Client Data API @ `127.0.0.1:2999`)
+- [x] `ClipCoordinator`: event → save clip, tagged by event type
+- [x] Per-event enable/disable settings (`GameConfig.enabledEvents`)
+- [x] **Game auto-detection**: supervisor detects the running game and applies its per-game config automatically
+- [x] Second test target in manual-hotkey mode; cross-game switching validated
 
 > The game-centric UI redesign (see CHANGELOG "Unreleased") already has a slot
 > waiting for this: the League hub's integration card renders a "LIVE EVENTS"
@@ -67,11 +67,13 @@ These shape every milestone:
 
 ## v0.3 — "It manages storage" (storage-aware)
 
-- [ ] `StorageManager`: configurable disk budget + retention policy
-- [ ] Auto-prune oldest clips when over budget
+- [x] `StorageManager`: configurable disk budget + retention policy
+- [x] Auto-prune oldest clips when over budget
 - [ ] **Pin / protect** clips so they're exempt from pruning
-- [ ] Retention rules (e.g. keep last N days, keep all pinned, keep per-event caps)
-- [ ] Library UI: pin toggle, storage usage meter, manual delete
+- [x] Retention rules (disk budget + max clip age; per-event caps and
+      pinning remain open)
+- [x] Library UI: storage usage meter, "Clean up now", manual delete (pin
+      toggle waits on pinning above)
 
 ## v0.4 — "It's extensible" (more games)
 
@@ -124,6 +126,13 @@ Turn the tag-driven release into real, downloadable installers.
 - [ ] **Universal / x86_64 macOS build** (follow-up): build a universal
       libobs in `tools/fetch_libobs.sh` (or ship a separate x86_64 DMG) so
       Intel Macs are covered. Currently arm64-only.
+- [x] **Launch verification in CI**: `integration_test/launch_smoke_test.dart`
+      boots the real entrypoint on macOS and Windows (asserting a rendered
+      frame + a written session log), and `tools/check_bundle_deps.dart`
+      proves every Windows bundle is self-contained. Both exist because
+      v0.1.0 shipped a Windows build that could not start at all — a missing
+      Visual C++ runtime, plus a `rewind_obs.dll` with an empty export
+      table — while every build-only CI job stayed green.
 - [ ] Signing/notarization + a signed Windows installer are the v1.0 items
       below; the CI currently ships unsigned artifacts (right-click → Open
       on macOS first run).
