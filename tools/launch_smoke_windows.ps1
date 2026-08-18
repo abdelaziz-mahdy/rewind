@@ -90,22 +90,45 @@ Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 # dead — no libobs module loaded, and the display list failed to parse —
 # and this step passed anyway, because a process that is alive and logging
 # satisfied it. The log says what actually happened; read it.
+#
+# Two classes, deliberately separated:
+#
+# FATAL — the build is broken, on any machine. Every one of these means
+# libobs' plugins did not load or the shim fed it something it could not
+# parse. A source/encoder/output that is "not found" is a TYPE that was
+# never registered, which has nothing to do with the hardware present.
 $fatal = @(
   '\[exception\]',
-  'Capture engine failed to start',
-  'Replay buffer would not start',
   "Source ID '.*' not found",
   "Encoder ID '.*' not found",
   "Output ID '.*' not found",
   'Failed to create source',
-  'Failed to create output'
+  'Failed to create output',
+  'not registered'
 )
+# HARDWARE — cannot be judged here. Starting a replay buffer needs a real
+# GPU encoder and an audio endpoint; a headless CI VM has neither, so a
+# failure to START (as opposed to a missing type above) says nothing about
+# the build. Reported loudly, never fatal — the machine running this is not
+# the machine that matters for it.
+$hardware = @(
+  'Capture engine failed to start',
+  'Replay buffer would not start',
+  'Failed to start replay buffer'
+)
+
 $hits = $text | Where-Object { $line = $_; $fatal | Where-Object { $line -match $_ } }
+$warns = $text | Where-Object { $line = $_; $hardware | Where-Object { $line -match $_ } }
+
+if ($warns) {
+  Write-Host "==> Capture did not start (expected on a machine with no GPU/audio):"
+  $warns | Select-Object -First 10 | ForEach-Object { Write-Host "    $_" }
+}
 if ($hits) {
   Write-Host "==> Startup errors in the session log:"
   $hits | Select-Object -First 25 | ForEach-Object { Write-Host "    $_" }
-  Write-Error "the app started but capture did not come up — see the lines above"
+  Write-Error "the app started but libobs did not come up — see the lines above"
   exit 1
 }
 
-Write-Host "==> OK: the app started, wrote a session log, and reported no capture errors."
+Write-Host "==> OK: the app started, wrote a session log, and every libobs type it needs is registered."
