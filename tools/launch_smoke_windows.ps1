@@ -100,7 +100,6 @@ Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 $fatal = @(
   '\[exception\]',
   "Source ID '.*' not found",
-  "Encoder ID '.*' not found",
   "Output ID '.*' not found",
   'Failed to create source',
   'Failed to create output',
@@ -111,10 +110,19 @@ $fatal = @(
 # failure to START (as opposed to a missing type above) says nothing about
 # the build. Reported loudly, never fatal — the machine running this is not
 # the machine that matters for it.
+# "Encoder ID ... not found" belongs here, NOT above: the shim asks for
+# NVENC first and falls back through AMF, QSV and x264
+# (create_video_encoder), so the message is normal on anything without an
+# NVIDIA GPU — including every CI runner, which gets Microsoft Basic Render
+# Driver. Sources and outputs have no such fallback, so those stay fatal.
 $hardware = @(
   'Capture engine failed to start',
   'Replay buffer would not start',
-  'Failed to start replay buffer'
+  'Failed to start replay buffer',
+  "Encoder ID '.*' not found",
+  'NVENC not supported',
+  "Failed to initialize module 'obs-nvenc",
+  'GetDefaultAudioEndpoint'
 )
 
 $hits = $text | Where-Object { $line = $_; $fatal | Where-Object { $line -match $_ } }
