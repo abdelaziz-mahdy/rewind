@@ -159,6 +159,11 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          # Published outright, not drafted: every gate that decides whether
+          # these artifacts are fit to ship already ran above — the bundle
+          # dependency + symbol check, and launching the packaged app to
+          # confirm it starts and libobs comes up. A draft added a manual
+          # step without adding a check.
+          draft: false
           generate_release_notes: true
           files: dist/**/*
