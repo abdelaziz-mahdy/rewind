@@ -131,6 +131,13 @@ jobs:
       # which is what a user's clean machine sees. See the script's header.
       - name: Check bundle dependencies
         run: dart run tools/check_bundle_deps.dart build/windows/x64/runner/Debug
+      # Ask the Windows loader itself which module it cannot load. The static
+      # check above proves files and symbols are all there; only the loader
+      # can say whether it agrees, and its error codes arrive with no module
+      # name attached. Diagnostic, not a gate — the smoke test below gates.
+      - name: Probe DLL loading
+        shell: pwsh
+        run: ./tools/probe_load_windows.ps1 build/windows/x64/runner/Debug
       # The stub-mode leg above smoke-tests a shim with no external
       # dependencies; this one loads a rewind_obs.dll that imports obs.dll,
       # so it only works once the runtime is bundled (the step above). It is
