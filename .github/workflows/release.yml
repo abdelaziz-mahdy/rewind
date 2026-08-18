@@ -82,11 +82,31 @@ jobs:
 
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
+      # ffmpeg_kit_flutter_new's Windows CMake extracts FFmpeg into its own
+      # plugin dir, which Flutter reaches through a symlink — CMake refuses
+      # to "extract through symlink". FFMPEGKIT_LOCAL_DIR is its escape
+      # hatch; ci.yml does the same (see its longer note).
+      - name: Prefetch FFmpegKit (Windows)
+        shell: pwsh
+        run: ./tools/prefetch_ffmpegkit_windows.ps1
       - run: flutter build windows --release
 
       - name: Bundle libobs runtime
         run: ./tools/bundle_obs_windows.ps1 build/windows/x64/runner/Release
         shell: pwsh
+
+      # Gate on a self-contained bundle BEFORE packaging: v0.1.0 shipped an
+      # installer and a zip whose binaries all imported the Visual C++
+      # runtime that neither of them included, so the app died at process
+      # start on any machine without Visual Studio — no window, no log.
+      - name: Check bundle dependencies
+        run: dart run tools/check_bundle_deps.dart build/windows/x64/runner/Release
+
+      # And that the release build actually starts. Debug-mode run (the
+      # integration-test harness builds its own binary), but it exercises
+      # the same plugin + native-shim set this job just packaged.
+      - name: Launch smoke test
+        run: flutter test integration_test/launch_smoke_test.dart -d windows
 
       # Portable zip: the fully-bundled app (rewind.exe + libobs runtime +
       # data) staged under a top-level Rewind/ folder so it extracts cleanly.

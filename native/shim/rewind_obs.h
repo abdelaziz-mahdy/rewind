@@ -11,6 +11,20 @@
 
 #include <stdint.h>
 
+/* Every function below is called from Dart via dart:ffi, which resolves it by
+ * name from the built shared library. ELF and Mach-O export all non-static
+ * symbols by default; a Windows DLL exports NOTHING unless asked, so without
+ * this the Windows build produces a rewind_obs.dll with an empty export table
+ * and the app dies on its first FFI call — "Failed to lookup symbol
+ * 'rewind_list_displays' ... (error code 127)", thrown out of main() before
+ * the first frame. Annotating the declarations is enough: rewind_obs.c and
+ * every per-platform backend include this header. */
+#if defined(_WIN32)
+#define REWIND_API __declspec(dllexport)
+#else
+#define REWIND_API __attribute__((visibility("default")))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,18 +32,18 @@ extern "C" {
 /* Initialise libobs, create the video/audio pipeline, select the platform
  * capture source, and configure a replay buffer of `seconds` length writing to
  * `out_dir`. Returns 0 on success, non-zero on error (see rewind_last_error). */
-int rewind_obs_init(const char *out_dir, int seconds);
+REWIND_API int rewind_obs_init(const char *out_dir, int seconds);
 
 /* Start the rolling replay buffer. Returns 0 on success. */
-int rewind_start_buffer(void);
+REWIND_API int rewind_start_buffer(void);
 
 /* Flush the last N seconds to a file inside `out_dir`.
  * Returns a pointer to a NUL-terminated path string owned by the shim
  * (valid until the next call to rewind_save_clip), or NULL on failure. */
-const char *rewind_save_clip(const char *out_dir);
+REWIND_API const char *rewind_save_clip(const char *out_dir);
 
 /* Stop the replay buffer. Returns 0 on success. */
-int rewind_stop_buffer(void);
+REWIND_API int rewind_stop_buffer(void);
 
 /* Suspends the capture session: detaches and releases the underlying
  * screen/window capture source (the platform's current capture source —
@@ -47,7 +61,7 @@ int rewind_stop_buffer(void);
  * consuming the frames serves no purpose.
  * Idempotent: suspending an already-suspended (or not-yet-initialized)
  * pipeline is a no-op. No-op in stub mode. Returns 0 on success. */
-int rewind_capture_suspend(void);
+REWIND_API int rewind_capture_suspend(void);
 
 /* Reverses rewind_capture_suspend(): recreates the capture source from the
  * remembered display/app/window preference — the SAME platform rebuild path
@@ -59,7 +73,7 @@ int rewind_capture_suspend(void);
  * no capture source would record nothing).
  * Idempotent: resuming an already-live (or not-yet-initialized) pipeline is
  * a no-op. No-op in stub mode. Returns 0 on success. */
-int rewind_capture_resume(void);
+REWIND_API int rewind_capture_resume(void);
 
 /* Begin a manual, continuous recording session into `out_dir`, independent
  * of the rolling replay buffer (which keeps running unaffected). Writes to
@@ -69,7 +83,7 @@ int rewind_capture_resume(void);
  * the replay buffer (standard practice for libobs outputs — see
  * native/shim/README.md). Returns 0 on success, non-zero if a recording is
  * already in progress or the output fails to start (see rewind_last_error). */
-int rewind_start_recording(const char *out_dir);
+REWIND_API int rewind_start_recording(const char *out_dir);
 
 /* End the recording session started by rewind_start_recording. Blocks
  * (bounded, ~5s) until the output has fully stopped so the file is
@@ -77,18 +91,18 @@ int rewind_start_recording(const char *out_dir);
  * string owned by the shim (valid until the next call to
  * rewind_start_recording or rewind_stop_recording), or NULL if no recording
  * was in progress (see rewind_last_error). */
-const char *rewind_stop_recording(void);
+REWIND_API const char *rewind_stop_recording(void);
 
 /* Tear down libobs. Returns 0 on success. */
-int rewind_obs_shutdown(void);
+REWIND_API int rewind_obs_shutdown(void);
 
 /* Human-readable description of the last error, or "" if none. */
-const char *rewind_last_error(void);
+REWIND_API const char *rewind_last_error(void);
 
 
 /* Change the replay-buffer length at runtime (used when the active game
  * changes and a per-game buffer length applies). Returns 0 on success. */
-int rewind_set_buffer_seconds(int seconds);
+REWIND_API int rewind_set_buffer_seconds(int seconds);
 
 /* Enumerate the connected displays as a compact JSON array written into
  * `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
@@ -98,14 +112,14 @@ int rewind_set_buffer_seconds(int seconds);
  * through rewind_set_capture_display unchanged.)
  * Returns 0 on success, non-zero if enumeration failed or the buffer was too
  * small (see rewind_last_error). Safe to call before rewind_obs_init. */
-int rewind_list_displays(char *json_out, int json_cap);
+REWIND_API int rewind_list_displays(char *json_out, int json_cap);
 
 /* Select which display the capture source should record, identified by the
  * uuid string returned from rewind_list_displays. Safe to call before
  * rewind_obs_init (the preference is remembered and applied at init); if
  * the capture source already exists, it is reconfigured immediately.
  * Returns 0 on success. */
-int rewind_set_capture_display(const char *display_uuid);
+REWIND_API int rewind_set_capture_display(const char *display_uuid);
 
 /* Enumerate applications that currently have at least one capturable
  * on-screen window (normal layer, ≥64px), as a compact JSON array written
@@ -128,7 +142,7 @@ int rewind_set_capture_display(const char *display_uuid);
  * (lossless on 64-bit Windows — see rewind_set_capture_window). Still an
  * opaque identifier as far as callers are concerned — round-trip it
  * through rewind_set_capture_app unchanged either way. */
-int rewind_list_capturable_apps(char *json_out, int json_cap);
+REWIND_API int rewind_list_capturable_apps(char *json_out, int json_cap);
 
 /* Select a specific application to capture instead of a whole display,
  * identified by the bundle id string returned from
@@ -140,7 +154,7 @@ int rewind_list_capturable_apps(char *json_out, int json_cap);
  * applied at init — an app target takes precedence over a display target
  * if both are set); if the capture source already exists, it is
  * reconfigured immediately. Returns 0 on success. */
-int rewind_set_capture_app(const char *bundle_id);
+REWIND_API int rewind_set_capture_app(const char *bundle_id);
 
 /* Select a specific window to capture, identified by the "window_id" from
  * rewind_list_capturable_apps (a CGWindowID on macOS, an HWND truncated to
@@ -152,7 +166,7 @@ int rewind_set_capture_app(const char *bundle_id);
  * from enumeration instead of storing one. Passing 0 reverts to the
  * remaining app/display preference; any later rewind_set_capture_app call
  * also clears the window target. Returns 0 on success. */
-int rewind_set_capture_window(uint32_t window_id);
+REWIND_API int rewind_set_capture_window(uint32_t window_id);
 
 /* Enable/disable microphone capture (the default input device — CoreAudio
  * on macOS, WASAPI on Windows), mixed into every clip and recording
@@ -162,7 +176,7 @@ int rewind_set_capture_window(uint32_t window_id);
  * microphone permission prompt (the app bundle must declare
  * NSMicrophoneUsageDescription); Windows has no equivalent runtime prompt.
  * Returns 0 on success. */
-int rewind_set_mic_enabled(int enabled);
+REWIND_API int rewind_set_mic_enabled(int enabled);
 
 /* Keeps the microphone source alive while capture is SUSPENDED (see
  * rewind_capture_suspend), for the Settings mic test — the one feature that
@@ -174,7 +188,7 @@ int rewind_set_mic_enabled(int enabled);
  * the test's own lease, and must be released when the test stops. It cannot
  * turn the mic on by itself — rewind_set_mic_enabled(0) still wins.
  * Returns 0 on success. */
-int rewind_set_mic_hold(int hold);
+REWIND_API int rewind_set_mic_hold(int hold);
 
 /* Enumerate audio INPUT devices (microphones) as a compact JSON array
  * written into `json_out` (a caller-owned buffer of `json_cap` bytes), e.g.
@@ -187,7 +201,7 @@ int rewind_set_mic_hold(int hold);
  * empty list as "hide the picker", never synthesize fake devices. Returns
  * 0 on success, non-zero if enumeration failed or the buffer was too small
  * (see rewind_last_error). Safe to call before rewind_obs_init. */
-int rewind_list_audio_inputs_json(char *json_out, int json_cap);
+REWIND_API int rewind_list_audio_inputs_json(char *json_out, int json_cap);
 
 /* Selects the microphone input device by uid (from
  * rewind_list_audio_inputs_json), or NULL/"" for the system default. Safe
@@ -199,7 +213,7 @@ int rewind_list_audio_inputs_json(char *json_out, int json_cap);
  * there's no failure mode a caller need act on — a bad/unplugged uid just
  * fails the rebuild, logged the same way an unavailable mic source always
  * is (see rw_plat_log_mic_unavailable). */
-void rewind_set_mic_device(const char *uid_or_null);
+REWIND_API void rewind_set_mic_device(const char *uid_or_null);
 
 /* Set the microphone recording-level multiplier (1.0 = 100%, i.e. unity
  * gain; clamped to 0.0-2.0). Safe to call before rewind_obs_init (the
@@ -207,7 +221,7 @@ void rewind_set_mic_device(const char *uid_or_null);
  * built, same as rewind_set_mic_device); if the mic source already exists,
  * applied immediately via obs_source_set_volume. No-op in stub mode.
  * Returns 0 on success. */
-int rewind_set_mic_volume(float volume);
+REWIND_API int rewind_set_mic_volume(float volume);
 
 /* Enable/disable live mic monitoring — the mic plays through the system's
  * default output device (speakers/headphones) while it's on, so the user
@@ -227,7 +241,7 @@ int rewind_set_mic_volume(float volume);
  * resets the stored preference to off), rewind_set_mic_enabled(0), and a
  * device-change rebuild — so a leaked toggle can never keep audio_monitor
  * playing past the source's own lifetime. Returns 0 on success. */
-int rewind_set_mic_monitoring(int enabled);
+REWIND_API int rewind_set_mic_monitoring(int enabled);
 
 /* Enable/disable mic auto-leveling: a compressor (evens out the recording
  * envelope) followed by a limiter (catches whatever peaks through) attached
@@ -238,7 +252,7 @@ int rewind_set_mic_monitoring(int enabled);
  * mic source is next built, same as rewind_set_mic_volume); if the mic
  * source already exists, the filters are attached/removed immediately.
  * No-op in stub mode. Returns 0 on success. */
-int rewind_set_mic_leveling(int enabled);
+REWIND_API int rewind_set_mic_leveling(int enabled);
 
 /* Enable/disable mic noise suppression: an RNNoise noise_suppress_filter
  * attached to the mic source ahead of the auto-leveling chain (suppression
@@ -247,7 +261,7 @@ int rewind_set_mic_leveling(int enabled);
  * rewind_set_mic_leveling: safe before init (preference remembered), live
  * attach/remove when the mic source exists, no-op in stub mode. Returns 0
  * on success. */
-int rewind_set_mic_noise_suppression(int enabled);
+REWIND_API int rewind_set_mic_noise_suppression(int enabled);
 
 /* Writes a JSON object with the current live audio levels, for the mic-test
  * meter UI:
@@ -260,7 +274,7 @@ int rewind_set_mic_noise_suppression(int enabled);
  * poll at UI rate (~10 Hz); values update on libobs' audio thread ~every
  * 50 ms. Stub mode: always the -120.0 floor. Returns 0 on success, 1 if
  * the buffer is too small. */
-int rewind_audio_levels_json(char *json_out, int json_cap);
+REWIND_API int rewind_audio_levels_json(char *json_out, int json_cap);
 
 /* Set capture quality: `fps` is the capture framerate (e.g. 30 or 60);
  * `max_height` caps the output height (aspect preserved) when the display
@@ -268,14 +282,14 @@ int rewind_audio_levels_json(char *json_out, int json_cap);
  * before init. After init it only stores the values (the UI applies the
  * change on next launch), since changing resolution/fps needs a full video
  * pipeline rebuild. Returns 0 on success. */
-int rewind_set_capture_quality(int fps, int max_height);
+REWIND_API int rewind_set_capture_quality(int fps, int max_height);
 
 /* Set the system/app audio mode: 0 = none (silence, unless the mic is on),
  * 1 = all desktop audio (every app), 2 = only the captured app's audio.
  * App mode needs an app capture source (see rewind_set_capture_app) — with
  * none it captures silence rather than leaking desktop audio. Safe before
  * init (stored) or after (rebuilds the source live). Returns 0. */
-int rewind_set_audio_mode(int mode);
+REWIND_API int rewind_set_audio_mode(int mode);
 
 /* Set the game/desktop-audio recording-level multiplier (1.0 = 100%, i.e.
  * unity gain; clamped to 0.0-2.0) — the same lever as rewind_set_mic_volume
@@ -286,14 +300,14 @@ int rewind_set_audio_mode(int mode);
  * mode, and rewind_set_capture_app's app-audio-mode rebuild all (re)create
  * it); if it already exists, applied immediately via
  * obs_source_set_volume. No-op in stub mode. Returns 0 on success. */
-int rewind_set_game_volume(float volume);
+REWIND_API int rewind_set_game_volume(float volume);
 
 /* Reports whether screen-capture permission is CURRENTLY granted, without
  * prompting — safe to poll repeatedly (e.g. once a second from onboarding
  * UI) to detect a grant that happened in System Settings while the app is
  * running. macOS: CGPreflightScreenCaptureAccess(). Windows/Linux/stub:
  * always 1 (no equivalent OS gate). Returns 1 if granted, 0 if not. */
-int rewind_preflight_screen_permission(void);
+REWIND_API int rewind_preflight_screen_permission(void);
 
 /* Triggers the OS permission prompt where one exists (macOS:
  * CGRequestScreenCaptureAccess() — shows the system dialog the first time;
@@ -301,7 +315,7 @@ int rewind_preflight_screen_permission(void);
  * user must be sent to System Settings instead). Returns the resulting
  * granted state, same as rewind_preflight_screen_permission(). Windows/
  * Linux/stub: always 1. */
-int rewind_request_screen_permission(void);
+REWIND_API int rewind_request_screen_permission(void);
 
 /* Compact JSON snapshot of this process's own CPU/memory usage plus
  * libobs's frame-health/render-cost counters and OS-level GPU/thermal
@@ -339,7 +353,7 @@ int rewind_request_screen_permission(void);
  * if `json_out`/`json_cap` are invalid or the buffer is too small (see
  * rewind_last_error). Safe to call at any time, before or after
  * rewind_obs_init. */
-int rewind_perf_stats_json(char *json_out, int json_cap);
+REWIND_API int rewind_perf_stats_json(char *json_out, int json_cap);
 
 /* Drains libobs' OWN log (everything it passes to blog()) into `json_out` as
  * a JSON array of {"level":<int>,"message":<string>} objects, oldest first,
@@ -361,7 +375,7 @@ int rewind_perf_stats_json(char *json_out, int json_cap);
  * mode). Returns 0 on success, non-zero if `json_out`/`json_cap` are invalid
  * (see rewind_last_error). Dropped lines — a ring that wrapped before a
  * drain — are reported as a synthetic LOG_WARNING entry, never silently. */
-int rewind_drain_obs_log(char *json_out, int json_cap);
+REWIND_API int rewind_drain_obs_log(char *json_out, int json_cap);
 
 #ifdef __cplusplus
 }

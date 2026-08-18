@@ -72,6 +72,22 @@ endif()
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 
+# Ship the Visual C++ runtime (MSVCP140.dll, VCRUNTIME140.dll,
+# VCRUNTIME140_1.dll) NEXT TO rewind.exe. Every binary here — the runner,
+# every Flutter plugin DLL, libobs and its plugins — imports it, and it is
+# NOT part of a clean Windows install: it arrives with Visual Studio or with
+# the "Visual C++ Redistributable" package. Without it the loader fails
+# before any of our code runs (0xc0000135), so the app dies with no window
+# and no log file at all. Build machines and CI runners all have Visual
+# Studio installed, which is exactly why this only ever broke users.
+# CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP suppresses the module's own install
+# rule (it targets bin/) so the DLLs land beside the executable instead.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+include(InstallRequiredSystemLibraries)
+install(FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 

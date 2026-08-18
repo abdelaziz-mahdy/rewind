@@ -69,9 +69,28 @@ if (-not (Test-Path (Join-Path $SdkDir 'obs-plugins'))) {
     exit 1
 }
 
+# The flat copy below OVERWRITES same-named files Flutter already installed.
+# That matters because libobs ships its own FFmpeg (avcodec-61.dll and
+# friends) and so does ffmpeg_kit_flutter_new — the same file names, built
+# by different toolchains (MSVC vs MinGW, the latter additionally rebased
+# with ASLR off by the plugin's own build step). Whichever copy lands last
+# is the one BOTH consumers get. Report every such collision rather than
+# resolving it silently: if thumbnail generation or capture starts failing
+# on Windows, this list is the first place to look.
 Write-Host "==> Copying libobs runtime (bin/64bit/*, flat) into $BuildDir"
+$collisions = @()
 Get-ChildItem -Path (Join-Path $SdkDir 'bin/64bit') -File | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $BuildDir $_.Name) -Force
+    $dest = Join-Path $BuildDir $_.Name
+    if (Test-Path $dest) {
+        $existing = (Get-FileHash $dest -Algorithm SHA256).Hash
+        $incoming = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+        if ($existing -ne $incoming) { $collisions += $_.Name }
+    }
+    Copy-Item $_.FullName $dest -Force
+}
+if ($collisions.Count -gt 0) {
+    Write-Warning ("libobs overwrote $($collisions.Count) differing file(s) " +
+        "already in the build: " + ($collisions -join ', '))
 }
 
 Write-Host "==> Copying obs-plugins/64bit/ into $BuildDir\obs-plugins\64bit"
