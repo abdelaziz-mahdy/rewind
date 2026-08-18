@@ -17,6 +17,20 @@ import 'package:rewind/src/ui/theme.dart';
 /// clears it the moment onboarding finishes or is skipped — see
 /// `RewindApp.onboardingActive`'s doc.
 void main() {
+  /// Taps Next until [target] is on screen, or fails after [limit] taps.
+  /// Counting a fixed number of taps would make these tests host-dependent:
+  /// the Screen Recording step exists only on macOS (there is no such
+  /// permission elsewhere), so the deck is one page shorter on Linux and
+  /// Windows CI than it is on a Mac.
+  Future<void> pageUntil(WidgetTester t, Finder target, {int limit = 8}) async {
+    for (var i = 0; i < limit && target.evaluate().isEmpty; i++) {
+      await t.tap(find.byKey(const ValueKey('onboardingNext')));
+      await t.pumpAndSettle();
+    }
+    expect(target, findsOneWidget,
+        reason: 'never reached the target step within $limit taps');
+  }
+
   late Directory tmp;
   late ClipLibrary library;
   late ClipCoordinator coordinator;
@@ -104,16 +118,13 @@ void main() {
       onboardingActive: onboardingActive,
     )));
 
-    // Page through every onboarding step with pumpAndSettle — safe while
-    // still on onboarding (no infinite animation there). The LAST tap
-    // (welcome/permission/buffer/preferences/controls/try-it = 6 pages, 5
-    // page transitions) fires onDone instead of animating a page, and lands
-    // on the Shell, whose recorder deck's dot animates forever — bounded
-    // pumps only from there (see CLAUDE.md's testing gotchas).
-    for (var i = 0; i < 5; i++) {
-      await t.tap(find.byKey(const ValueKey('onboardingNext')));
-      await t.pumpAndSettle();
-    }
+    // Page to the LAST step with pumpAndSettle — safe while still on
+    // onboarding (no infinite animation there). One more tap from there
+    // fires onDone instead of animating a page, and lands on the Shell,
+    // whose recorder deck animates — bounded pumps only from then on (see
+    // CLAUDE.md's testing gotchas).
+    await pageUntil(
+        t, find.textContaining("Rewind records only while you're playing"));
     await t.tap(find.byKey(const ValueKey('onboardingNext')));
     await t.pump();
     await t.pump(const Duration(milliseconds: 50));
@@ -133,15 +144,9 @@ void main() {
       onboardingActive: onboardingActive,
     )));
 
-    // Page to the controls & games step (welcome/permission/buffer/
-    // preferences -> controls&games = 4 transitions), same as the
-    // onboarding_screen_test.dart button tests.
-    for (var i = 0; i < 4; i++) {
-      await t.tap(find.byKey(const ValueKey('onboardingNext')));
-      await t.pumpAndSettle();
-    }
+    // Page to the controls & games step, which carries the Steam shortcut.
     final button = find.byKey(const ValueKey('steamSetupButton'));
-    expect(button, findsOneWidget);
+    await pageUntil(t, button);
     await t.ensureVisible(button);
     await t.pump();
     await t.tap(button);
