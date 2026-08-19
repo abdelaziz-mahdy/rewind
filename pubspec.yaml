@@ -1,7 +1,7 @@
 name: rewind
 description: Cross-platform instant-replay and automatic game-clip capture (Windows + macOS).
 publish_to: "none"
-version: 0.2.1
+version: 0.2.2
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
