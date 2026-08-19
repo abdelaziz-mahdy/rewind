@@ -4,7 +4,7 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.3] - 2026-08-19
 
 ### Fixed
 - **The red "couldn't save clip" toast no longer flashes before the
