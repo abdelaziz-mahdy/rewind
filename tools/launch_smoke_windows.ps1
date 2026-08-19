@@ -103,7 +103,12 @@ $fatal = @(
   "Output ID '.*' not found",
   'Failed to create source',
   'Failed to create output',
-  'not registered'
+  # Specifically the mic filter chain: obs-filters failing to load is a
+  # packaging defect. NOT a bare 'not registered' — the encoder ladder
+  # legitimately logs "encoder ... not registered, trying next" for every
+  # rung it skips, which is the fallback working, not failing.
+  'filters? not registered',
+  'filter not registered'
 )
 # HARDWARE — cannot be judged here. Starting a replay buffer needs a real
 # GPU encoder and an audio endpoint; a headless CI VM has neither, so a
