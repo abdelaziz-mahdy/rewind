@@ -7,6 +7,14 @@ All notable changes to Rewind are documented here. Format based on
 ## [Unreleased]
 
 ### Fixed
+- **Minimized apps can be picked as a capture source on Windows.** The
+  picker excluded any minimized window, which is the normal state of a game
+  while you are setting Rewind up in front of it — so the game you wanted
+  simply was not in the list. libobs gates that exclusion behind its own
+  `EXCLUDE_MINIMIZED` mode precisely so a picker can offer what capture-time
+  matching would skip; Rewind now does the same, and marks such entries as
+  off-screen so it binds them by executable rather than by a window handle
+  that currently shows nothing.
 - **Recording works without an NVIDIA GPU.** The encoder ladder tried NVENC,
   then AMF, QSV and x264 — but libobs answers an unregistered encoder id
   with a *placeholder* encoder object rather than `NULL`, so the ladder

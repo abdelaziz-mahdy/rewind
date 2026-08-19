@@ -139,6 +139,18 @@ rewind/
   from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
   problem; a crash with NO logs is a loader/native problem — look at imports
   first, not at Dart.
+- **The Windows app picker must INCLUDE minimized windows.** libobs'
+  `check_window_valid()` only applies its iconic/cloaked/empty-rect checks in
+  `EXCLUDE_MINIMIZED` mode — OBS's own dropdown lists minimized windows and
+  lets capture-time matching skip them. Rewind's picker copied the strict
+  form and so hid every alt-tabbed game, which is exactly the state a game is
+  in while the user is choosing it. Minimized entries report
+  `on_screen: false`, which `ClipCoordinator` already reads: it binds those
+  by executable token instead of by an HWND with nothing to show. A
+  minimized window's client rect is 0x0, so the empty-rect check has to be
+  skipped for them or the change is a no-op. Cloaked windows stay excluded —
+  suspended UWP frames and other-virtual-desktop windows report "visible"
+  with nothing behind them.
 - **libobs returns a PLACEHOLDER for an unknown encoder/source id, not
   NULL.** `obs_video_encoder_create("nope", ...)` logs "Encoder ID 'nope'
   not found" and hands back a non-NULL dummy (`libobs/obs-encoder.c`, the

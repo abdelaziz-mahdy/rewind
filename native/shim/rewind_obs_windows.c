@@ -275,18 +275,36 @@ static int is_cloaked(HWND hwnd) {
 }
 
 /* Same visibility/ownership filters as check_window_valid() in
- * libobs/util/windows/window-helpers.c: visible top-level windows only, no
- * tool windows, no child windows, not DWM-cloaked (UWP suspended/hidden
- * frames report as "visible" but are cloaked), and a non-empty client
- * rect. */
+ * libobs/util/windows/window-helpers.c, in its INCLUDE_MINIMIZED mode:
+ * visible top-level windows only, no tool windows, no child windows, not
+ * DWM-cloaked.
+ *
+ * MINIMIZED WINDOWS ARE LISTED. libobs gates its iconic/cloaked/empty-rect
+ * checks on `mode == EXCLUDE_MINIMIZED` precisely so that OBS's own window
+ * dropdown can offer a minimized window while capture-time matching still
+ * skips it — and this list is a picker, not a capture path. Excluding them
+ * meant a game the user had alt-tabbed away from (the normal state while
+ * setting Rewind up) simply vanished from the capture-source menu. Nothing
+ * downstream needs the window to be on screen: rebuild_video_capture()
+ * re-resolves the target by EXECUTABLE at capture time (WINDOW_PRIORITY_EXE),
+ * so the HWND here only has to identify which app the user meant.
+ *
+ * Cloaked windows stay excluded: those are suspended UWP frames and windows
+ * on other virtual desktops, which report "visible" while having nothing to
+ * show, and would pad a game picker with entries the user cannot see.
+ *
+ * A minimized window's client rect is 0x0, so the empty-rect check only
+ * applies to windows that are NOT minimized — otherwise it would filter out
+ * everything this change is meant to let through. */
 static int is_capturable_window(HWND hwnd) {
-    if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || is_cloaked(hwnd)) return 0;
+    if (!IsWindowVisible(hwnd) || is_cloaked(hwnd)) return 0;
     LONG_PTR ex_styles = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
     if (ex_styles & WS_EX_TOOLWINDOW) return 0;
     LONG_PTR styles = GetWindowLongPtr(hwnd, GWL_STYLE);
     if (styles & WS_CHILD) return 0;
     RECT rect;
-    if (!GetClientRect(hwnd, &rect) || rect.right == 0 || rect.bottom == 0) return 0;
+    if (!GetClientRect(hwnd, &rect)) return 0;
+    if (!IsIconic(hwnd) && (rect.right == 0 || rect.bottom == 0)) return 0;
     return 1;
 }
 
@@ -352,9 +370,15 @@ static BOOL CALLBACK enum_windows_list_cb(HWND hwnd, LPARAM param) {
     json_escape_append(display_name, escaped_name, sizeof(escaped_name));
 
     int n = snprintf(ctx->json_out + ctx->pos, (size_t)ctx->json_cap - ctx->pos,
-                      "%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"\",\"window_id\":%u}",
+                      "%s{\"bundle_id\":\"%s\",\"name\":\"%s\",\"pid\":%d,\"icon\":\"\","
+                      "\"window_id\":%u,\"on_screen\":%s}",
                       ctx->count == 0 ? "" : ",", escaped_id, escaped_name, (int)pid,
-                      (unsigned)(uintptr_t)hwnd);
+                      (unsigned)(uintptr_t)hwnd,
+                      /* Minimized apps ARE listed (see is_capturable_window);
+                       * the flag lets the picker say so rather than offering
+                       * them as if they were on screen. Matches the macOS
+                       * backend's own on_screen field. */
+                      IsIconic(hwnd) ? "false" : "true");
     if (n < 0 || (size_t)n >= (size_t)ctx->json_cap - ctx->pos) { ctx->failed = 1; return FALSE; }
     ctx->pos += (size_t)n;
     ctx->count++;
