@@ -245,12 +245,14 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     widget.coordinator.lastSaveError.addListener(_showSaveErrorIfAny);
+    widget.coordinator.lastSaveNotice.addListener(_showSaveNoticeIfAny);
     widget.coordinator.lastManualSave.addListener(_showManualSaveToast);
   }
 
   @override
   void dispose() {
     widget.coordinator.lastSaveError.removeListener(_showSaveErrorIfAny);
+    widget.coordinator.lastSaveNotice.removeListener(_showSaveNoticeIfAny);
     widget.coordinator.lastManualSave.removeListener(_showManualSaveToast);
     super.dispose();
   }
@@ -263,6 +265,38 @@ class _ShellState extends State<Shell> {
       behavior: SnackBarBehavior.floating,
       backgroundColor: Theme.of(context).colorScheme.error,
       content: Text("Couldn't save clip: $message"),
+    ));
+  }
+
+  /// The user asked to clip while the buffer was deliberately paused. That
+  /// is the app behaving as configured, not a failure, so it gets neutral
+  /// chrome and plain language — and, since "Only record while playing" is
+  /// the setting that caused it, a one-tap way to change it rather than a
+  /// sentence telling the user where to go looking.
+  void _showSaveNoticeIfAny() {
+    if (!mounted) return;
+    final message = widget.coordinator.lastSaveNotice.value;
+    if (message == null) return;
+    final tokens = context.rewindTokens;
+    final settings = widget.coordinator.settings;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: const ValueKey('saveNoticeToast'),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 8),
+      backgroundColor: tokens.surfaceRaised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(tokens.radiusCard),
+      ),
+      content: Text(message, style: Theme.of(context).textTheme.body),
+      action: settings.captureOnlyInGame
+          ? SnackBarAction(
+              label: 'Always record',
+              onPressed: () {
+                settings.captureOnlyInGame = false;
+                widget.onSettingsChanged(settings);
+              },
+            )
+          : null,
     ));
   }
 

@@ -230,6 +230,39 @@ void main() {
         find.textContaining("Couldn't save clip: disk full"), findsOneWidget);
   });
 
+  testWidgets('a paused-buffer notice reads as an explanation, not a failure',
+      (t) async {
+    await t.pumpWidget(_app(shell()));
+    coordinator.lastSaveNotice.value =
+        'Nothing to clip yet — Rewind only records while a game is running.';
+    await t.pump();
+    await t.pump();
+
+    expect(find.byKey(const ValueKey('saveNoticeToast')), findsOneWidget);
+    expect(find.textContaining('Nothing to clip yet'), findsOneWidget);
+    // The red "Couldn't save clip: ..." wording belongs to real failures.
+    expect(find.textContaining("Couldn't save clip"), findsNothing);
+  });
+
+  testWidgets('the notice offers turning "only record while playing" off',
+      (t) async {
+    await t.pumpWidget(_app(shell()));
+    expect(coordinator.settings.captureOnlyInGame, isTrue,
+        reason: 'the setting that causes the notice must start on');
+
+    coordinator.lastSaveNotice.value = 'Nothing to clip yet.';
+    await t.pump(); // schedule the SnackBar
+    // Bounded pump, not pumpAndSettle: the SnackBar animates in, and tapping
+    // mid-animation misses the button (it is still fading through an
+    // AnimatedOpacity that does not hit test).
+    await t.pump(const Duration(milliseconds: 500));
+
+    await t.tap(find.text('Always record'));
+    await t.pump();
+    expect(coordinator.settings.captureOnlyInGame, isFalse,
+        reason: 'the toast must fix the cause, not just describe it');
+  });
+
   testWidgets('a second identical failure shows the SnackBar again', (t) async {
     await t.pumpWidget(_app(shell()));
 

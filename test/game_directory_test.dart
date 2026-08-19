@@ -252,8 +252,11 @@ void main() {
     // explicitly to the descriptor so a future edit to it can't silently
     // diverge from this row.
     final league = byId(entries, descriptor.primaryGameId);
-    expect(descriptor.mergedGameIds,
-        {'league_of_legends', 'app:league_of_legends'});
+    expect(descriptor.mergedGameIds, {
+      'league_of_legends',
+      'app:league_of_legends',
+      'app:league_of_legends_match',
+    });
     expect(descriptor.hasLiveFeed, isTrue);
     expect(league.detection,
         {DetectionMethod.liveClientApi, DetectionMethod.processWatch});

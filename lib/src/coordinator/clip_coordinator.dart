@@ -74,6 +74,17 @@ class ClipCoordinator {
   /// right after a subsequent successful save.
   final ValueNotifier<String?> lastSaveError = ValueNotifier(null);
 
+  /// An explanation, NOT a failure: the user asked to clip while the buffer
+  /// was deliberately paused, so there was nothing recorded to save.
+  ///
+  /// Kept separate from [lastSaveError] because the two deserve opposite
+  /// treatment on screen. Pressing Clip at the desktop with "only record
+  /// while playing" on used to raise the same red "Couldn't save clip:
+  /// buffer not running" as a genuine failure — the app's own setting
+  /// working as configured, reported as if something had broken, in the
+  /// shim's words rather than the user's.
+  final ValueNotifier<String?> lastSaveNotice = ValueNotifier(null);
+
   /// The clip from the most recent MANUAL save (hotkey / "Save clip"
   /// button) once it's indexed, for the UI to confirm visibly (a SnackBar —
   /// see the Shell). Manual only: event auto-saves mid-game would spam
@@ -679,6 +690,7 @@ class ClipCoordinator {
   /// the coordinator lives as long as the process, and shutdown-with-a-
   /// pending-burst is covered by the deactivation flush.
   void dispose() {
+    lastSaveNotice.dispose();
     for (final t in _burstTimers.values) {
       t.cancel();
     }
@@ -1241,6 +1253,16 @@ class ClipCoordinator {
       talker.info(
           'Nothing to save: the replay buffer is paused (see "Only record '
           'while playing", or the tray\'s Pause). Not restarting it.');
+      // Say it as an explanation instead of a failure, and clear the error
+      // this same save already raised — nothing broke, so nothing should be
+      // shown in red.
+      lastSaveError.value = null;
+      lastSaveNotice.value = null;
+      lastSaveNotice.value =
+          'Nothing to clip yet — Rewind only records while a game is running, '
+          'so the last few seconds were not being kept. It starts by itself '
+          'when a game is detected, or turn off "Only record while playing" '
+          'in Settings to record all the time.';
       return;
     }
 

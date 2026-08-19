@@ -143,6 +143,13 @@ class GameDescriptor {
 const _leagueVendorId = 'league_of_legends';
 const _leagueCatalogId = 'app:league_of_legends';
 
+/// Riot ships the client and the match as separate executables, so the
+/// catalog carries an entry for each (`LeagueClientUx.exe` is open from
+/// launch to post-game and must not arm the buffer; `League of Legends.exe`
+/// exists only during a match and must). Both are the same game to the user,
+/// so both merge into this one row.
+const _leagueMatchCatalogId = 'app:league_of_legends_match';
+
 /// The registry of games whose behavior DEVIATES from the generic
 /// process-detection default — [descriptorFor] synthesizes a default
 /// descriptor from [popularGamesCatalog] for every game NOT listed here, so
@@ -152,7 +159,11 @@ const _leagueCatalogId = 'app:league_of_legends';
 final List<GameDescriptor> gameDescriptors = [
   GameDescriptor(
     primaryGameId: _leagueVendorId,
-    mergedGameIds: const {_leagueVendorId, _leagueCatalogId},
+    mergedGameIds: const {
+      _leagueVendorId,
+      _leagueCatalogId,
+      _leagueMatchCatalogId,
+    },
     displayName: 'League of Legends',
     usesOfficialLogo: false,
     presentationFactory: ({DDragon? ddragon}) =>

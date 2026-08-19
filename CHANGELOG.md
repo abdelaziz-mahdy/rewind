@@ -6,6 +6,15 @@ All notable changes to Rewind are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+- **Pressing Clip with nothing recording explains itself instead of failing.**
+  At the desktop, with "only record while playing" on and no game up, asking
+  for a clip raised a red "Couldn't save clip: buffer not running" — the
+  app's own setting working exactly as configured, reported as a breakage,
+  in the capture engine's words. It now says what happened in plain language
+  and offers a one-tap "Always record" to change the setting that caused it.
+  Genuine save failures keep the error treatment.
+
 ### Fixed
 - **Minimized apps can be picked as a capture source on Windows.** The
   picker excluded any minimized window, which is the normal state of a game

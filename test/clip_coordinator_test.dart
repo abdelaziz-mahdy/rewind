@@ -2551,6 +2551,36 @@ void main() {
           reason: 'paused is not "capture is down"');
     });
 
+    // Pressing Clip at the desktop, with "only record while playing" on and
+    // no game up, is the app working exactly as configured. It used to raise
+    // the same red "Couldn't save clip: buffer not running" as a real
+    // failure, in the shim's words.
+    test('a deliberately paused buffer explains itself instead of failing',
+        () async {
+      engine.saveFailsBufferNotRunning = true;
+      coordinator.bufferShouldBeRunning = ValueNotifier<bool>(false);
+
+      await coordinator.onHotkey();
+
+      expect(coordinator.lastSaveError.value, isNull,
+          reason: 'a setting doing its job is not an error');
+      final notice = coordinator.lastSaveNotice.value;
+      expect(notice, isNotNull);
+      expect(notice, contains('Only record while playing'),
+          reason: 'name the setting that caused it, so it can be changed');
+      expect(notice!.toLowerCase(), isNot(contains('buffer not running')),
+          reason: "the shim's wording is not the user's");
+    });
+
+    test('a real save failure still reports an error, not a notice', () async {
+      engine.failSave = true;
+
+      await coordinator.onHotkey();
+
+      expect(coordinator.lastSaveError.value, isNotNull);
+      expect(coordinator.lastSaveNotice.value, isNull);
+    });
+
     test('an ordinary save failure is NOT treated as a dead buffer', () async {
       // Disk full, index write error, a mux helper hiccup: restarting the
       // buffer neither helps nor is it safe to imply capture was down.

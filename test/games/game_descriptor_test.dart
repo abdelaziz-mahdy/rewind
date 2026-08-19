@@ -4,13 +4,20 @@ import 'package:rewind/src/games/league/league_match_presentation.dart';
 
 void main() {
   group('descriptorFor', () {
-    test('resolves League\'s merged descriptor from either of its two ids', () {
+    test('resolves League\'s merged descriptor from any of its ids', () {
       final vendor = descriptorFor('league_of_legends');
       final catalog = descriptorFor('app:league_of_legends');
+      // Riot ships the client and the match as separate executables, so the
+      // catalog has an entry for each; both are the same game to the user.
+      final match = descriptorFor('app:league_of_legends_match');
 
       expect(vendor.primaryGameId, 'league_of_legends');
-      expect(
-          vendor.mergedGameIds, {'league_of_legends', 'app:league_of_legends'});
+      expect(vendor.mergedGameIds, {
+        'league_of_legends',
+        'app:league_of_legends',
+        'app:league_of_legends_match',
+      });
+      expect(match.primaryGameId, vendor.primaryGameId);
       expect(vendor.hasLiveFeed, isTrue);
       expect(vendor.usesOfficialLogo, isFalse);
       // Both known ids resolve to the SAME descriptor, not two separate ones.
