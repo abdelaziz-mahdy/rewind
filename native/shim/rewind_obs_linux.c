@@ -900,6 +900,17 @@ static obs_encoder_t *create_video_encoder(void) {
         "obs_x264",
     };
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        /* Registration check FIRST: libobs returns a placeholder encoder for
+         * an unregistered id, not NULL (libobs/obs-encoder.c), so a
+         * create-and-check ladder never gets past its first rung. See the
+         * Windows backend's comment — that is how every non-NVIDIA machine
+         * ended up with a dummy encoder and a replay buffer that would not
+         * start. */
+        if (!obs_get_encoder_codec(candidates[i])) {
+            blog(LOG_INFO, "rewind: video encoder \"%s\" not registered, trying next",
+                 candidates[i]);
+            continue;
+        }
         obs_data_t *ve = obs_data_create();
         obs_data_set_int(ve, "bitrate", 12000);
         obs_encoder_t *enc = obs_video_encoder_create(candidates[i], "rewind-venc", ve, NULL);
@@ -923,6 +934,9 @@ int rw_plat_create_encoders(void) {
     }
     obs_encoder_set_video(g_venc, obs_get_video());
 
+    if (!obs_get_encoder_codec("ffmpeg_aac")) {
+        return fail("ffmpeg_aac encoder unavailable (obs-ffmpeg module not loaded)");
+    }
     g_aenc = obs_audio_encoder_create("ffmpeg_aac", "rewind-aenc", NULL, 0, NULL);
     if (!g_aenc) { return fail("ffmpeg_aac encoder unavailable"); }
     obs_encoder_set_audio(g_aenc, obs_get_audio());

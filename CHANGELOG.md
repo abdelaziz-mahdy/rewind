@@ -4,6 +4,25 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Recording works without an NVIDIA GPU.** The encoder ladder tried NVENC,
+  then AMF, QSV and x264 — but libobs answers an unregistered encoder id
+  with a *placeholder* encoder object rather than `NULL`, so the ladder
+  always stopped on its first rung. Every non-NVIDIA machine ended up
+  holding a dummy `obs_nvenc_h264_tex`, and the replay buffer then refused
+  to start with "no detail from libobs", while NVIDIA machines worked and
+  hid the bug. Encoder availability is now probed with
+  `obs_get_encoder_codec()` before creating, on all three platforms, and the
+  same check guards the AAC audio encoder.
+- **League of Legends counts as playing while a match is running.** The
+  catalog only knew `LeagueClientUx.exe` — the client, which is open in
+  lobby and post-game and deliberately does not arm the buffer. The match
+  itself runs as a separate `League of Legends.exe`, which nothing matched,
+  so with "only record while playing" on the buffer stayed paused unless the
+  Live Client Data API happened to answer.
+
 ## [0.2.1] - 2026-08-18
 
 ### Fixed

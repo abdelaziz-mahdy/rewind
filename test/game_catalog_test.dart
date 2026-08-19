@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rewind/src/events/game_catalog.dart';
+import 'package:rewind/src/events/process_watcher_source.dart';
 
 void main() {
   group('popularGamesCatalog', () {
@@ -146,6 +147,35 @@ void main() {
 
     test('true for a fully unrecognized id', () {
       expect(isGameRenameable('totally_custom_game'), isTrue);
+    });
+  });
+
+  group('League of Legends', () {
+    // Riot ships two processes: the client UI, which is open from launch
+    // through post-game, and the match process, which exists only while a
+    // game is actually being played. Only the second means "playing".
+    CatalogGame entryFor(String process) => popularGamesCatalog
+        .firstWhere((g) => processNameMatches(process, g.processMatch));
+
+    test('the match process counts as playing', () {
+      final match = entryFor('League of Legends.exe');
+      expect(match.gameId, 'app:league_of_legends_match');
+      expect(match.countsAsPlaying, isTrue,
+          reason: 'the buffer must arm for the process that IS the match');
+    });
+
+    test('the client process does not count as playing', () {
+      final client = entryFor('LeagueClientUx.exe');
+      expect(client.gameId, 'app:league_of_legends');
+      expect(client.countsAsPlaying, isFalse,
+          reason: 'the client sits open in lobby and post-game');
+    });
+
+    test('neither entry matches the other process', () {
+      expect(processNameMatches('LeagueClientUx.exe', 'League of Legends'),
+          isFalse);
+      expect(processNameMatches('League of Legends.exe', 'LeagueClientUx'),
+          isFalse);
     });
   });
 

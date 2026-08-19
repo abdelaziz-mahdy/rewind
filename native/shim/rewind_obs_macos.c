@@ -732,14 +732,28 @@ int rw_plat_init_capture_source(void) {
 int rw_plat_create_encoders(void) {
     obs_data_t *ve = obs_data_create();
     obs_data_set_int(ve, "bitrate", 12000);
-    g_venc = obs_video_encoder_create(
-        "com.apple.videotoolbox.videoencoder.ave.avc", "rewind-venc", ve, NULL);
+    /* Check registration before creating: libobs answers an unknown encoder
+     * id with a PLACEHOLDER object rather than NULL (libobs/obs-encoder.c),
+     * so `if (!g_venc)` alone never fires and the failure surfaces much
+     * later as a replay buffer that will not start, with nothing in the log
+     * to point at. VideoToolbox is always present on macOS, so this has
+     * never bitten here — it bit hard on Windows, where the first rung of
+     * the encoder ladder is NVIDIA-only. */
+    const bool vt_registered =
+        obs_get_encoder_codec("com.apple.videotoolbox.videoencoder.ave.avc") != NULL;
+    g_venc = vt_registered
+                 ? obs_video_encoder_create(
+                       "com.apple.videotoolbox.videoencoder.ave.avc", "rewind-venc", ve, NULL)
+                 : NULL;
     obs_data_release(ve);
     if (!g_venc) {
         return fail("VideoToolbox H.264 encoder unavailable (mac-videotoolbox module not loaded)");
     }
     obs_encoder_set_video(g_venc, obs_get_video());
 
+    if (!obs_get_encoder_codec("CoreAudio_AAC")) {
+        return fail("CoreAudio AAC encoder unavailable (module not loaded)");
+    }
     g_aenc = obs_audio_encoder_create("CoreAudio_AAC", "rewind-aenc", NULL, 0, NULL);
     if (!g_aenc) { return fail("CoreAudio AAC encoder unavailable"); }
     obs_encoder_set_audio(g_aenc, obs_get_audio());

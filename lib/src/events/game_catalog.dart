@@ -63,6 +63,25 @@ const List<CatalogGame> popularGamesCatalog = [
     // being open is still worth showing — just not for the buffer policy.
     countsAsPlaying: false,
   ),
+  // The IN-MATCH process, which is a different executable from the client
+  // above and the one that actually means "playing": Riot's client
+  // (LeagueClientUx.exe) stays open through lobby, champ select and
+  // post-game, while "League of Legends.exe" exists only for the duration
+  // of a match. Without this entry nothing counted as playing unless the
+  // Live Client Data API happened to answer — so with `captureOnlyInGame`
+  // on (the default) the buffer sat paused through an entire game, and the
+  // save hotkey answered "the replay buffer is paused" (observed on a real
+  // Windows session, 2026-08-19).
+  //
+  // `LeagueEventWatcher` (gameId `league_of_legends`) still owns auto-clip
+  // on kills; this only reports that the match process is up, which is a
+  // strictly wider window than the API's — the API exists only once the
+  // match is actually live, and misses loading screens.
+  CatalogGame(
+    gameId: 'app:league_of_legends_match',
+    displayName: 'League of Legends',
+    processMatch: 'League of Legends',
+  ),
   CatalogGame(
     gameId: 'app:cs2',
     displayName: 'Counter-Strike 2',

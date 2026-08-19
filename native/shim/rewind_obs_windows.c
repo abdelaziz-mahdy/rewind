@@ -554,8 +554,11 @@ static void rebuild_video_capture(void) {
  *      based, needs a D3D11 (or CUDA/OpenGL) device and driver support;
  *      the module itself no-ops (obs_module_load returns false) if
  *      nvenc_supported() is false, so this id is simply never registered on
- *      a non-NVIDIA machine and obs_video_encoder_create() returns NULL —
- *      no probing needed here beyond trying it.
+ *      a non-NVIDIA machine. Note that this canNOT be detected by checking
+ *      obs_video_encoder_create()'s return: for an unknown id libobs logs
+ *      "Encoder ID '<id>' not found" and then returns a PLACEHOLDER encoder
+ *      anyway (libobs/obs-encoder.c, `if (!ei)` branch), non-NULL. Probe
+ *      registration with obs_get_encoder_codec() instead — see below.
  *   2. "h264_texture_amf" (plugins/obs-ffmpeg/texture-amf.cpp) — AMD,
  *      texture-based; registered by obs-ffmpeg.dll itself on Windows x64
  *      (not folded into a separate obs-amf module in this tree).
@@ -576,6 +579,18 @@ static obs_encoder_t *create_video_encoder(void) {
         "obs_x264",
     };
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        /* MUST come before the create call: libobs hands back a placeholder
+         * encoder for an unregistered id rather than NULL, so a create-and-
+         * check ladder always stops on its first rung. That is exactly what
+         * happened — every non-NVIDIA machine got a dummy "obs_nvenc_h264_tex"
+         * and the replay buffer then failed to start with no detail, while
+         * NVIDIA machines worked fine and hid it. obs_get_encoder_codec()
+         * returns NULL when nothing registered the id. */
+        if (!obs_get_encoder_codec(candidates[i])) {
+            blog(LOG_INFO, "rewind: video encoder \"%s\" not registered, trying next",
+                 candidates[i]);
+            continue;
+        }
         obs_data_t *ve = obs_data_create();
         obs_data_set_int(ve, "bitrate", 12000);
         obs_encoder_t *enc = obs_video_encoder_create(candidates[i], "rewind-venc", ve, NULL);
@@ -767,6 +782,12 @@ int rw_plat_create_encoders(void) {
     }
     obs_encoder_set_video(g_venc, obs_get_video());
 
+    /* Same placeholder trap as the video ladder above: check registration
+     * first, or a missing obs-ffmpeg leaves a dummy audio encoder attached
+     * and the output fails later with nothing to point at. */
+    if (!obs_get_encoder_codec("ffmpeg_aac")) {
+        return fail("ffmpeg_aac encoder unavailable (obs-ffmpeg module not loaded)");
+    }
     g_aenc = obs_audio_encoder_create("ffmpeg_aac", "rewind-aenc", NULL, 0, NULL);
     if (!g_aenc) { return fail("ffmpeg_aac encoder unavailable"); }
     obs_encoder_set_audio(g_aenc, obs_get_audio());

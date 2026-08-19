@@ -139,6 +139,17 @@ rewind/
   from `windows/runner/Runner.rc`). A crash WITH logs is a Dart/engine
   problem; a crash with NO logs is a loader/native problem — look at imports
   first, not at Dart.
+- **libobs returns a PLACEHOLDER for an unknown encoder/source id, not
+  NULL.** `obs_video_encoder_create("nope", ...)` logs "Encoder ID 'nope'
+  not found" and hands back a non-NULL dummy (`libobs/obs-encoder.c`, the
+  `if (!ei)` branch). Any "try each candidate, keep the first that works"
+  ladder therefore always stops on its first rung — which is how every
+  non-NVIDIA machine got a dummy NVENC encoder and a replay buffer that
+  would not start, with NVIDIA dev machines hiding it. Probe with
+  `obs_get_encoder_codec(id) != NULL` BEFORE creating. The giveaway in a log
+  is an error and a success one line apart:
+  `Encoder ID 'obs_nvenc_h264_tex' not found` followed by
+  `rewind: using video encoder "obs_nvenc_h264_tex"`.
 - **`%module%` in an `obs_add_module_path` BIN path means "directories".**
   libobs' `find_modules_in_path` truncates the path at `%module%`, then
   globs `*` and keeps only entries where `is_directory == search_directories`
