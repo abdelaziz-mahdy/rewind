@@ -1223,10 +1223,35 @@ class ClipCoordinator {
   /// "pressed it and nothing happened" complaint. The null pass is harmless:
   /// the UI listener (the Shell) early-returns on null.
   void _reportSaveError(String msg) {
+    // Decide BEFORE reporting. ValueNotifier notifies synchronously, so
+    // setting lastSaveError first and clearing it inside
+    // _recoverIfBufferDied still pushed a red "Couldn't save clip: buffer
+    // not running" SnackBar onto the screen, immediately followed by the
+    // calm explanation — which reads worse than either message alone.
+    if (_isDeliberatelyPaused(msg)) {
+      talker.info(
+          'Nothing to save: the replay buffer is paused (see "Only record '
+          'while playing", or the tray\'s Pause). Not restarting it.');
+      lastSaveNotice.value = null;
+      lastSaveNotice.value =
+          'Nothing to clip yet — Rewind only records while a game is running, '
+          'so the last few seconds were not being kept. It starts by itself '
+          'when a game is detected, or turn off "Only record while playing" '
+          'in Settings to record all the time.';
+      return;
+    }
     lastSaveError.value = null;
     lastSaveError.value = msg;
     _recoverIfBufferDied(msg);
   }
+
+  /// A save that failed only because the buffer was stopped ON PURPOSE —
+  /// "only record while playing" with no game up, or a manual tray pause.
+  /// Both surface the same "buffer not running" from the shim as a buffer
+  /// that died on its own, and only [bufferShouldBeRunning] separates them.
+  bool _isDeliberatelyPaused(String msg) =>
+      msg.toLowerCase().contains('buffer not running') &&
+      bufferShouldBeRunning?.value == false;
 
   /// libobs can stop the replay output underneath us — the capture source
   /// breaking, or another screen-capture client taking over — and it tells
@@ -1249,20 +1274,10 @@ class ClipCoordinator {
     // while playing" with no game up, or a manual tray pause, both land
     // here with the same message from the shim — and restarting in that
     // case defeats the very setting the user chose.
+    // Reached only by callers other than _reportSaveError, which now
+    // filters this case out before anything is reported.
     if (bufferShouldBeRunning?.value == false) {
-      talker.info(
-          'Nothing to save: the replay buffer is paused (see "Only record '
-          'while playing", or the tray\'s Pause). Not restarting it.');
-      // Say it as an explanation instead of a failure, and clear the error
-      // this same save already raised — nothing broke, so nothing should be
-      // shown in red.
-      lastSaveError.value = null;
-      lastSaveNotice.value = null;
-      lastSaveNotice.value =
-          'Nothing to clip yet — Rewind only records while a game is running, '
-          'so the last few seconds were not being kept. It starts by itself '
-          'when a game is detected, or turn off "Only record while playing" '
-          'in Settings to record all the time.';
+      talker.info('Replay buffer is paused on purpose; not restarting it.');
       return;
     }
 

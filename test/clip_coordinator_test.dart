@@ -2572,6 +2572,25 @@ void main() {
           reason: "the shim's wording is not the user's");
     });
 
+    // The final value being null is not enough: ValueNotifier notifies
+    // synchronously, so setting the error and clearing it afterwards still
+    // flashed a red "Couldn't save clip: buffer not running" on screen a
+    // frame before the calm explanation replaced it.
+    test('a paused buffer never notifies an error, even transiently', () async {
+      engine.saveFailsBufferNotRunning = true;
+      coordinator.bufferShouldBeRunning = ValueNotifier<bool>(false);
+      var errorNotifications = 0;
+      coordinator.lastSaveError.addListener(() {
+        if (coordinator.lastSaveError.value != null) errorNotifications++;
+      });
+
+      await coordinator.onHotkey();
+
+      expect(errorNotifications, 0,
+          reason: 'the red toast must never be shown, not even for a frame');
+      expect(coordinator.lastSaveNotice.value, isNotNull);
+    });
+
     test('a real save failure still reports an error, not a notice', () async {
       engine.failSave = true;
 

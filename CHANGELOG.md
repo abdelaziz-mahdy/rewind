@@ -4,6 +4,16 @@ All notable changes to Rewind are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **The red "couldn't save clip" toast no longer flashes before the
+  explanation.** Pressing Clip with the buffer deliberately paused reported
+  the failure first and only then replaced it with the calm explanation —
+  `ValueNotifier` notifies synchronously, so the error reached the screen
+  for a frame regardless. The paused case is now recognised before anything
+  is reported.
+
 ## [0.2.2] - 2026-08-19
 
 ### Changed
