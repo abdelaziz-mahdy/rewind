@@ -100,6 +100,18 @@ Future<void> _relaunch() async {
   exit(0);
 }
 
+/// Names for the startup capture-source line, marking the ones that are not
+/// on screen. Capped: a busy desktop enumerates dozens of windows, and a log
+/// line nobody can read start to finish helps no one.
+String _describeApps(List<AppInfo> apps) {
+  const cap = 30;
+  final shown = apps
+      .take(cap)
+      .map((a) => a.onScreen ? a.name : '${a.name} (minimized)')
+      .join(', ');
+  return apps.length > cap ? '$shown, +${apps.length - cap} more' : shown;
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -193,6 +205,16 @@ Future<void> main() async {
   final connectedDisplays = engine.listDisplays();
   final connectedApps = engine.listCapturableApps();
   final connectedAudioInputs = engine.listAudioInputs();
+  // What the capture-source menu is about to offer. Every "Rewind can't see
+  // my game" report starts here, and until now the log could not answer it:
+  // whether the game was enumerated at all, and whether it was minimized (on
+  // Windows a minimized window is still listed, but binds by executable
+  // rather than by window handle) decides where to look next.
+  talker.debug(
+    'Capture sources: ${connectedDisplays.length} display(s), '
+    '${connectedApps.length} app(s)'
+    '${connectedApps.isEmpty ? '' : ': ${_describeApps(connectedApps)}'}',
+  );
   final savedDisplay =
       validDisplayUuid(settings.captureDisplayUuid, connectedDisplays);
   if (settings.captureDisplayUuid != null && savedDisplay == null) {
